@@ -316,6 +316,8 @@ fn release_memory(owner: *Process) {
 
 // Slides every process's memory down so the free memory is in one piece.
 fn compact() {
+    put(&log, "Terrarium: compacting memory\n");
+    flush(&log);
     var base = memory_start;
     for i in 0..region_count {
         var r = &regions[i];

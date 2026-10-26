@@ -1,0 +1,13 @@
+hold 1500 &
+hold 1500 &
+hold 1500 &
+hold 1500 &
+mem
+kill 3
+kill 5
+mem
+asm -o /hello /src/hello.asm
+/hello
+sleep 2500
+mem
+exit

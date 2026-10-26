@@ -16,8 +16,8 @@ program's manifest: anyone can read what it needs and what it may do.
 | 28     | allow  | what the program may do (below)                 |
 
 The code follows at offset 32, then the data. Nothing else is in the file.
-(`TRX1` files, which only the seed tools still are, have no `allow` word
-and a 28-byte header.)
+The development monitor also runs `TRX1` files, an earlier form with no
+`allow` word and a 28-byte header.
 
 ## Permissions
 
