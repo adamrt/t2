@@ -21,13 +21,21 @@ since 2000 last until 2136. Milliseconds wrap after 49.7 days, but the
 difference of two readings is still right for anything shorter, since the
 subtraction wraps too.
 
-## Timestamps and dates
+## Dates and timestamps
 
-A timestamp says when something happened on this machine, so it never needs
-to be before 2000. A date like 1 April 1980, such as a birthday or a date
-in a document, is a calendar date: a `DateTime` with its year, month, day,
-hour, minute and second, which reaches any year. Turning a `DateTime`
-outside 2000–2136 into a timestamp fails.
+Two numbers for two jobs, both 32-bit:
+
+| Type      | Counts                                  | Reaches                     | For                         |
+| --------- | --------------------------------------- | --------------------------- | --------------------------- |
+| Date      | `i32` days since 2000-01-01             | 5.8 million years each way  | birthdays, calendars, history |
+| Timestamp | `u32` seconds since 2000-01-01 00:00 UTC | 2000 to 2136                | when things happen here     |
+
+A date needs no seconds, which is what buys its range: 1 April 1980 is day
+-7214. Dates work as plain numbers: `b - a` is the days between, `d + 7` a
+week later, `a < b` the earlier. A timestamp is a moment this machine saw,
+like a file changing, so it never comes before 2000; its date is
+`seconds / 86400`. A moment before 2000 to the second, if anything needs
+one, is a date and the seconds into that day.
 
 ## UTC
 
@@ -46,8 +54,10 @@ do_work()
 var took = time.monotonic() - start        // milliseconds
 
 var now = time.now()                        // seconds since 2000, UTC
-var d time.DateTime
-time.parts(now, &d)
+var birthday = time.date(1980, 4, 1)        // day -7214
+var days = time.today() - birthday
+var d time.Calendar
+time.calendar(birthday, &d)                 // year, month and day again
 time.put(&w, now)                           // 2026-10-26T18:30:00Z
 time.sleep(500)
 ```
