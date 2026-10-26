@@ -23,6 +23,7 @@ enum {
     NET_SEND = 4,
     NET_RECEIVE = 5,
     NET_CLOSE = 6,
+    NET_AVAILABLE = 7,
 };
 
 #define NET_CONNECTIONS 16
@@ -33,6 +34,7 @@ typedef struct {
     bool connecting[NET_CONNECTIONS];
     bool broken[NET_CONNECTIONS];       // its connect failed
     bool want_write[NET_CONNECTIONS];   // a send found the buffer full
+    bool listening[NET_CONNECTIONS];
     uint32_t host, host_length, port, id, address, length, result;
 } Net;
 

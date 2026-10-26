@@ -26,7 +26,7 @@ It needs a C11 compiler and SDL3.
 | The compiler (`system/tc/`)   | the language | 3,400 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
 | Libraries (`system/lib/`)     | both       | 1,800 |
-| 40 programs (`system/bin/`)   | the language | 5,100 |
+| 41 programs (`system/bin/`)   | the language | 5,800 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -78,6 +78,8 @@ result is byte for byte the compiler the host built. Some others to try:
   — the lines that contain some text; `sort`; `hex file` — its bytes
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
   on the host. `fetch host port /path` goes the other way.
+- `chat 7000` in one Terrarium and `chat localhost 7000` in another (or
+  `nc localhost 7000` on the host) — talk across the network
 
 ## On the host
 

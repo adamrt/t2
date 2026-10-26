@@ -39,6 +39,7 @@ const NET_ACCEPT: u32 = 3;
 const NET_SEND: u32 = 4;
 const NET_RECEIVE: u32 = 5;
 const NET_CLOSE: u32 = 6;
+const NET_AVAILABLE: u32 = 7;
 const NOT_YET: u32 = 0xfffffffe;
 
 // Runs a network command on a connection, with a buffer.
@@ -944,6 +945,10 @@ fn available(o: *Object) -> u32 {
                 return 0;
             }
             return o.open.file.size - o.position;
+        }
+        ObjectKind.Connection => {
+            var none: []u8;
+            return net_command(NET_AVAILABLE, o.connection, none);
         }
     }
     return FAILED;

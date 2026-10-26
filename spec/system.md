@@ -60,7 +60,10 @@ something to read; writing a full pipe waits until there is room.
 
 `connect` returns a handle before the connection is made. Writing to it
 waits until it is, and fails if connecting did. Reading a connection waits
-for data, and reads 0 bytes once it has closed or failed.
+for data, and reads 0 bytes once it has closed or failed. To check without
+waiting, `available` gives the bytes a connection has waiting (-1 once it
+has closed), and for a listening handle 1 when someone is waiting to be
+accepted.
 
 ## Paths
 

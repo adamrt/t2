@@ -16,6 +16,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -42,6 +43,7 @@ add(Net *n, int fd, bool connecting)
             n->connecting[i] = connecting;
             n->broken[i] = false;
             n->want_write[i] = connecting;
+            n->listening[i] = false;
             return i;
         }
     }
@@ -109,7 +111,32 @@ listen_on(Net *n)
         close(fd);
         return FAILED;
     }
-    return add(n, fd, false);
+    uint32_t id = add(n, fd, false);
+    if (id != FAILED)
+        n->listening[id] = true;
+    return id;
+}
+
+// Bytes waiting to be received, or for a listener 1 if someone is waiting.
+static uint32_t
+available(Net *n, uint32_t id)
+{
+    int fd = n->fds[id];
+    if (n->listening[id]) {
+        struct pollfd p = { .fd = fd, .events = POLLIN };
+        return poll(&p, 1, 0) > 0 ? 1 : 0;
+    }
+    if (n->connecting[id])
+        return 0;
+    uint8_t byte;
+    ssize_t got = recv(fd, &byte, 1, MSG_PEEK);
+    if (got < 0)
+        return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : FAILED;
+    if (got == 0)
+        return FAILED;
+    int waiting = 0;
+    ioctl(fd, FIONREAD, &waiting);
+    return waiting > 0 ? (uint32_t)waiting : 1;
 }
 
 static uint8_t *
@@ -165,6 +192,8 @@ command(Net *n, Machine *m, uint32_t c)
             return errno == EAGAIN || errno == EWOULDBLOCK ? NOT_YET : FAILED;
         return got == 0 ? FAILED : (uint32_t)got;
     }
+    case NET_AVAILABLE:
+        return available(n, id);
     case NET_CLOSE:
         close(fd);
         n->fds[id] = -1;

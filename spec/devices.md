@@ -180,6 +180,7 @@ connection whose last send returned 0 has room again.
 | 4 send    | bytes sent, 0 if the host's buffer is full                   |
 | 5 receive | bytes received, or `0xfffffffe` if none have arrived yet     |
 | 6 close   | 0                                                            |
+| 7 available | bytes waiting to be received, or for a listener 1 if someone is waiting to connect |
 
 Ports are 1 to 65535. Failures, including a connect that didn't succeed
 and a connection the other side closed, return `0xffffffff`.

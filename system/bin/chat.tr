@@ -1,0 +1,214 @@
+// chat talks with one other person over the network. One side waits for
+// the other to connect, from another Terrarium or from the host (for
+// example with nc localhost 7000). Type a line and press Enter to send it.
+//
+//     chat 7000                waits for someone on port 7000
+//     chat localhost 7000      connects to them
+
+manifest {
+    memory = 256 * KiB;
+    stack = 16 * KiB;
+    allow = "window network";
+}
+
+const WIDTH = 480;
+const HEIGHT = 320;
+const LINES = 64;
+const LINE_SIZE = 160;
+const BACKGROUND: u32 = 0xff1b1d23;
+const THEM: u32 = 0xffd8d4c8;
+const YOU: u32 = 0xffe8c35a;
+const NOTE: u32 = 0xff8fb8ad;
+
+enum State {
+    Waiting,
+    Talking,
+    Over,
+}
+
+var state: State;
+var listener: u32;
+var connection: u32;
+var log_text: [LINES * LINE_SIZE]u8;
+var log_len: [LINES]u32;
+var log_color: [LINES]u32;
+var log_count: u32;
+var typed: [LINE_SIZE]u8;
+var typed_len: u32;
+var incoming: [LINE_SIZE]u8;    // the start of a line still arriving
+var incoming_len: u32;
+var buffer: [1024]u8;
+var canvas: Canvas;
+var words: [4096]u32;
+var strings: [8192]u8;
+var font_height: i32;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [2][]u8;
+    var count = get_args(&arena, args[:]);
+    if count == 0 {
+        complain("chat", "usage: chat port, or chat host port", "");
+        return 2;
+    }
+    var port = parse_u32(args[count - 1]);
+    if count == 1 {
+        listener = listen(port);
+        if port == FAILED || listener == FAILED {
+            complain("chat", "can't listen on port", args[0]);
+            return 1;
+        }
+        state = State.Waiting;
+        note("waiting for someone to connect");
+    } else {
+        connection = connect(args[0], port);
+        if port == FAILED || connection == FAILED {
+            complain("chat", "can't connect to", args[0]);
+            return 1;
+        }
+        state = State.Talking;
+        note("connected");
+    }
+    var screen: ScreenInfo;
+    screen_info(&screen);
+    font_height = screen.font_height as i32;
+    var window = window_open("Chat", WIDTH, HEIGHT);
+    if window == FAILED {
+        complain("chat", "can't open a window", "");
+        return 1;
+    }
+    canvas_init(&canvas, window, words[:], strings[:]);
+    while true {
+        var changed = check_network();
+        var e: Event;
+        if event_wait(&e, 50) == 1 {
+            if e.kind == EVENT_CLOSE {
+                return 0;
+            }
+            if e.kind == EVENT_DRAW || handle_key(&e) {
+                changed = true;
+            }
+        }
+        if changed {
+            draw();
+        }
+    }
+    return 0;
+}
+
+// Accepts the other person, or takes in what they've sent. Returns true if
+// anything changed.
+fn check_network() -> bool {
+    if state == State.Waiting {
+        if available(listener) != 1 {
+            return false;
+        }
+        connection = accept(listener);
+        if connection == FAILED {
+            return false;
+        }
+        close(listener);
+        state = State.Talking;
+        note("someone connected");
+        return true;
+    }
+    if state != State.Talking {
+        return false;
+    }
+    var n = available(connection);
+    if n == 0 {
+        return false;
+    }
+    if n == FAILED {
+        state = State.Over;
+        note("the other side left");
+        return true;
+    }
+    var got = read(connection, buffer[0:min(n, buffer.len)]);
+    for i in 0..got {
+        var c = buffer[i];
+        if c == '\n' {
+            add_line(incoming[0:incoming_len], THEM);
+            incoming_len = 0;
+        } else if c != '\r' && incoming_len < incoming.len {
+            incoming[incoming_len] = c;
+            incoming_len += 1;
+        }
+    }
+    return true;
+}
+
+fn min(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+// Returns true if the screen changed.
+fn handle_key(e: *Event) -> bool {
+    if e.kind == EVENT_TEXT {
+        typed_len += encode_char(e.key, typed[typed_len:typed.len - 1]);
+        return true;
+    }
+    if e.kind != EVENT_KEY_DOWN {
+        return false;
+    }
+    if e.key == KEY_BACKSPACE && typed_len > 0 {
+        typed_len = char_start(typed[:], typed_len);
+        return true;
+    }
+    if e.key == KEY_ENTER && typed_len > 0 && state == State.Talking {
+        add_line(typed[0:typed_len], YOU);
+        typed[typed_len] = '\n';
+        if !write_all(connection, typed[0:typed_len + 1]) {
+            state = State.Over;
+            note("the other side left");
+        }
+        typed_len = 0;
+        return true;
+    }
+    return false;
+}
+
+fn note(text: []u8) {
+    add_line(text, NOTE);
+}
+
+fn add_line(text: []u8, color: u32) {
+    if log_count == LINES {
+        copy(log_text[:], log_text[LINE_SIZE:]);
+        for i in 1..LINES {
+            log_len[i - 1] = log_len[i];
+            log_color[i - 1] = log_color[i];
+        }
+        log_count -= 1;
+    }
+    var n = min(text.len, LINE_SIZE);
+    copy(log_text[log_count * LINE_SIZE:], text[0:n]);
+    log_len[log_count] = n;
+    log_color[log_count] = color;
+    log_count += 1;
+}
+
+fn draw() {
+    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, BACKGROUND);
+    // The newest lines, above the line being typed.
+    var room = ((HEIGHT - 2 * font_height - 12) / font_height) as u32;
+    var first: u32 = 0;
+    if log_count > room {
+        first = log_count - room;
+    }
+    for i in first..log_count {
+        var y = 6 + (i - first) as i32 * font_height;
+        var line = log_text[i * LINE_SIZE:i * LINE_SIZE + log_len[i]];
+        draw_text(&canvas, 8, y, log_color[i], line);
+    }
+    var y = HEIGHT - font_height - 6;
+    draw_fill(&canvas, 0, y - 4, WIDTH, 1, NOTE);
+    draw_text(&canvas, 8, y, YOU, "> ");
+    draw_text(&canvas, 24, y, YOU, typed[0:typed_len]);
+    draw_fill(&canvas, 24 + char_count(typed[0:typed_len]) as i32 * 8, y, 8, font_height, YOU);
+    present(&canvas);
+}

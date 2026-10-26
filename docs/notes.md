@@ -102,5 +102,5 @@ accents added.
 - A user-space desktop, now that windows, events and permissions exist.
 - Modules in the language.
 - Translating hot code to native ARM64.
-- UDP, and a chat program or a networked game.
+- UDP, and a networked game.
 - A file dialog, and resizing for the monitor, paint and view.
