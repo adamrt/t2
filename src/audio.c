@@ -55,9 +55,13 @@ audio_queued(Audio *a)
     }
     uint64_t now = micros();
     uint64_t played = (now - a->since) * AUDIO_RATE * 2 / 1000000;
-    if (played > 0) {
-        a->queued = played >= a->queued ? 0 : a->queued - (uint32_t)played;
+    if (played >= a->queued) {
+        a->queued = 0;
         a->since = now;
+    } else if (played > 0) {
+        // Only the time those whole bytes took passes, so none is lost.
+        a->queued -= (uint32_t)played;
+        a->since += played * 1000000 / (AUDIO_RATE * 2);
     }
     return a->queued;
 }

@@ -363,8 +363,10 @@ chunk(FILE *f, const char *type, const uint8_t *data, size_t n)
 static void
 screenshot(Gpu *g, const char *path)
 {
+    if (g->width == 0)
+        return;
     FILE *f = fopen(path, "wb");
-    if (f == NULL || g->width == 0)
+    if (f == NULL)
         return;
     fwrite("\x89PNG\r\n\x1a\n", 1, 8, f);
     uint8_t header[13] = { 0 };

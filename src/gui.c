@@ -251,13 +251,11 @@ gui_poll(Gui *gui, InputQueue *queue)
     return true;
 }
 
+// Waits for an event without taking it, so events keep their order.
 void
 gui_wait(Gui *gui, int timeout_ms)
 {
-    SDL_Event e;
-    if (SDL_WaitEventTimeout(&e, timeout_ms)) {
-        SDL_PushEvent(&e);
-    }
+    SDL_WaitEventTimeout(NULL, timeout_ms);
     (void)gui;
 }
 
