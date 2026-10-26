@@ -1,6 +1,6 @@
 // files, a file browser. Click a directory to open it, or ".." to go up.
 // Clicking a file opens it: pictures (.tim) in view, sounds (.tsn) in play,
-// anything else in edit.
+// anything else in edit. Dragging the strip under the window resizes it.
 
 manifest {
     memory = 256 * KiB;
@@ -23,13 +23,20 @@ var dir: [256]u8;
 var dir_len: u32;
 var top: u32;
 var full_path: [512]u8;
+var width: i32;
+var height: i32;
+var rows: u32;
 
 fn main(memory: []u8) -> u32 {
-    var window = window_open("Files", WIDTH, ROWS * ROW + 28);
+    width = WIDTH;
+    height = ROWS * ROW + 28;
+    rows = ROWS;
+    var window = window_open("Files", width as u32, height as u32);
     if window == FAILED {
         complain("files", "can't open a window", "");
         return 1;
     }
+    window_resizable(window, 200, 4 * ROW + 28);
     canvas_init(&canvas, window, words[:], strings[:]);
     dir_len = min(get_dir(dir[:]), dir.len);
     load();
@@ -39,13 +46,17 @@ fn main(memory: []u8) -> u32 {
         if e.kind == EVENT_CLOSE {
             return 0;
         }
-        if e.kind == EVENT_MOUSE_DOWN {
+        if e.kind == EVENT_RESIZE {
+            width = e.x;
+            height = e.y;
+            rows = ((height - 28) / ROW) as u32;
+        } else if e.kind == EVENT_MOUSE_DOWN {
             var row = (e.y - 24) / ROW;
             if row >= 0 {
                 click(top + row as u32);
             }
         } else if e.kind == EVENT_WHEEL {
-            if e.y > 0 && top + ROWS < count + 1 {
+            if e.y > 0 && top + rows < count + 1 {
                 top += 1;
             } else if e.y < 0 && top > 0 {
                 top -= 1;
@@ -147,11 +158,10 @@ fn click(row: u32) {
 }
 
 fn draw() {
-    var height: i32 = ROWS * ROW + 28;
-    draw_fill(&canvas, 0, 0, WIDTH, height, rgb(242, 239, 230));
-    draw_fill(&canvas, 0, 0, WIDTH, 22, rgb(224, 219, 206));
+    draw_fill(&canvas, 0, 0, width, height, rgb(242, 239, 230));
+    draw_fill(&canvas, 0, 0, width, 22, rgb(224, 219, 206));
     draw_text(&canvas, 8, 3, rgb(30, 30, 36), dir[0:dir_len]);
-    for row in 0..ROWS {
+    for row in 0..rows {
         var n = top + row;
         var y = 24 + (row * ROW) as i32;
         if n == 0 {
@@ -171,7 +181,7 @@ fn draw() {
             var w: Writer;
             writer_init(&w, STDOUT, digits[:]);
             put_u32(&w, e.size);
-            draw_text(&canvas, WIDTH - 12 - (w.used * 8) as i32, y, rgb(120, 116, 106), digits[0:w.used]);
+            draw_text(&canvas, width - 12 - (w.used * 8) as i32, y, rgb(120, 116, 106), digits[0:w.used]);
         }
     }
     present(&canvas);
