@@ -161,6 +161,21 @@ fn frame_of(w: *Window, r: *Rect) {
     set_rect(r, w.content.x - BORDER, w.content.y - TITLE - BORDER, w.content.w + 2 * BORDER, w.content.h + TITLE + BORDER + below);
 }
 
+// Keeps as much of a title as fits, without cutting a character in two.
+fn set_title(w: *Window, title: []u8) {
+    var n = min(title.len, w.title.len);
+    while n < title.len && n > 0 && is_continuation(title[n]) {
+        n -= 1;
+    }
+    w.title_len = n;
+    copy(w.title[:], title[0:n]);
+}
+
+fn window_title(w: *Window, title: []u8) {
+    set_title(w, title);
+    redraw_all();
+}
+
 // Lets a window be resized by dragging the strip under it, down to a size.
 fn window_resizable(w: *Window, min_w: u32, min_h: u32) {
     w.resizable = true;
@@ -384,8 +399,7 @@ fn window_open(p: *Process, title: []u8, width: u32, height: u32) -> *Window {
     mem_fill(w as *u8, 0, size_of(Window));
     w.used = true;
     w.owner = p;
-    w.title_len = min(title.len, 32);
-    copy(w.title[:], title[0:w.title_len]);
+    set_title(w, title);
     w.content.w = width as i32;
     w.content.h = height as i32;
     place(w);

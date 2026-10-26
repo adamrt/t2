@@ -157,6 +157,7 @@ enum Call {
     WindowResizable,
     Date,
     Rename,
+    WindowTitle,
 }
 
 // Text copied by one program for another to paste.
@@ -356,7 +357,7 @@ fn needs(p: *Process, call: Call) -> bool {
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.Rename as u32 && !needs(p, number as Call) {
+    if number <= Call.WindowTitle as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -584,6 +585,14 @@ fn system_call(p: *Process, number: u32) {
                 result = 0;
             }
         }
+        Call.WindowTitle => {
+            var o = handle_object(p, r[0]);
+            var title = user_bytes(p, r[1], r[2]);
+            if o != null && o.kind == ObjectKind.Window && title.ptr != null {
+                window_title(o.window, title);
+                result = 0;
+            }
+        }
         Call.ClipboardSet => {
             var bytes = user_bytes(p, r[0], r[1]);
             if bytes.ptr != null && bytes.len <= clipboard.len {
@@ -688,6 +697,7 @@ fn call_name(number: u32) -> []u8 {
         35 => { return "window_resizable"; }
         36 => { return "date"; }
         37 => { return "rename"; }
+        38 => { return "window_title"; }
     }
     return "call";
 }

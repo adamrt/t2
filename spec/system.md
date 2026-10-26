@@ -45,6 +45,7 @@ monitor, so the same tools run on both.
 | 35 | window_resizable | r0 handle, r1 least width, r2 least height  | 0                          |
 | 36 | date       |                                                   | local time, in seconds since 1970 |
 | 37 | rename     | r0 path, r1 length, r2 new path, r3 length        | 0                          |
+| 38 | window_title | r0 handle, r1 title, r2 length (up to 32 bytes kept) | 0                      |
 
 ## Handles
 

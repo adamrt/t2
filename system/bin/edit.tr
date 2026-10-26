@@ -5,9 +5,10 @@
 // Arrows, Home, End, Page Up and Page Down move, and select with Shift; the
 // mouse places the cursor, dragging selects, and the wheel scrolls; dragging
 // the strip under the window resizes it. Tab inserts four spaces. With Ctrl
-// (or Cmd): S saves, A selects everything, C copies the selection (or the
-// line), X cuts it, V pastes, Z undoes, Y (or Shift-Z) redoes, and F finds
-// text (Enter finds the next, Escape stops).
+// (or Cmd): S saves (asking for a name if there isn't one), O opens another
+// file, A selects everything, C copies the selection (or the line), X cuts
+// it, V pastes, Z undoes, Y (or Shift-Z) redoes, and F finds text (Enter
+// finds the next, Escape stops).
 //
 // The text lives in a gap buffer: one array with the unused space kept at the
 // cursor, so typing only ever touches the gap. Every change is remembered
@@ -48,9 +49,20 @@ var modified: bool;
 var path: [256]u8;
 var path_len: u32;
 var message: []u8;
-var finding: bool;
+// What the status line is asking for, if anything.
+enum Ask {
+    Nothing,
+    Find,
+    SaveAs,
+    Open,
+}
+
+var asking: Ask;
 var find_text: [64]u8;
 var find_len: u32;
+var name_text: [256]u8;         // a file name being typed
+var name_len: u32;
+var window: u32;
 var clip: [64 * KiB]u8;
 
 // Bytes inserted at a position, or removed from it.
@@ -81,7 +93,7 @@ var rows: u32;
 var window_width: i32;
 var window_height: i32;
 var number_text: [8]u8;
-var status_text: [160]u8;
+var status_text: [1024]u8;
 var font_width: i32;
 var font_height: i32;
 
@@ -108,7 +120,7 @@ fn main(memory: []u8) -> u32 {
     rows = 32;
     window_width = columns as i32 * font_width + 2 * MARGIN;
     window_height = (rows + 1) as i32 * font_height + 2 * MARGIN;
-    var window = window_open(title, window_width as u32, window_height as u32);
+    window = window_open(title, window_width as u32, window_height as u32);
     if window == FAILED {
         complain("edit", "can't open a window", "");
         return 1;
@@ -448,7 +460,7 @@ fn load() {
 
 fn save() {
     if path_len == 0 {
-        message = "no file name; start edit with one";
+        message = "no file name";
         return;
     }
     var file = open(path[0:path_len], MODE_WRITE);
@@ -485,8 +497,8 @@ fn handle(e: *Event) {
     } else if e.kind == EVENT_KEY_DOWN || e.kind == EVENT_MOUSE_DOWN {
         typing = false;
     }
-    if finding && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {
-        handle_find(e);
+    if asking != Ask.Nothing && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {
+        handle_answer(e);
         keep_cursor_visible();
         return;
     }
@@ -540,8 +552,14 @@ fn is_movement(code: u32) -> bool {
 
 fn key(code: u32, modifiers: u32) {
     if (modifiers & (MOD_CTRL | MOD_SUPER)) != 0 {
-        if code == 's' {
+        if code == 's' && path_len == 0 {
+            asking = Ask.SaveAs;
+            name_len = 0;
+        } else if code == 's' {
             save();
+        } else if code == 'o' {
+            asking = Ask.Open;
+            name_len = 0;
         } else if code == 'a' {
             anchor = 0;
             cursor = length();
@@ -554,7 +572,7 @@ fn key(code: u32, modifiers: u32) {
         } else if code == 'v' {
             paste();
         } else if code == 'f' {
-            finding = true;
+            asking = Ask.Find;
         }
         return;
     }
@@ -701,18 +719,54 @@ fn paste() {
     }
 }
 
-fn handle_find(e: *Event) {
+// Takes typing for the status line's question.
+fn handle_answer(e: *Event) {
+    var text = name_text[:];
+    var used = &name_len;
+    if asking == Ask.Find {
+        text = find_text[:];
+        used = &find_len;
+    }
     if e.kind == EVENT_TEXT {
-        find_len += encode_char(e.key, find_text[find_len:]);
+        *used += encode_char(e.key, text[*used:]);
         return;
     }
     if e.key == KEY_ESCAPE {
-        finding = false;
-    } else if e.key == KEY_BACKSPACE && find_len > 0 {
-        find_len = char_start(find_text[:], find_len);
-    } else if e.key == KEY_ENTER {
+        asking = Ask.Nothing;
+    } else if e.key == KEY_BACKSPACE && *used > 0 {
+        *used = char_start(text, *used);
+    } else if e.key == KEY_ENTER && asking == Ask.Find {
         find_next();
+    } else if e.key == KEY_ENTER && name_len > 0 {
+        if asking == Ask.Open {
+            open_file();
+        } else {
+            copy(path[:], name_text[0:name_len]);
+            path_len = name_len;
+            save();
+            window_title(window, path[0:path_len]);
+        }
+        asking = Ask.Nothing;
     }
+}
+
+// Replaces the text with the file named in name_text.
+fn open_file() {
+    copy(path[:], name_text[0:name_len]);
+    path_len = name_len;
+    gap_start = 0;
+    gap_end = CAPACITY;
+    cursor = 0;
+    anchor = NONE;
+    top = 0;
+    left = 0;
+    modified = false;
+    change_count = 0;
+    redo_count = 0;
+    history_used = 0;
+    saved_at = 0;
+    load();
+    window_title(window, path[0:path_len]);
 }
 
 // Moves the cursor to the next place the text appears, wrapping around.
@@ -907,9 +961,18 @@ fn draw_status(width: i32) {
     put_u32(&w, line_of(cursor) + 1);
     put(&w, ", column ");
     put_u32(&w, column_of(line_start(cursor), cursor) + 1);
-    if finding {
+    if asking == Ask.Find {
         put(&w, "  find: ");
         put(&w, find_text[0:find_len]);
+    } else if asking == Ask.SaveAs {
+        put(&w, "  save as: ");
+        put(&w, name_text[0:name_len]);
+    } else if asking == Ask.Open && modified {
+        put(&w, "  open, losing changes: ");
+        put(&w, name_text[0:name_len]);
+    } else if asking == Ask.Open {
+        put(&w, "  open: ");
+        put(&w, name_text[0:name_len]);
     } else if message.len > 0 {
         put(&w, "  ");
         put(&w, message);

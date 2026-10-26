@@ -271,6 +271,14 @@ _date:
     sys 36
     return
 
+; fn window_title(window: u32, title: []u8) -> u32;
+_window_title:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    sys 38
+    return
+
 ; fn rename(from: []u8, to: []u8) -> u32;
 _rename:
     r0 = [sp + 4]
