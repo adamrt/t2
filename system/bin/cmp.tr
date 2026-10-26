@@ -1,0 +1,86 @@
+// cmp compares two files and says where they first differ.
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+}
+
+var a_buffer: [16 * KiB]u8;
+var b_buffer: [16 * KiB]u8;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [2][]u8;
+    if arg_count() != 2 {
+        complain("cmp", "usage: cmp file1 file2", "");
+        return 2;
+    }
+    get_args(&arena, args[:]);
+    var a = open(args[0], MODE_READ);
+    var b = open(args[1], MODE_READ);
+    if a == FAILED || b == FAILED {
+        complain("cmp", "can't read both files", "");
+        return 2;
+    }
+    var offset: u32 = 0;
+    while true {
+        var na = read_full(a, a_buffer[:]);
+        var nb = read_full(b, b_buffer[:]);
+        var n = na;
+        if nb < n {
+            n = nb;
+        }
+        for i in 0..n {
+            if a_buffer[i] != b_buffer[i] {
+                differ(args[0], args[1], offset + i);
+                return 1;
+            }
+        }
+        if na != nb {
+            differ(args[0], args[1], offset + n);
+            return 1;
+        }
+        if na == 0 {
+            break;
+        }
+        offset += n;
+    }
+    var out: Writer;
+    var text: [256]u8;
+    writer_init(&out, STDOUT, text[:]);
+    put(&out, args[0]);
+    put(&out, " and ");
+    put(&out, args[1]);
+    put(&out, " are the same, ");
+    put_u32(&out, offset);
+    put(&out, " bytes\n");
+    flush(&out);
+    return 0;
+}
+
+// Fills the buffer unless the file ends first.
+fn read_full(file: u32, buffer: []u8) -> u32 {
+    var n: u32 = 0;
+    while n < buffer.len {
+        var got = read(file, buffer[n:]);
+        if got == 0 || got == FAILED {
+            break;
+        }
+        n += got;
+    }
+    return n;
+}
+
+fn differ(a: []u8, b: []u8, offset: u32) {
+    var out: Writer;
+    var text: [256]u8;
+    writer_init(&out, STDOUT, text[:]);
+    put(&out, a);
+    put(&out, " and ");
+    put(&out, b);
+    put(&out, " differ at byte ");
+    put_u32(&out, offset);
+    put_byte(&out, '\n');
+    flush(&out);
+}

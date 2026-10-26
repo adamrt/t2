@@ -1,0 +1,8 @@
+# Builds the assembler from its source, then has the new assembler build
+# itself again and checks the two results are the same, and the same as the
+# assembler the host built.
+mkdir /tmp
+asm -o /tmp/asm /src/asm/asm.asm
+/tmp/asm -o /tmp/asm-again /src/asm/asm.asm
+cmp /tmp/asm /tmp/asm-again
+cmp /tmp/asm /bin/asm

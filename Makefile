@@ -11,11 +11,11 @@ SDL_LIBS := $(shell pkg-config --libs sdl3)
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
 OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr system/lib/math.tr system/lib/image.tr
-TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
-KERNEL_SOURCE = $(LIBRARY) $(wildcard system/kernel/*.tr)
+TC_SOURCE = $(LIBRARY) $(sort $(wildcard system/tc/*.tr))
+KERNEL_SOURCE = $(LIBRARY) $(sort $(wildcard system/kernel/*.tr))
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.
@@ -23,7 +23,12 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc $(BUILD)/terra.tfn:/system/font \
 	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
 	system/lib/gfx.tr:/lib/gfx.tr system/lib/math.tr:/lib/math.tr system/lib/image.tr:/lib/image.tr \
-	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm
+	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm \
+	$(foreach f,$(SOURCES),$(f):/src/$(patsubst system/%,%,$(f)))
+
+# The system's own source goes on the disk too, so Terrarium can rebuild it.
+SOURCES = $(wildcard system/tc/*.tr system/kernel/*.tr system/kernel/*.asm system/bin/*.tr system/tools/*.tr \
+	system/asm/*.asm system/fonts/*.txt) system/scripts/build-tc system/scripts/build-asm
 
 .PHONY: all test seed run clean
 
@@ -69,7 +74,7 @@ $(BUILD)/mkimage.bin: system/tools/mkimage.tr system/lib/image.tr $(LIBRARY) $(R
 $(BUILD)/terra.tfn: system/fonts/terra.txt $(BUILD)/mkfont.bin
 	$(VM) $(BUILD)/mkfont.bin -o $@ system/fonts/terra.txt
 
-$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr
+$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr $(SOURCES)
 	$(VM) $(BUILD)/mkdisk.bin -o $@ -k $(BUILD)/kernel.bin $(DISK_FILES)
 
 # Terrarium runs on a copy of the disk, so what you do in it lasts until the

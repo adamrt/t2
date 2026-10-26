@@ -7,8 +7,15 @@ second line
 /home> 2 4 23
 /home>         23  notes.txt
 /home> /src> /src> /src> Hello from the Terrarium language!
-/src> /src> hello
+/src> /src> asm/
+bin/
+fonts/
+hello
 hello.tr
+kernel/
+scripts/
+tc/
+tools/
 /src> /> cd: no such directory: nowhere
 /> sh: can't run nosuchprogram
 /> Terrarium: every process has ended
