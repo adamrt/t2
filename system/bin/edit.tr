@@ -6,11 +6,12 @@
 // mouse places the cursor, dragging selects, and the wheel scrolls; dragging
 // the strip under the window resizes it. Tab inserts four spaces. With Ctrl
 // (or Cmd): S saves, A selects everything, C copies the selection (or the
-// line), X cuts it, V pastes, and F finds text (Enter finds the next, Escape
-// stops).
+// line), X cuts it, V pastes, Z undoes, Y (or Shift-Z) redoes, and F finds
+// text (Enter finds the next, Escape stops).
 //
 // The text lives in a gap buffer: one array with the unused space kept at the
-// cursor, so typing only ever touches the gap.
+// cursor, so typing only ever touches the gap. Every change is remembered
+// with the bytes it added or removed, so it can be undone.
 
 manifest {
     memory = 2 * MiB;
@@ -51,6 +52,25 @@ var finding: bool;
 var find_text: [64]u8;
 var find_len: u32;
 var clip: [64 * KiB]u8;
+
+// Bytes inserted at a position, or removed from it.
+struct Change {
+    inserted: bool;
+    position: u32;
+    start: u32;                 // where its bytes are in history
+    length: u32;
+    action: u32;                // what one action changed is undone together
+}
+
+const MAX_CHANGES = 4096;
+var changes: [MAX_CHANGES]Change;
+var change_count: u32;          // changes[0:change_count] can be undone
+var redo_count: u32;            // and changes[change_count:redo_count] redone
+var history: [256 * KiB]u8;
+var history_used: u32;
+var action: u32;
+var typing: bool;               // the last action was typing, which can go on
+var saved_at: u32;              // change_count when the file was last saved
 
 var canvas: Canvas;
 var strings: [8192]u8;
@@ -167,6 +187,7 @@ fn insert(c: u8) {
         message = "the file is too big";
         return;
     }
+    remember_insert(c);
     move_gap(cursor);
     text[gap_start] = c;
     gap_start += 1;
@@ -174,24 +195,138 @@ fn insert(c: u8) {
     modified = true;
 }
 
-fn delete_before() {
-    if cursor == 0 {
-        return;
-    }
-    var start = previous_char(cursor);
-    move_gap(cursor);
-    gap_start = start;
+fn delete_range(start: u32, end: u32) {
+    remember_delete(start, end);
+    move_gap(start);
+    gap_end += end - start;
     cursor = start;
     modified = true;
 }
 
+fn delete_before() {
+    if cursor > 0 {
+        delete_range(previous_char(cursor), cursor);
+    }
+}
+
 fn delete_after() {
-    if cursor == length() {
+    if cursor < length() {
+        delete_range(cursor, next_char(cursor));
+    }
+}
+
+// Undo -------------------------------------------------------------------------
+
+// Forgets what could be redone, since a new change replaces it.
+fn drop_redo() {
+    redo_count = change_count;
+    history_used = 0;
+    if change_count > 0 {
+        history_used = changes[change_count - 1].start + changes[change_count - 1].length;
+    }
+}
+
+// Makes room for a change of n bytes, forgetting the whole history if it's
+// full. Returns false if the change is too big to remember at all.
+fn make_room(n: u32) -> bool {
+    if change_count == MAX_CHANGES || n > history.len - history_used {
+        change_count = 0;
+        redo_count = 0;
+        history_used = 0;
+        saved_at = NONE;
+    }
+    return n <= history.len;
+}
+
+fn add_change(inserted: bool, position: u32, length: u32) {
+    var c = &changes[change_count];
+    c.inserted = inserted;
+    c.position = position;
+    c.start = history_used;
+    c.length = length;
+    c.action = action;
+    change_count += 1;
+    redo_count = change_count;
+}
+
+fn remember_insert(c: u8) {
+    drop_redo();
+    if change_count > 0 {
+        var last = &changes[change_count - 1];
+        if last.action == action && last.inserted && last.position + last.length == cursor && history_used < history.len {
+            history[history_used] = c;
+            history_used += 1;
+            last.length += 1;
+            return;
+        }
+    }
+    if make_room(1) {
+        add_change(true, cursor, 1);
+        history[history_used] = c;
+        history_used += 1;
+    }
+}
+
+fn remember_delete(start: u32, end: u32) {
+    drop_redo();
+    if make_room(end - start) {
+        add_change(false, start, end - start);
+        for i in start..end {
+            history[history_used] = char_at(i);
+            history_used += 1;
+        }
+    }
+}
+
+fn put_back(c: *Change) {
+    move_gap(c.position);
+    copy(text[gap_start:], history[c.start:c.start + c.length]);
+    gap_start += c.length;
+    cursor = c.position + c.length;
+}
+
+fn take_out(c: *Change) {
+    move_gap(c.position);
+    gap_end += c.length;
+    cursor = c.position;
+}
+
+fn undo() {
+    if change_count == 0 {
+        message = "nothing to undo";
         return;
     }
-    move_gap(cursor);
-    gap_end += next_char(cursor) - cursor;
-    modified = true;
+    var a = changes[change_count - 1].action;
+    while change_count > 0 && changes[change_count - 1].action == a {
+        change_count -= 1;
+        var c = &changes[change_count];
+        if c.inserted {
+            take_out(c);
+        } else {
+            put_back(c);
+        }
+    }
+    anchor = NONE;
+    modified = change_count != saved_at;
+}
+
+fn redo() {
+    if change_count == redo_count {
+        message = "nothing to redo";
+        return;
+    }
+    var a = changes[change_count].action;
+    while change_count < redo_count && changes[change_count].action == a {
+        var c = &changes[change_count];
+        if c.inserted {
+            put_back(c);
+        } else {
+            take_out(c);
+        }
+        change_count += 1;
+    }
+    anchor = NONE;
+    modified = change_count != saved_at;
 }
 
 // Characters -------------------------------------------------------------------
@@ -325,6 +460,7 @@ fn save() {
     close(file);
     if ok {
         modified = false;
+        saved_at = change_count;
         message = "saved";
     } else {
         message = "can't save";
@@ -335,6 +471,20 @@ fn save() {
 
 fn handle(e: *Event) {
     message = "";
+    // Typing in one place is one action, undone all together.
+    var last = &changes[0];
+    if change_count > 0 {
+        last = &changes[change_count - 1];
+    }
+    var goes_on = e.kind == EVENT_TEXT && typing && !has_selection() && change_count > 0 && last.inserted && last.position + last.length == cursor;
+    if !goes_on {
+        action += 1;
+    }
+    if e.kind == EVENT_TEXT {
+        typing = true;
+    } else if e.kind == EVENT_KEY_DOWN || e.kind == EVENT_MOUSE_DOWN {
+        typing = false;
+    }
     if finding && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {
         handle_find(e);
         keep_cursor_visible();
@@ -395,6 +545,10 @@ fn key(code: u32, modifiers: u32) {
         } else if code == 'a' {
             anchor = 0;
             cursor = length();
+        } else if code == 'z' && (modifiers & MOD_SHIFT) == 0 {
+            undo();
+        } else if code == 'y' || code == 'z' {
+            redo();
         } else if code == 'c' || code == 'x' {
             copy_text(code == 'x');
         } else if code == 'v' {
@@ -485,13 +639,6 @@ fn selection_end() -> u32 {
         return anchor;
     }
     return cursor;
-}
-
-fn delete_range(start: u32, end: u32) {
-    move_gap(start);
-    gap_end += end - start;
-    cursor = start;
-    modified = true;
 }
 
 // Deletes the selected text, if there is any.
