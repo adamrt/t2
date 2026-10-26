@@ -1,0 +1,272 @@
+// TIM1 images (spec/formats.md): pictures cut into tiles that each decode on
+// their own, so a program can show part of a picture without holding all of it.
+
+const TILE: u32 = 64;
+const TILE_PIXELS: u32 = TILE * TILE;
+
+const OP_INDEX: u32 = 0x00;
+const OP_DIFF: u32 = 0x40;
+const OP_LUMA: u32 = 0x80;
+const OP_RUN: u32 = 0xc0;
+const OP_RGB: u32 = 0xfe;
+const OP_RGBA: u32 = 0xff;
+
+struct ImageHeader {
+    width: u32;
+    height: u32;
+    tiles_x: u32;
+    tiles_y: u32;
+}
+
+fn read_word(bytes: []u8, offset: u32) -> u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+}
+
+fn write_word(bytes: []u8, offset: u32, value: u32) {
+    bytes[offset] = (value & 255) as u8;
+    bytes[offset + 1] = ((value >> 8) & 255) as u8;
+    bytes[offset + 2] = ((value >> 16) & 255) as u8;
+    bytes[offset + 3] = (value >> 24) as u8;
+}
+
+// Reads the header at the start of a file. Returns false if it isn't TIM1.
+fn image_header(bytes: []u8, h: *ImageHeader) -> bool {
+    if bytes.len < 16 || !text_equal(bytes[0:4], "TIM1") || read_word(bytes, 12) != TILE {
+        return false;
+    }
+    h.width = read_word(bytes, 4);
+    h.height = read_word(bytes, 8);
+    h.tiles_x = (h.width + TILE - 1) / TILE;
+    h.tiles_y = (h.height + TILE - 1) / TILE;
+    return h.width > 0 && h.height > 0 && 16 + (h.tiles_x * h.tiles_y + 1) * 4 <= bytes.len;
+}
+
+// Where tile n's bytes start; tile n ends where tile n + 1 starts.
+fn tile_offset(bytes: []u8, n: u32) -> u32 {
+    return read_word(bytes, 16 + n * 4);
+}
+
+// How many pixels wide and tall a tile is. Tiles at the right and bottom
+// edges can be smaller.
+fn tile_width(h: *ImageHeader, tx: u32) -> u32 {
+    if (tx + 1) * TILE > h.width {
+        return h.width - tx * TILE;
+    }
+    return TILE;
+}
+
+fn tile_height(h: *ImageHeader, ty: u32) -> u32 {
+    if (ty + 1) * TILE > h.height {
+        return h.height - ty * TILE;
+    }
+    return TILE;
+}
+
+fn pixel_slot(p: u32) -> u32 {
+    var a = p >> 24;
+    var r = (p >> 16) & 255;
+    var g = (p >> 8) & 255;
+    var b = p & 255;
+    return (r * 3 + g * 5 + b * 7 + a * 11) % 64;
+}
+
+// Decodes one tile's bytes into count pixels. Returns false if the bytes run
+// out or don't make sense.
+fn decode_tile(data: []u8, out: []u32, count: u32) -> bool {
+    var seen: [64]u32;
+    var p: u32 = 0xff000000;
+    var at: u32 = 0;
+    var n: u32 = 0;
+    while n < count {
+        if at >= data.len {
+            return false;
+        }
+        var op = data[at];
+        at += 1;
+        if op == OP_RGB || op == OP_RGBA {
+            var size: u32 = 3;
+            if op == OP_RGBA {
+                size = 4;
+            }
+            if at + size > data.len {
+                return false;
+            }
+            var a = p >> 24;
+            if op == OP_RGBA {
+                a = data[at + 3];
+            }
+            p = (a << 24) | (data[at] << 16) | (data[at + 1] << 8) | data[at + 2];
+            at += size;
+        } else if op >= OP_RUN {
+            var run = (op & 0x3f) + 1;
+            if n + run > count {
+                return false;
+            }
+            for i in 0..run {
+                out[n + i] = p;
+            }
+            n += run;
+            continue;
+        } else if op >= OP_LUMA {
+            if at >= data.len {
+                return false;
+            }
+            var dg = (op & 0x3f) - 32;
+            var next = data[at];
+            at += 1;
+            var dr = dg + (next >> 4) - 8;
+            var db = dg + (next & 15) - 8;
+            p = add_channels(p, dr, dg, db);
+        } else if op >= OP_DIFF {
+            p = add_channels(p, ((op >> 4) & 3) - 2, ((op >> 2) & 3) - 2, (op & 3) - 2);
+        } else {
+            p = seen[op];
+        }
+        seen[pixel_slot(p)] = p;
+        out[n] = p;
+        n += 1;
+    }
+    return true;
+}
+
+// Adds differences, wrapping each channel within a byte.
+fn add_channels(p: u32, dr: u32, dg: u32, db: u32) -> u32 {
+    var r = (((p >> 16) & 255) + dr) & 255;
+    var g = (((p >> 8) & 255) + dg) & 255;
+    var b = ((p & 255) + db) & 255;
+    return (p & 0xff000000) | (r << 16) | (g << 8) | b;
+}
+
+// Encodes count pixels as one tile into out. Returns the bytes used, or
+// FAILED if out is too small. A tile never needs more than 5 bytes a pixel.
+fn encode_tile(pixels: []u32, count: u32, out: []u8) -> u32 {
+    var seen: [64]u32;
+    var p: u32 = 0xff000000;
+    var at: u32 = 0;
+    var run: u32 = 0;
+    for n in 0..count {
+        if at + 6 > out.len {
+            return FAILED;
+        }
+        var c = pixels[n];
+        if c == p {
+            run += 1;
+            if run == 62 {
+                out[at] = (OP_RUN | (run - 1)) as u8;
+                at += 1;
+                run = 0;
+            }
+            continue;
+        }
+        if run > 0 {
+            out[at] = (OP_RUN | (run - 1)) as u8;
+            at += 1;
+            run = 0;
+        }
+        var slot = pixel_slot(c);
+        if seen[slot] == c {
+            out[at] = slot as u8;
+            at += 1;
+        } else if (c >> 24) == (p >> 24) {
+            var dr = ((c >> 16) & 255) - ((p >> 16) & 255);
+            var dg = ((c >> 8) & 255) - ((p >> 8) & 255);
+            var db = (c & 255) - (p & 255);
+            // Differences as signed bytes.
+            var sr = ((dr + 128) & 255) as i32 - 128;
+            var sg = ((dg + 128) & 255) as i32 - 128;
+            var sb = ((db + 128) & 255) as i32 - 128;
+            if sr >= -2 && sr <= 1 && sg >= -2 && sg <= 1 && sb >= -2 && sb <= 1 {
+                out[at] = (OP_DIFF | (((sr + 2) as u32) << 4) | (((sg + 2) as u32) << 2) | (sb + 2) as u32) as u8;
+                at += 1;
+            } else if sg >= -32 && sg <= 31 && sr - sg >= -8 && sr - sg <= 7 && sb - sg >= -8 && sb - sg <= 7 {
+                out[at] = (OP_LUMA | (sg + 32) as u32) as u8;
+                out[at + 1] = ((((sr - sg + 8) as u32) << 4) | (sb - sg + 8) as u32) as u8;
+                at += 2;
+            } else {
+                out[at] = OP_RGB as u8;
+                out[at + 1] = ((c >> 16) & 255) as u8;
+                out[at + 2] = ((c >> 8) & 255) as u8;
+                out[at + 3] = (c & 255) as u8;
+                at += 4;
+            }
+        } else {
+            out[at] = OP_RGBA as u8;
+            out[at + 1] = ((c >> 16) & 255) as u8;
+            out[at + 2] = ((c >> 8) & 255) as u8;
+            out[at + 3] = (c & 255) as u8;
+            out[at + 4] = (c >> 24) as u8;
+            at += 5;
+        }
+        seen[slot] = c;
+        p = c;
+    }
+    if run > 0 {
+        if at >= out.len {
+            return FAILED;
+        }
+        out[at] = (OP_RUN | (run - 1)) as u8;
+        at += 1;
+    }
+    return at;
+}
+
+// Writes a whole picture as a TIM1 file. The scratch buffer must hold at
+// least 5 bytes per tile pixel plus a little; 32 KiB is plenty.
+fn save_image(file: u32, width: u32, height: u32, pixels: []u32, scratch: []u8, offsets: []u32) -> bool {
+    var h: ImageHeader;
+    h.width = width;
+    h.height = height;
+    h.tiles_x = (width + TILE - 1) / TILE;
+    h.tiles_y = (height + TILE - 1) / TILE;
+    var tiles = h.tiles_x * h.tiles_y;
+    if offsets.len < tiles + 1 {
+        return false;
+    }
+    // First pass: measure every tile, to write the table before the tiles.
+    var tile: [TILE_PIXELS]u32;
+    var position = 16 + (tiles + 1) * 4;
+    for pass in 0..2 {
+        if pass == 1 {
+            var header: [16]u8;
+            copy(header[:], "TIM1");
+            write_word(header[:], 4, width);
+            write_word(header[:], 8, height);
+            write_word(header[:], 12, TILE);
+            if !write_all(file, header[:]) {
+                return false;
+            }
+            for i in 0..tiles + 1 {
+                var word: [4]u8;
+                write_word(word[:], 0, offsets[i]);
+                if !write_all(file, word[:]) {
+                    return false;
+                }
+            }
+        }
+        for ty in 0..h.tiles_y {
+            for tx in 0..h.tiles_x {
+                var w = tile_width(&h, tx);
+                var th = tile_height(&h, ty);
+                for y in 0..th {
+                    for x in 0..w {
+                        tile[y * w + x] = pixels[(ty * TILE + y) * width + tx * TILE + x];
+                    }
+                }
+                var n = encode_tile(tile[:], w * th, scratch);
+                if n == FAILED {
+                    return false;
+                }
+                if pass == 0 {
+                    offsets[ty * h.tiles_x + tx] = position;
+                    position += n;
+                } else if !write_all(file, scratch[0:n]) {
+                    return false;
+                }
+            }
+        }
+        if pass == 0 {
+            offsets[tiles] = position;
+        }
+    }
+    return true;
+}

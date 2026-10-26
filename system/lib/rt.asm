@@ -197,6 +197,13 @@ _screen_info:
     sys 25
     return
 
+; fn seek(handle: u32, position: u32) -> u32;
+_seek:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 26
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

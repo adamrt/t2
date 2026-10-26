@@ -1,0 +1,110 @@
+// mkimage turns a BMP picture from the host into a TIM1 image. It runs on
+// the development monitor.
+//
+//     mkimage -o picture.tim picture.bmp
+//
+// It reads uncompressed BMPs with 24 or 32 bits a pixel, which most tools
+// can write (on a Mac: sips -s format bmp in.png --out in.bmp).
+
+manifest {
+    memory = 40 * MiB;
+    stack = 64 * KiB;
+}
+
+var arena: Arena;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    if arg_count() != 3 {
+        fail("usage: mkimage -o picture.tim picture.bmp");
+    }
+    var output = argument(1);
+    var bmp = read_whole(argument(2));
+    if bmp.len < 54 || bmp[0] != 'B' || bmp[1] != 'M' {
+        fail("not a BMP file");
+    }
+    var data = read_word(bmp, 10);
+    var width = read_word(bmp, 18);
+    var raw_height = read_word(bmp, 22);
+    var bits = bmp[28] | (bmp[29] << 8);
+    var compression = read_word(bmp, 30);
+    var top_down = (raw_height & 0x80000000) != 0;
+    var height = raw_height;
+    if top_down {
+        height = 0 - raw_height;
+    }
+    if (bits != 24 && bits != 32) || (compression != 0 && compression != 3) || width == 0 || height == 0 || width > 8192 || height > 8192 {
+        fail("only uncompressed 24- or 32-bit BMPs work");
+    }
+    var stride = (width * (bits / 8) + 3) & ~3;
+    if data + stride * height > bmp.len {
+        fail("the BMP is cut short");
+    }
+    var pixels = new(&arena, u32, width * height);
+    for y in 0..height {
+        var row = height - 1 - y;
+        if top_down {
+            row = y;
+        }
+        var at = data + row * stride;
+        for x in 0..width {
+            var b = bmp[at];
+            var g = bmp[at + 1];
+            var r = bmp[at + 2];
+            var a: u32 = 255;
+            if bits == 32 {
+                a = bmp[at + 3];
+                if compression == 0 {
+                    a = 255;
+                }
+            }
+            pixels[y * width + x] = (a << 24) | (r << 16) | (g << 8) | b;
+            at += bits / 8;
+        }
+    }
+    var tiles = ((width + 63) / 64) * ((height + 63) / 64);
+    var offsets = new(&arena, u32, tiles + 1);
+    var scratch = alloc_bytes(&arena, 32 * KiB);
+    var file = open(output, 1);
+    if file == FAILED || !save_image(file, width, height, pixels, scratch, offsets) {
+        fail("can't write the image");
+    }
+    close(file);
+    return 0;
+}
+
+fn fail(message: []u8) {
+    write_all(STDERR, "mkimage: ");
+    write_all(STDERR, message);
+    write_all(STDERR, "\n");
+    exit(1);
+}
+
+fn argument(index: u32) -> []u8 {
+    var buffer = alloc_bytes(&arena, 256);
+    var n = arg(index, buffer);
+    if n > buffer.len {
+        fail("argument is too long");
+    }
+    return buffer[0:n];
+}
+
+fn read_whole(path: []u8) -> []u8 {
+    var file = open(path, 0);
+    if file == FAILED {
+        fail("can't read the picture");
+    }
+    var start = (arena.used + 3) & ~3;
+    var free = arena.memory[start:];
+    var n: u32 = 0;
+    while true {
+        var got = read(file, free[n:]);
+        if got == 0 || got == FAILED {
+            break;
+        }
+        n += got;
+    }
+    close(file);
+    arena.used = start + n;
+    return free[0:n];
+}

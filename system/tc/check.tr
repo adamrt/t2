@@ -566,6 +566,13 @@ fn check_unary(e: *Node, want: *Type) -> *Type {
     if !is_int(t) {
         fail(e, "this operator needs an integer");
     }
+    if e.a.flags & IS_CONST != 0 {
+        if e.op == Tok.Minus {
+            set_const(e, 0 - e.a.value);
+        } else {
+            set_const(e, ~e.a.value);
+        }
+    }
     return arith(t);
 }
 
@@ -610,6 +617,7 @@ fn check_binary(e: *Node) -> *Type {
         } else if !is_int(rt) {
             fail(e, "shift by an integer");
         }
+        fold_typed(e, arith(lt));
         return arith(lt);
     }
     var ty: *Type;
@@ -659,7 +667,33 @@ fn check_binary(e: *Node) -> *Type {
     if !is_int(ty) {
         fail(e, "this operator needs integers");
     }
+    fold_typed(e, ty);
     return ty;
+}
+
+// Works out an operation on two typed integer constants.
+fn fold_typed(e: *Node, ty: *Type) {
+    if e.a.flags & IS_CONST == 0 || e.b.flags & IS_CONST == 0 {
+        return;
+    }
+    var a = e.a.value;
+    var b = e.b.value;
+    if ty.signed && (e.op == Tok.Slash || e.op == Tok.Percent || e.op == Tok.Shr) {
+        if e.op != Tok.Shr && b == 0 {
+            fail(e, "division by zero");
+        }
+        var sa = a as i32;
+        var sb = b as i32;
+        if e.op == Tok.Slash {
+            set_const(e, (sa / sb) as u32);
+        } else if e.op == Tok.Percent {
+            set_const(e, (sa % sb) as u32);
+        } else {
+            set_const(e, (sa >> b) as u32);
+        }
+        return;
+    }
+    set_const(e, fold(e, e.op, a, b));
 }
 
 fn fold(e: *Node, op: Tok, a: u32, b: u32) -> u32 {

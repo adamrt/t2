@@ -1,0 +1,112 @@
+// fractal draws the Mandelbrot set with fixed-point numbers. Click to zoom
+// in, right-click to zoom out, and press S to save the picture as
+// fractal.tim in the current directory.
+
+manifest {
+    memory = 1 * MiB;
+    stack = 64 * KiB;
+}
+
+const WIDTH = 320;
+const HEIGHT = 240;
+const LIMIT = 96;
+
+var pixels: [WIDTH * HEIGHT]u32;
+var picture: Image;
+var canvas: Canvas;
+var words: [1024]u32;
+var strings: [256]u8;
+var center_x: fixed;
+var center_y: fixed;
+var step: fixed;                // the width of a pixel
+var palette: [LIMIT + 1]u32;
+var scratch: [32 * KiB]u8;
+var offsets: [64]u32;
+
+fn main(memory: []u8) -> u32 {
+    var window = window_open("Fractal", WIDTH, HEIGHT);
+    if window == FAILED {
+        complain("fractal", "can't open a window", "");
+        return 1;
+    }
+    canvas_init(&canvas, window, words[:], strings[:]);
+    picture.width = WIDTH;
+    picture.height = HEIGHT;
+    picture.pixels = pixels[:];
+    for i in 0..LIMIT {
+        var t = i * 255 / LIMIT;
+        palette[i] = rgb(t / 3, (t * 3 / 4 + 40) & 255, (255 - t) / 2 + t / 2);
+    }
+    palette[LIMIT] = rgb(20, 20, 26);
+    center_x = -0.6;
+    center_y = 0;
+    step = 0.0125;
+    render(window);
+    while true {
+        var e: Event;
+        event_wait(&e, FOREVER);
+        if e.kind == EVENT_CLOSE {
+            return 0;
+        }
+        if e.kind == EVENT_DRAW {
+            show_picture();
+        } else if e.kind == EVENT_MOUSE_DOWN {
+            center_x += (e.x - WIDTH / 2) as fixed * step;
+            center_y += (e.y - HEIGHT / 2) as fixed * step;
+            if e.buttons == 1 {
+                step = step / 2;
+            } else {
+                step = step * 2;
+            }
+            render(window);
+        } else if e.kind == EVENT_TEXT && (e.key == 's' || e.key == 'S') {
+            save();
+        }
+    }
+    return 0;
+}
+
+fn iterations(cx: fixed, cy: fixed) -> u32 {
+    var x: fixed = 0;
+    var y: fixed = 0;
+    for i in 0..LIMIT {
+        var x2 = x * x;
+        var y2 = y * y;
+        if x2 + y2 > 4 {
+            return i;
+        }
+        y = x * y * 2 + cy;
+        x = x2 - y2 + cx;
+    }
+    return LIMIT;
+}
+
+// Renders a few rows at a time, showing progress.
+fn render(window: u32) {
+    var left = center_x - step * (WIDTH / 2);
+    var top = center_y - step * (HEIGHT / 2);
+    for row in 0..HEIGHT {
+        var cy = top + (row as fixed) * step;
+        for column in 0..WIDTH {
+            var cx = left + (column as fixed) * step;
+            pixels[row * WIDTH + column] = palette[iterations(cx, cy)];
+        }
+        if row % 24 == 23 {
+            show_picture();
+        }
+    }
+}
+
+fn show_picture() {
+    draw_image(&canvas, &picture, 0, 0, WIDTH, HEIGHT, 0, 0, false);
+    draw_text(&canvas, 6, HEIGHT - 20, rgb(240, 236, 226), "click: zoom   s: save");
+    present(&canvas);
+}
+
+fn save() {
+    var file = open("fractal.tim", MODE_WRITE);
+    if file == FAILED || !save_image(file, WIDTH, HEIGHT, pixels[:], scratch[:], offsets[:]) {
+        complain("fractal", "can't save fractal.tim", "");
+    }
+    close(file);
+}

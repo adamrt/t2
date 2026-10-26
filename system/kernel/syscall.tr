@@ -67,6 +67,7 @@ enum Call {
     EventWait,
     Available,
     ScreenInfo,
+    Seek,
 }
 
 fn new_object(kind: ObjectKind) -> *Object {
@@ -354,6 +355,13 @@ fn system_call(p: *Process, number: u32) {
             var o = handle_object(p, r[0]);
             if o != null {
                 result = available(o);
+            }
+        }
+        Call.Seek => {
+            var o = handle_object(p, r[0]);
+            if o != null && o.kind == ObjectKind.File {
+                o.position = min(r[1], o.file.size);
+                result = o.position;
             }
         }
         Call.ScreenInfo => {

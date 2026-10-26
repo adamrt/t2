@@ -33,6 +33,7 @@ monitor, so the same tools run on both.
 | 23 | event_wait | r0 buffer for an event, r1 milliseconds (-1 forever) | 1 with an event, 0 if none came |
 | 24 | available  | r0 handle                                         | bytes ready to read, -1 when nothing more will come |
 | 25 | screen_info | r0 buffer for four words                         | 0                          |
+| 26 | seek       | r0 handle, r1 position                            | the new position, at most the file's size |
 
 ## Handles
 

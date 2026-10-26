@@ -11,8 +11,15 @@ make test
 ```
 
 `make run` opens a window with the desktop and a terminal, and the host
-terminal becomes Terrarium's console, with its own shell. Try `demo` in
-either.
+terminal becomes Terrarium's console, with its own shell. In the terminal,
+try `edit /src/hello.tr`, `cube`, `fractal`, `monitor` or `demo`.
+
+`build/mkimage.bin` turns BMP pictures into Terrarium's TIM1 images, which
+`view` shows:
+
+```sh
+build/terrarium build/mkimage.bin -o picture.tim picture.bmp
+```
 
 Inside Terrarium:
 
@@ -35,14 +42,14 @@ build/terrarium build/hello.bin
 
 | Path         | What                                                    |
 | ------------ | ------------------------------------------------------- |
-| `spec/`            | The CPU, devices, assembly, the language, files, system calls |
+| `spec/`            | The CPU, devices, assembly, the language, files, formats, system calls |
 | `src/`             | The machine (C11): CPU, devices, monitor               |
 | `system/asm/`      | The assembler, in assembly                             |
 | `system/tc/`       | The compiler, in the language                          |
 | `system/kernel/`   | The kernel                                             |
 | `system/bin/`      | The shell and programs                                 |
 | `system/lib/`      | The runtime and libraries                              |
-| `system/tools/`    | `mkdisk` and `mkfont`, which build disks and fonts     |
+| `system/tools/`    | `mkdisk`, `mkfont` and `mkimage`, which run on the host |
 | `system/fonts/`    | Terra, the system font, drawn as text                  |
 | `bootstrap/`       | Seed builds of the tools, see its README               |
 | `tests/`           | Instruction, fault, language and system tests          |
