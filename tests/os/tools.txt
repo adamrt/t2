@@ -1,0 +1,13 @@
+echo pear > /fruit
+echo äpfel >> /fruit
+echo fig >> /fruit
+echo apple >> /fruit
+sort /fruit
+sort /fruit | hex
+search p /fruit /nothing
+search zz /fruit
+wc /fruit
+mv /fruit /früchte
+ls /
+search fel /früchte
+exit

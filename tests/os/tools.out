@@ -1,0 +1,23 @@
+Terrarium: 49152 KiB for programs
+
+Welcome to Terrarium. Type 'help' for help.
+
+/> /> /> /> /> apple
+fig
+pear
+äpfel
+/> 00000000  61 70 70 6c 65 0a 66 69  67 0a 70 65 61 72 0a c3  |apple.fig.pear..|
+00000010  a4 70 66 65 6c 0a                                 |.pfel.|
+/> /fruit:1: pear
+/fruit:2: äpfel
+/fruit:4: apple
+search: can't read /nothing
+/> /> 4 4 22 /fruit
+/> /> bin/
+docs/
+früchte
+lib/
+src/
+system/
+/> /früchte:2: äpfel
+/> Terrarium: every process has ended
