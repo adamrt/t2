@@ -9,7 +9,7 @@ words, so nothing needs 64-bit arithmetic.
 
 ```
 struct Time {           // when something happened: the wall clock
-    day u32             // days since 0000-01-01
+    day u32             // days since 0001-01-01
     milli u32           // milliseconds since midnight, 0 to 86,399,999
 }
 
@@ -20,11 +20,17 @@ struct Instant {        // for measuring: the monotonic clock
 ```
 
 **Time** labels moments: file changes, messages, dates. It is UTC, on the
-Gregorian calendar carried back to year 0 (which is 1 BC, as ISO 8601
-numbers it), and it reaches 11.7 million years. A date without a time of
-day, like a birthday, is just a day number: 1 April 1980 is day 723,271.
-Day numbers work as plain numbers: `b - a` is the days between, `d + 7` a
-week later, `a < b` the earlier.
+Gregorian calendar carried back to 1 January of year 1, and it reaches 11.7
+million years. A date without a time of day, like a birthday, is just a day
+number: 1 April 1980 is day 722,905. Day numbers work as plain numbers:
+`b - a` is the days between, `d + 7` a week later, `a < b` the earlier.
+
+Day 0 is the first day of year 1, for three reasons. It was a Monday, so
+the day of the week is `day % 7` with 0 for Monday, as ISO weeks start.
+There's no year 0 to explain: the calendar goes from 1 BC to AD 1, and
+nothing here needs dates before that. And days 0 to 146,096 are exactly
+the years 1 to 400, one whole cycle of the Gregorian calendar's leap years,
+so turning a day into a date needs no correction for where it starts.
 
 **Instant** measures: timeouts, animation, benchmarks, how long something
 took. It never jumps when the host's clock is set, which the wall clock can.
@@ -66,7 +72,7 @@ time.now(&now)
 var d time.Calendar                  // year, month, day, hour, minute, second, milli
 time.to_calendar(&now, &d)
 time.put(&w, &now)                   // 2026-10-26T18:30:00.250Z
-var birthday = time.day(1980, 4, 1)  // 723,271
+var birthday = time.day(1980, 4, 1)  // 722,905
 
 var start clock.Instant
 clock.now(&start)
@@ -76,7 +82,7 @@ clock.sleep(500)                     // milliseconds
 ```
 
 The host turns its own clock into a Time at the device. 1970-01-01 is day
-719,528, so a Unix time `t` is day `719528 + t / 86400`, at
+719,162, so a Unix time `t` is day `719162 + t / 86400`, at
 `t % 86400 * 1000` milliseconds.
 
 ## A clock for tests
