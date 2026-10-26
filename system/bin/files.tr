@@ -1,10 +1,11 @@
 // files, a file browser. Click a directory to open it, or ".." to go up.
-// Clicking a file opens it: pictures (.tim) in view, anything else in edit.
+// Clicking a file opens it: pictures (.tim) in view, sounds (.tsn) in play,
+// anything else in edit.
 
 manifest {
     memory = 256 * KiB;
     stack = 32 * KiB;
-    allow = "read spawn window";
+    allow = "read spawn window audio";
 }
 
 const WIDTH = 360;
@@ -139,6 +140,8 @@ fn click(row: u32) {
     var program = "/bin/edit";
     if name.len > 4 && text_equal(name[name.len - 4:], ".tim") {
         program = "/bin/view";
+    } else if name.len > 4 && text_equal(name[name.len - 4:], ".tsn") {
+        program = "/bin/play";
     }
     spawn(program, args[0:n + 1], STDIN, STDOUT, STDERR);
 }
