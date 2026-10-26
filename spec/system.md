@@ -35,6 +35,8 @@ monitor, so the same tools run on both.
 | 25 | screen_info | r0 buffer for four words                         | 0                          |
 | 26 | seek       | r0 handle, r1 position                            | the new position, at most the file's size |
 | 27 | trace_spawns | r0 the writing end of a pipe, or -1 to stop     | 0                          |
+| 28 | audio_play | r0 samples, r1 bytes                              | 0, or -1 if the queue is full |
+| 29 | audio_status |                                                 | bytes waiting to play; samples per second in r1 |
 
 ## Handles
 

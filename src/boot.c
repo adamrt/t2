@@ -3,6 +3,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "audio.h"
 #include "gui.h"
 #include "host.h"
 
@@ -27,6 +28,12 @@ enum {
     PORT_DISK_SIZE = 0x35,
     PORT_INPUT_COUNT = 0x58,
     PORT_INPUT_READ = 0x59,
+    PORT_AUDIO_RATE = 0x60,
+    PORT_AUDIO_ADDRESS = 0x61,
+    PORT_AUDIO_LENGTH = 0x62,
+    PORT_AUDIO_PLAY = 0x63,
+    PORT_AUDIO_QUEUED = 0x64,
+    PORT_AUDIO_STATUS = 0x65,
 };
 
 enum {
@@ -63,6 +70,11 @@ typedef struct {
     InputQueue events;
     bool vblank;            // the kernel wants vertical blank interrupts
     uint64_t next_vblank;
+
+    Audio *audio;
+    uint32_t audio_address;
+    uint32_t audio_length;
+    uint32_t audio_status;
 } Host;
 
 static uint64_t
@@ -115,6 +127,15 @@ device_read(Machine *m, uint32_t port, uint32_t *value)
         return true;
     case PORT_INPUT_COUNT:
         *value = h->events.count;
+        return true;
+    case PORT_AUDIO_RATE:
+        *value = AUDIO_RATE;
+        return true;
+    case PORT_AUDIO_QUEUED:
+        *value = audio_queued(h->audio);
+        return true;
+    case PORT_AUDIO_STATUS:
+        *value = h->audio_status;
         return true;
     }
     return gpu_read(&h->gpu, port, value);
@@ -172,6 +193,18 @@ device_write(Machine *m, uint32_t port, uint32_t value)
         return true;
     case PORT_INPUT_READ:
         return read_input(m, h, value);
+    case PORT_AUDIO_ADDRESS:
+        h->audio_address = value;
+        return true;
+    case PORT_AUDIO_LENGTH:
+        h->audio_length = value;
+        return true;
+    case PORT_AUDIO_PLAY:
+        if (h->audio_address > RAM_SIZE || h->audio_length > RAM_SIZE - h->audio_address || h->audio_length % 2 != 0)
+            h->audio_status = 1;
+        else
+            h->audio_status = audio_queue(h->audio, m->ram + h->audio_address, h->audio_length) ? 0 : 1;
+        return true;
     }
     return gpu_write(&h->gpu, m, port, value);
 }
@@ -383,6 +416,7 @@ boot(const BootOptions *o)
         if (h.gui == NULL)
             return 2;
     }
+    h.audio = audio_open(!o->window || o->mute);
     if (!gpu_init(&h.gpu, width, height)) {
         fprintf(stderr, "terrarium: out of memory\n");
         return 2;
@@ -452,6 +486,7 @@ boot(const BootOptions *o)
     fflush(stdout);
     if (o->screenshot != NULL)
         screenshot(&h.gpu, o->screenshot);
+    audio_close(h.audio);
     gui_close(h.gui);
     machine_free(&m);
     return status;

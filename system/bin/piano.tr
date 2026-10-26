@@ -1,0 +1,224 @@
+// piano plays notes. Click the keys, or use the keyboard: a s d f g h j k l ;
+// for the white keys and w e t y u o p for the black ones. Each note is a
+// triangle wave that fades out, and up to eight sound at once.
+
+manifest {
+    memory = 256 * KiB;
+    stack = 32 * KiB;
+    allow = "window audio";
+}
+
+const WHITE_KEYS = 10;
+const KEY_W = 36;
+const KEY_H = 120;
+const WIDTH = WHITE_KEYS * KEY_W;
+const HEIGHT = KEY_H + 30;
+const CHUNK = 512;              // samples made at a time
+const AHEAD: u32 = 3 * CHUNK * 2;   // bytes to keep queued
+const VOICES = 8;
+
+struct Voice {
+    step: u32;                  // phase added each sample
+    phase: u32;
+    level: u32;                 // loudness, from 4096 down to 0
+    note: u32;
+}
+
+var canvas: Canvas;
+var words: [2048]u32;
+var strings: [256]u8;
+var voices: [VOICES]Voice;
+var samples: [CHUNK]u16;
+var rate: u32;
+var lit: [17]u32;               // frames each key stays highlighted
+
+// Notes from middle C up, in semitones.
+fn white_note(i: u32) -> u32 {
+    match i {
+        0 => { return 0; }
+        1 => { return 2; }
+        2 => { return 4; }
+        3 => { return 5; }
+        4 => { return 7; }
+        5 => { return 9; }
+        6 => { return 11; }
+        7 => { return 12; }
+        8 => { return 14; }
+    }
+    return 16;
+}
+
+// The black key after white key i, or 99 if there isn't one.
+fn black_note(i: u32) -> u32 {
+    match i {
+        0 => { return 1; }
+        1 => { return 3; }
+        3 => { return 6; }
+        4 => { return 8; }
+        5 => { return 10; }
+        7 => { return 13; }
+        8 => { return 15; }
+    }
+    return 99;
+}
+
+// The frequency of a note, in hertz, as a fixed-point number.
+fn frequency(note: u32) -> fixed {
+    // Each semitone is 2^(1/12) times the last.
+    var f: fixed = 261.63;
+    for i in 0..note {
+        f = f * 1.05946;
+    }
+    return f;
+}
+
+fn play(note: u32) {
+    if note > 16 {
+        return;
+    }
+    var slot: u32 = 0;
+    for i in 0..VOICES {
+        if voices[i].level < voices[slot].level {
+            slot = i;
+        }
+    }
+    var v = &voices[slot];
+    // A full cycle is 2^32 of phase.
+    var per_sample = frequency(note) / rate as fixed;
+    v.step = (per_sample * 65536) as u32 * 65536;
+    v.level = 4096;
+    v.note = note;
+    lit[note] = 8;
+}
+
+fn fill_sound() {
+    var queued = audio_status(&rate);
+    while queued < AHEAD {
+        for s in 0..CHUNK {
+            var mix: i32 = 0;
+            for i in 0..VOICES {
+                var v = &voices[i];
+                if v.level == 0 {
+                    continue;
+                }
+                v.phase += v.step;
+                var p = (v.phase >> 16) as i32;
+                var wave = p * 2;
+                if p >= 32768 {
+                    wave = (65535 - p) * 2;
+                }
+                mix += (wave - 65536) * v.level as i32 / 4096 / 8;
+            }
+            if mix > 32767 {
+                mix = 32767;
+            } else if mix < -32768 {
+                mix = -32768;
+            }
+            samples[s] = (mix as u32 & 0xffff) as u16;
+        }
+        for i in 0..VOICES {
+            voices[i].level = voices[i].level * 15 / 16;
+        }
+        if audio_play((&samples[0] as *u8)[0:CHUNK * 2]) == FAILED {
+            return;
+        }
+        queued += CHUNK * 2;
+    }
+}
+
+fn key_note(c: u32) -> u32 {
+    var whites = "asdfghjkl;";
+    for i in 0..whites.len {
+        if whites[i] == c {
+            return white_note(i);
+        }
+    }
+    var blacks = "we tyu op";
+    for i in 0..blacks.len {
+        if blacks[i] == c && c != ' ' {
+            return black_note(i);
+        }
+    }
+    return 99;
+}
+
+fn main(memory: []u8) -> u32 {
+    var window = window_open("Piano", WIDTH, HEIGHT);
+    if window == FAILED {
+        complain("piano", "can't open a window", "");
+        return 1;
+    }
+    canvas_init(&canvas, window, words[:], strings[:]);
+    audio_status(&rate);
+    if rate == 0 {
+        rate = 22050;
+    }
+    while true {
+        var e: Event;
+        var redraw = false;
+        while event_wait(&e, 15) == 1 {
+            if e.kind == EVENT_CLOSE {
+                return 0;
+            }
+            if e.kind == EVENT_TEXT {
+                play(key_note(e.key));
+            } else if e.kind == EVENT_MOUSE_DOWN {
+                play(note_at(e.x, e.y));
+            }
+            redraw = true;
+        }
+        fill_sound();
+        for i in 0..17 {
+            if lit[i] > 0 {
+                lit[i] -= 1;
+                redraw = true;
+            }
+        }
+        if redraw {
+            draw();
+        }
+    }
+    return 0;
+}
+
+fn note_at(x: i32, y: i32) -> u32 {
+    if x < 0 || y < 0 || x >= WIDTH || y >= KEY_H {
+        return 99;
+    }
+    var i = (x / KEY_W) as u32;
+    if y < KEY_H * 6 / 10 {
+        // The black key to the right of this white key, or to the left.
+        var within = x % KEY_W;
+        if within > KEY_W * 2 / 3 && black_note(i) != 99 {
+            return black_note(i);
+        }
+        if within < KEY_W / 3 && i > 0 && black_note(i - 1) != 99 {
+            return black_note(i - 1);
+        }
+    }
+    return white_note(i);
+}
+
+fn draw() {
+    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, rgb(30, 30, 36));
+    for i in 0..WHITE_KEYS {
+        var face = rgb(242, 239, 230);
+        if lit[white_note(i)] > 0 {
+            face = rgb(232, 195, 90);
+        }
+        draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face);
+    }
+    for i in 0..WHITE_KEYS {
+        var note = black_note(i);
+        if note == 99 {
+            continue;
+        }
+        var face = rgb(30, 30, 36);
+        if lit[note] > 0 {
+            face = rgb(232, 195, 90);
+        }
+        draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face);
+    }
+    draw_text(&canvas, 8, KEY_H + 7, rgb(216, 212, 200), "white keys: asdfghjkl;  black: wetyuop");
+    present(&canvas);
+}

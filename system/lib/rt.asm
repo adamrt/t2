@@ -210,6 +210,20 @@ _trace_spawns:
     sys 27
     return
 
+; fn audio_play(samples: []u8) -> u32;
+_audio_play:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 28
+    return
+
+; fn audio_status(rate: *u32) -> u32;
+_audio_status:
+    sys 29
+    r2 = [sp + 4]
+    [r2] = r1
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

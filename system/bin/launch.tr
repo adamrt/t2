@@ -3,12 +3,12 @@
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
-    allow = "read write spawn window processes";
+    allow = "read write spawn window processes audio";
 }
 
 const WIDTH = 150;
 const BUTTON = 26;
-const COUNT = 7;
+const COUNT = 8;
 
 var canvas: Canvas;
 var words: [512]u32;
@@ -23,6 +23,7 @@ fn label(i: u32) -> []u8 {
         3 => { return "Monitor"; }
         4 => { return "Cube"; }
         5 => { return "Fractal"; }
+        6 => { return "Piano"; }
     }
     return "GPU demo";
 }
@@ -35,6 +36,7 @@ fn program(i: u32) -> []u8 {
         3 => { return "/bin/monitor"; }
         4 => { return "/bin/cube"; }
         5 => { return "/bin/fractal"; }
+        6 => { return "/bin/piano"; }
     }
     return "/bin/demo";
 }

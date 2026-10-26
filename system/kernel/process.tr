@@ -27,6 +27,7 @@ const ALLOW_SPAWN: u32 = 4;
 const ALLOW_WINDOW: u32 = 8;
 const ALLOW_PROCESSES: u32 = 16;
 const ALLOW_RECOVERY: u32 = 32;
+const ALLOW_AUDIO: u32 = 64;
 
 struct Process {
     state: State;

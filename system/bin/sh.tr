@@ -12,7 +12,7 @@
 manifest {
     memory = 256 * KiB;
     stack = 16 * KiB;
-    allow = "read write spawn window processes recovery";
+    allow = "read write spawn window processes recovery audio";
 }
 
 const MAX_WORDS = 32;

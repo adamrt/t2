@@ -28,6 +28,11 @@ fn kill(process: u32) -> u32;
 fn memory_info(free: *u32) -> u32;
 fn seek(handle: u32, position: u32) -> u32;
 fn trace_spawns(handle: u32) -> u32;
+// Queues signed 16-bit mono samples to play. Fails if more than two
+// seconds would be waiting.
+fn audio_play(samples: []u8) -> u32;
+// Bytes of sound waiting to be played; the samples per second go in rate.
+fn audio_status(rate: *u32) -> u32;
 
 // A directory listing record, as list() returns them.
 struct ListEntry {

@@ -125,7 +125,7 @@ static void
 usage(void)
 {
     fprintf(stderr, "usage: terrarium [--trace] [--stats] program.bin [arguments...]\n"
-                    "       terrarium boot [--headless] [--fullscreen] disk.img [kernel.sym]\n"
+                    "       terrarium boot [--headless] [--fullscreen] [--mute] disk.img [kernel.sym]\n"
                     "       terrarium boot [--screen WxH] [--run-for ms] [--screenshot out.png] disk.img\n");
     exit(2);
 }
@@ -141,6 +141,8 @@ main(int argc, char **argv)
                 o.window = false;
             } else if (strcmp(argv[i], "--fullscreen") == 0) {
                 o.fullscreen = true;
+            } else if (strcmp(argv[i], "--mute") == 0) {
+                o.mute = true;
             } else if (strcmp(argv[i], "--screen") == 0 && i + 1 < argc) {
                 if (sscanf(argv[++i], "%ux%u", &o.width, &o.height) != 2)
                     usage();

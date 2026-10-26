@@ -69,6 +69,8 @@ enum Call {
     ScreenInfo,
     Seek,
     TraceSpawns,
+    AudioPlay,
+    AudioStatus,
 }
 
 fn new_object(kind: ObjectKind) -> *Object {
@@ -228,13 +230,16 @@ fn needs(p: *Process, call: Call) -> bool {
         Call.WindowOpen => {
             return allowed(p, ALLOW_WINDOW, "open windows");
         }
+        Call.AudioPlay => {
+            return allowed(p, ALLOW_AUDIO, "play sound");
+        }
     }
     return true;
 }
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.Seek as u32 && !needs(p, number as Call) {
+    if number <= Call.AudioStatus as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -422,6 +427,21 @@ fn system_call(p: *Process, number: u32) {
             }
             result = 0;
         }
+        Call.AudioPlay => {
+            var samples = user_bytes(p, r[0], r[1]);
+            if samples.ptr != null {
+                io_write(0x61, physical(samples));
+                io_write(0x62, samples.len);
+                io_write(0x63, 1);
+                if io_read(0x65) == 0 {
+                    result = 0;
+                }
+            }
+        }
+        Call.AudioStatus => {
+            r[1] = io_read(0x60);
+            result = io_read(0x64);
+        }
         Call.ScreenInfo => {
             var info = user_bytes(p, r[0], 16);
             if info.ptr != null && has_screen() {
@@ -473,6 +493,9 @@ fn call_name(number: u32) -> []u8 {
         24 => { return "available"; }
         25 => { return "screen_info"; }
         26 => { return "seek"; }
+        27 => { return "trace_spawns"; }
+        28 => { return "audio_play"; }
+        29 => { return "audio_status"; }
     }
     return "call";
 }

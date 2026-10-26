@@ -38,7 +38,7 @@ fn main(memory: []u8) -> u32 {
     put_u32(&out, word(header[:], 12) + word(header[:], 16));
     put(&out, " bytes\n  allows  ");
     var permissions = word(header[:], 28);
-    var names = "read write spawn window processes recovery";
+    var names = "read write spawn window processes recovery audio";
     var bit: u32 = 1;
     var start: u32 = 0;
     var any = false;

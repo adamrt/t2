@@ -128,7 +128,7 @@ manifest {
 ```
 
 `allow` lists what the program may do: `read`, `write`, `spawn`, `window`,
-`processes` and `recovery` (see [executable.md](executable.md)). Without it,
+`processes`, `recovery` and `audio` (see [executable.md](executable.md)). Without it,
 a program may do none of those.
 
 `main` receives all of the program's working memory as a slice and returns

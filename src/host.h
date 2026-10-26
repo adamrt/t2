@@ -40,6 +40,7 @@ typedef struct {
     uint32_t run_for;       // milliseconds before stopping, or 0
     const char *screenshot; // where to save the screen when stopping
     const char *type;       // keys to press once the system has started
+    bool mute;              // a silent sound device, even with a window
 } BootOptions;
 
 int boot(const BootOptions *options);

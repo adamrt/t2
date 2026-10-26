@@ -128,6 +128,23 @@ right, up, down, home, end, page up, page down, and `0x110` onward F1–F12.
 Modifiers are bits: 1 shift, 2 control, 4 alt, 8 command. Buttons are 1
 left, 2 right, 3 middle; held buttons are bits 1, 2 and 4.
 
+## Sound
+
+A queue of signed 16-bit mono samples, played at 22050 a second. The queue
+holds at most two seconds.
+
+| Port   |   | Meaning                                                    |
+| ------ | - | ---------------------------------------------------------- |
+| `0x60` | r | samples per second                                         |
+| `0x61` | w | physical address of samples to queue                       |
+| `0x62` | w | their length in bytes                                      |
+| `0x63` | w | queue them                                                 |
+| `0x64` | r | bytes queued and not yet played                            |
+| `0x65` | r | 0 if the last samples were queued, 1 if they didn't fit    |
+
+Without a window, the machine has a silent sound device that empties its
+queue at the same pace.
+
 ## Starting
 
 `build/terrarium boot disk.img` reads the disk's first block (see
