@@ -45,7 +45,7 @@ It needs a C11 compiler and SDL3.
 - **Text is UTF-8** everywhere. Terra, the system font, is drawn as text in
   `system/fonts/terra.txt` and covers ASCII and Latin-1.
 
-![The editor, a game, a piano and the launcher](docs/images/apps.png)
+![The editor with a selection, Life, the piano and the launcher](docs/images/apps.png)
 
 ## Inside Terrarium
 
