@@ -48,8 +48,13 @@ op_format(uint32_t op)
     case OP_POP:
         return FMT_A;
     case OP_RET:
+    case OP_RESUME:
+    case OP_WAIT:
     case OP_HALT:
         return FMT_NONE;
+    case OP_IN:
+    case OP_OUT:
+        return FMT_AB;
     case OP_COPY:
     case OP_FILL:
         return FMT_ABC;
@@ -74,6 +79,8 @@ fault_name(Fault fault)
     case FAULT_ALIGNMENT:    return "alignment";
     case FAULT_DIVIDE:       return "divide by zero";
     case FAULT_STACK:        return "stack overflow";
+    case FAULT_PRIVILEGED:   return "privileged instruction";
+    case FAULT_PORT:         return "bad port";
     }
     return "unknown";
 }
@@ -88,6 +95,7 @@ legal(uint32_t ins)
     switch (op_format(ins >> 24)) {
     case FMT_ABC:  return a < REG_COUNT && b < REG_COUNT && c < REG_COUNT && (ins & 0xfff) == 0;
     case FMT_ABI:  return a < REG_COUNT && b < REG_COUNT;
+    case FMT_AB:   return a < REG_COUNT && b < REG_COUNT && (ins & 0xffff) == 0;
     case FMT_AI:   return a < REG_COUNT && b == 0;
     case FMT_A:    return a < REG_COUNT && (ins & 0xfffff) == 0;
     case FMT_I:    return (ins & 0xff0000) == 0;
@@ -140,13 +148,93 @@ machine_fetch(Machine *m, uint32_t pc, uint32_t *ins)
     return true;
 }
 
+// Swaps the running mode's registers, pc and address space with the saved
+// ones. The mode being left continues at continue_pc next time.
+static void
+switch_mode(Machine *m, uint32_t continue_pc)
+{
+    uint32_t r[REG_COUNT];
+    memcpy(r, m->r, sizeof(r));
+    memcpy(m->r, m->saved_r, sizeof(r));
+    memcpy(m->saved_r, r, sizeof(r));
+    AddressSpace space = m->space;
+    m->space = m->saved_space;
+    m->saved_space = space;
+    m->pc = m->saved_pc;
+    m->saved_pc = continue_pc;
+    m->kernel = !m->kernel;
+}
+
+// Returns from user mode to the kernel, which continues after its resume.
+static Stop
+trap(Machine *m, uint32_t cause, uint32_t value, uint32_t address, uint32_t resume_pc)
+{
+    m->cause = cause;
+    m->value = value;
+    m->address = address;
+    switch_mode(m, resume_pc);
+    return STOP_BUDGET;
+}
+
 static Stop
 fault(Machine *m, Fault f, uint32_t addr)
 {
     m->fault = f;
     m->fault_pc = m->pc;
     m->fault_addr = addr;
+    if (!m->kernel && m->has_kernel)
+        return trap(m, CAUSE_FAULT, f, addr, m->pc);
     return STOP_FAULT;
+}
+
+static bool
+port_read(Machine *m, uint32_t port, uint32_t *v)
+{
+    switch (port) {
+    case PORT_CAUSE:            *v = m->cause; return true;
+    case PORT_VALUE:            *v = m->value; return true;
+    case PORT_ADDRESS:          *v = m->address; return true;
+    case PORT_USER_PC:          *v = m->saved_pc; return true;
+    case PORT_USER_CODE_BASE:   *v = m->saved_space.code.base; return true;
+    case PORT_USER_CODE_SIZE:   *v = m->saved_space.code.size; return true;
+    case PORT_USER_DATA_BASE:   *v = m->saved_space.data.base; return true;
+    case PORT_USER_DATA_SIZE:   *v = m->saved_space.data.size; return true;
+    case PORT_USER_STACK_LIMIT: *v = m->saved_space.stack_limit; return true;
+    case PORT_PENDING:          *v = m->pending; return true;
+    case PORT_CYCLES:           *v = (uint32_t)m->cycles; return true;
+    }
+    if (port >= PORT_USER_R0 && port < PORT_USER_R0 + REG_COUNT) {
+        *v = m->saved_r[port - PORT_USER_R0];
+        return true;
+    }
+    return port >= PORT_DEVICES && m->port_read != NULL && m->port_read(m, port, v);
+}
+
+static bool
+port_write(Machine *m, uint32_t port, uint32_t v)
+{
+    switch (port) {
+    case PORT_USER_PC:          m->saved_pc = v; return true;
+    case PORT_USER_CODE_BASE:   m->saved_space.code.base = v; return true;
+    case PORT_USER_CODE_SIZE:   m->saved_space.code.size = v; return true;
+    case PORT_USER_DATA_BASE:   m->saved_space.data.base = v; return true;
+    case PORT_USER_DATA_SIZE:   m->saved_space.data.size = v; return true;
+    case PORT_USER_STACK_LIMIT: m->saved_space.stack_limit = v; return true;
+    case PORT_PENDING:          m->pending &= ~v; return true;
+    }
+    if (port >= PORT_USER_R0 && port < PORT_USER_R0 + REG_COUNT) {
+        m->saved_r[port - PORT_USER_R0] = v;
+        return true;
+    }
+    return port >= PORT_DEVICES && m->port_write != NULL && m->port_write(m, port, v);
+}
+
+// Segments must stay inside RAM, or a bad kernel could reach past it.
+static bool
+space_valid(const AddressSpace *s)
+{
+    return s->code.base <= RAM_SIZE && s->code.size <= RAM_SIZE - s->code.base &&
+           s->data.base <= RAM_SIZE && s->data.size <= RAM_SIZE - s->data.base;
 }
 
 static uint32_t
@@ -213,6 +301,8 @@ step(Machine *m)
     uint32_t *r = m->r;
     uint32_t ins;
 
+    if (m->pending != 0 && !m->kernel && m->has_kernel)
+        return trap(m, CAUSE_INTERRUPT, m->pending, 0, m->pc);
     if (!machine_fetch(m, m->pc, &ins))
         return fault(m, FAULT_CODE_ADDRESS, m->pc);
     if (!legal(ins))
@@ -349,15 +439,40 @@ step(Machine *m)
     }
 
     case OP_SYS:
+        if (m->kernel)
+            return fault(m, FAULT_ILLEGAL, m->pc);
         m->sys = ins & 0xffff;
-        m->pc = next;
         m->cycles++;
+        if (m->has_kernel)
+            return trap(m, CAUSE_SYS, m->sys, 0, next);
+        m->pc = next;
         return STOP_SYS;
 
     case OP_HALT:
-        m->pc = next;
+    case OP_IN:
+    case OP_OUT:
+    case OP_RESUME:
+    case OP_WAIT:
+        if (!m->kernel)
+            return fault(m, FAULT_PRIVILEGED, m->pc);
+        if (op == OP_IN) {
+            if (!port_read(m, r[b], &value))
+                return fault(m, FAULT_PORT, r[b]);
+            break;
+        }
+        if (op == OP_OUT && !port_write(m, r[b], r[a]))
+            return fault(m, FAULT_PORT, r[b]);
+        if (op == OP_WAIT && m->pending == 0)
+            return STOP_WAIT;
+        if (op == OP_RESUME && !space_valid(&m->saved_space))
+            return fault(m, FAULT_DATA_ADDRESS, 0);
         m->cycles++;
-        return STOP_HALT;
+        if (op == OP_RESUME) {
+            switch_mode(m, next);
+            return STOP_BUDGET;
+        }
+        m->pc = next;
+        return op == OP_HALT ? STOP_HALT : STOP_BUDGET;
 
     default: {
         bool immediate = op >= OP_ADD + OP_IMM;

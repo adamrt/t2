@@ -95,6 +95,18 @@ disasm(uint32_t ins, uint32_t pc, char *out, size_t size)
     case OP_HALT:
         snprintf(out, size, "halt");
         return;
+    case OP_IN:
+        snprintf(out, size, "%s = io %s", a, b);
+        return;
+    case OP_OUT:
+        snprintf(out, size, "io %s = %s", b, a);
+        return;
+    case OP_RESUME:
+        snprintf(out, size, "resume");
+        return;
+    case OP_WAIT:
+        snprintf(out, size, "wait");
+        return;
     }
 
     if (op >= OP_BEQ && op <= OP_BGES) {

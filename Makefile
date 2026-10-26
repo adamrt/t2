@@ -4,7 +4,7 @@ BUILD = build
 VM = $(BUILD)/terrarium
 ASM = $(VM) $(BUILD)/asm.bin
 TC = $(VM) $(BUILD)/tc.bin
-MACHINE = src/machine.c src/disasm.c src/monitor.c
+MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c
 
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
@@ -14,7 +14,7 @@ TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
 
 all: $(VM) $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-$(VM): $(MACHINE) src/machine.h
+$(VM): $(MACHINE) src/machine.h src/host.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -o $@ $(MACHINE)
 

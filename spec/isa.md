@@ -1,7 +1,7 @@
 # Terrarium CPU
 
 A 32-bit little-endian CPU with eight general registers, a stack pointer, and
-39 operations. Every instruction is one 32-bit word.
+43 operations. Every instruction is one 32-bit word.
 
 ## Registers
 
@@ -40,6 +40,8 @@ The stack has a limit. Any instruction that moves sp below the limit faults.
 |    op    |  a   |  b   |  c   |   (unused)   |   R: three registers
 +----------+------+------+------+--------------+
 |    op    |  a   |  b   |       imm16         |   I: two registers, 16-bit immediate
++----------+------+------+---------------------+
+|    op    |  a   |  b   |      (unused)       |   AB: two registers
 +----------+------+------+---------------------+
 |    op    |              imm24                |   J: 24-bit word address
 +----------+-----------------------------------+
@@ -157,6 +159,8 @@ and `fill`, which cost `1 + c / 4`.
 | Fault        | Cause                                                  |
 | ------------ | ------------------------------------------------------ |
 | illegal      | unknown opcode, register number above 8, unused bits set |
+| privileged   | a kernel-mode instruction in user mode                 |
+| bad port     | `in` or `out` on a port that doesn't exist            |
 | code address | pc misaligned, below `0x10000`, or past the end of code |
 | data address | access below `0x10000` or past the end of data         |
 | alignment    | misaligned 16- or 32-bit load or store                 |
@@ -165,8 +169,61 @@ and `fill`, which cost `1 + c / 4`.
 
 A faulting instruction has no effect.
 
-## Not yet designed
+### Kernel mode
 
-Kernel mode, interrupts, the timer, device ports, and `wait`. Until then,
-programs run on a development monitor that loads one executable and answers
-its system calls (see [executable.md](executable.md)).
+| Op     | Name   | Format | Effect                                         |
+| ------ | ------ | ------ | ---------------------------------------------- |
+| `0x90` | in     | AB     | `a = port b`                                   |
+| `0x91` | out    | AB     | `port b = a`                                   |
+| `0x92` | resume | —      | run user mode until it traps                   |
+| `0x93` | wait   | —      | do nothing until an interrupt is pending       |
+
+`in`, `out`, `resume`, `wait` and `halt` fault in user mode.
+
+## Kernel and user mode
+
+The CPU runs in one of two modes, and each has its own registers, pc and
+address space. The machine starts in kernel mode.
+
+The kernel runs a user program with `resume`, which acts like a call: user
+mode runs until it makes a system call, faults, or an interrupt arrives, and
+then the kernel continues at the instruction after `resume`. The kernel's
+registers are exactly as it left them. The `cause` port says why user mode
+stopped:
+
+| Cause | Meaning         | `value` port       | `address` port | User pc               |
+| ----- | --------------- | ------------------ | -------------- | --------------------- |
+| 1     | system call     | the call's number  |                | after the `sys`       |
+| 2     | fault           | the fault number   | fault address  | the faulting instruction |
+| 3     | interrupt       | pending interrupts |                | the next instruction  |
+
+The kernel reaches the user program's registers and address space through
+ports, so switching programs means writing a different set.
+
+Interrupts never stop kernel mode. They stay pending until the kernel clears
+them, and a `resume` with interrupts pending returns at once.
+
+## Ports
+
+The CPU's own ports:
+
+| Port   | Name             |    | Meaning                                       |
+| ------ | ---------------- | -- | --------------------------------------------- |
+| `0x00` | cause            | r  | why the last `resume` ended                   |
+| `0x01` | value            | r  | system call number, fault, or interrupts      |
+| `0x02` | address          | r  | the fault's address                           |
+| `0x03` | user pc          | rw | where `resume` continues                      |
+| `0x04` | user code base   | rw | physical address of the user code segment     |
+| `0x05` | user code size   | rw |                                               |
+| `0x06` | user data base   | rw | physical address of the user data segment     |
+| `0x07` | user data size   | rw |                                               |
+| `0x08` | user stack limit | rw | the lowest valid user sp                      |
+| `0x09` | pending          | rw | pending interrupts; writing clears those bits |
+| `0x0a` | cycles           | r  | low 32 bits of the cycle count                |
+| `0x10`–`0x18` | user r0–r7, sp | rw |                                       |
+
+Devices start at port `0x20`; see [devices.md](devices.md). A missing port
+faults.
+
+The fault numbers are: 1 illegal, 2 code address, 3 data address,
+4 alignment, 5 divide, 6 stack, 7 privileged, 8 bad port.

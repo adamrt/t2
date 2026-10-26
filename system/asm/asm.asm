@@ -53,9 +53,12 @@ K_COPY = 6
 K_FILL = 7
 K_SYS = 8
 K_HALT = 9
-K_U8 = 10
-K_U16 = 11
-K_U32 = 12
+K_IO = 10
+K_RESUME = 11
+K_WAIT = 12
+K_U8 = 13
+K_U16 = 14
+K_U32 = 15
 
 D_CODE = 0
 D_DATA = 1
@@ -1356,6 +1359,19 @@ assign:
     call alu
     goto assign_done
 assign_plain:
+    r0 = K_IO
+    call take_keyword
+    if r0 == 0 goto assign_not_io
+    call expect_reg
+    r5 = r0                     ; port register
+    call expect_end
+    r0 = 0x90
+    r1 = r4
+    r2 = r5
+    r3 = 0
+    call emit_fields
+    goto assign_done
+assign_not_io:
     call size_prefix
     r5 = r0                     ; size
     r6 = r1                     ; had a prefix?
@@ -1562,7 +1578,29 @@ keyword:
     if r4 == r3 goto keyword_copy
     r3 = K_FILL
     if r4 == r3 goto keyword_fill
+    r3 = K_RESUME
+    if r4 == r3 goto keyword_resume
+    r3 = K_WAIT
+    if r4 == r3 goto keyword_wait
+    r3 = K_IO
+    if r4 == r3 goto keyword_io
     goto keyword_if
+
+; io port = value
+keyword_io:
+    call expect_reg
+    r4 = r0                     ; port register
+    r0 = OP_ASSIGN
+    call expect_op
+    call expect_reg
+    r5 = r0                     ; value register
+    call expect_end
+    r0 = 0x91
+    r1 = r5
+    r2 = r4
+    r3 = 0
+    call emit_fields
+    goto keyword_done
 
 keyword_goto:
     call code_label
@@ -1597,6 +1635,12 @@ keyword_call_label:
 
 keyword_return:
     r4 = 0x53
+    goto keyword_bare
+keyword_resume:
+    r4 = 0x92
+    goto keyword_bare
+keyword_wait:
+    r4 = 0x93
     goto keyword_bare
 keyword_halt:
     r4 = 0xff
@@ -2193,7 +2237,8 @@ compare_ops:
 
 keywords:
     .byte 2, "if", 4, "goto", 4, "call", 6, "return", 4, "push", 3, "pop"
-    .byte 4, "copy", 4, "fill", 3, "sys", 4, "halt", 2, "u8", 3, "u16", 3, "u32"
+    .byte 4, "copy", 4, "fill", 3, "sys", 4, "halt", 2, "io", 6, "resume", 4, "wait"
+    .byte 2, "u8", 3, "u16", 3, "u32"
     .byte 0
 
 directives:

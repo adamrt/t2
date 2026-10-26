@@ -1,13 +1,16 @@
 // The development monitor runs one executable directly on the machine and
 // answers its system calls using the host's files.
 
-#include "machine.h"
+#define _POSIX_C_SOURCE 200809L
+
+#include "host.h"
 
 #include <fcntl.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+int boot(const char *disk, const char *symbols);
 
 enum {
     SYS_EXIT,
@@ -19,106 +22,6 @@ enum {
     SYS_ARG,
 };
 
-#define HEADER_SIZE 28
-#define FAILED      0xffffffffu
-
-typedef struct {
-    uint32_t addr;
-    char name[64];
-} Symbol;
-
-static Symbol *symbols;
-static size_t symbol_count;
-
-static uint32_t
-read32(const uint8_t *p)
-{
-    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
-}
-
-static uint32_t
-align4(uint32_t n)
-{
-    return (n + 3) & ~3u;
-}
-
-static uint8_t *
-read_file(const char *path, size_t *size)
-{
-    FILE *f = fopen(path, "rb");
-    if (f == NULL)
-        return NULL;
-    fseek(f, 0, SEEK_END);
-    long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    uint8_t *buf = malloc(n > 0 ? (size_t)n : 1);
-    if (buf != NULL && fread(buf, 1, (size_t)n, f) != (size_t)n) {
-        free(buf);
-        buf = NULL;
-    }
-    fclose(f);
-    *size = (size_t)n;
-    return buf;
-}
-
-// Symbols come from an optional "name.sym" file next to "name.bin", with
-// lines of the form "c 00010000 start". Only code symbols are used.
-static void
-load_symbols(const char *program)
-{
-    char path[1024];
-    snprintf(path, sizeof(path), "%s", program);
-    char *dot = strrchr(path, '.');
-    if (dot == NULL || strchr(dot, '/') != NULL)
-        dot = path + strlen(path);
-    snprintf(dot, sizeof(path) - (size_t)(dot - path), ".sym");
-
-    FILE *f = fopen(path, "r");
-    if (f == NULL)
-        return;
-    char line[256];
-    size_t cap = 0;
-    while (fgets(line, sizeof(line), f)) {
-        Symbol s;
-        char kind;
-        if (sscanf(line, "%c %x %63s", &kind, &s.addr, s.name) != 3 || kind != 'c')
-            continue;
-        // Compiler-made labels like L12 say nothing about where you are.
-        if (s.name[0] == 'L' && s.name[1] >= '0' && s.name[1] <= '9')
-            continue;
-        if (symbol_count == cap) {
-            cap = cap ? cap * 2 : 256;
-            symbols = realloc(symbols, cap * sizeof(Symbol));
-        }
-        symbols[symbol_count++] = s;
-    }
-    fclose(f);
-}
-
-static const char *
-symbol_for(uint32_t addr, uint32_t *offset)
-{
-    const Symbol *best = NULL;
-    for (size_t i = 0; i < symbol_count; i++) {
-        if (symbols[i].addr <= addr && (best == NULL || symbols[i].addr > best->addr))
-            best = &symbols[i];
-    }
-    if (best == NULL)
-        return NULL;
-    *offset = addr - best->addr;
-    return best->name;
-}
-
-static void
-print_location(uint32_t addr)
-{
-    uint32_t offset;
-    const char *name = symbol_for(addr, &offset);
-    fprintf(stderr, "0x%08x", addr);
-    if (name != NULL)
-        fprintf(stderr, " %s+%u", name, offset);
-}
-
 static bool
 load_program(Machine *m, const char *path)
 {
@@ -128,42 +31,27 @@ load_program(Machine *m, const char *path)
         fprintf(stderr, "terrarium: can't read %s\n", path);
         return false;
     }
-
-    const char *error = NULL;
-    uint32_t entry = 0, code = 0, data = 0, bss = 0, stack = 0, memory = 0;
-    if (size < HEADER_SIZE || memcmp(file, "TRX1", 4) != 0) {
-        error = "not an executable";
-    } else {
-        entry = read32(file + 4);
-        code = read32(file + 8);
-        data = read32(file + 12);
-        bss = read32(file + 16);
-        stack = read32(file + 20);
-        memory = read32(file + 24);
-        if (code % 4 != 0 || memory % 4 != 0 || (uint64_t)HEADER_SIZE + code + data != size)
-            error = "malformed header";
-        else if (memory > RAM_SIZE || (uint64_t)code + align4(data) + align4(bss) + stack > memory)
-            error = "doesn't fit in its declared memory";
-        else if (entry < NULL_GUARD || entry - NULL_GUARD >= code || entry % 4 != 0)
-            error = "bad entry point";
-    }
+    Executable exe;
+    const char *error = parse_executable(file, size, &exe);
+    if (error == NULL && (uint64_t)HEADER_SIZE + exe.code + exe.data != size)
+        error = "malformed header";
     if (error != NULL) {
         fprintf(stderr, "terrarium: %s: %s\n", path, error);
         free(file);
         return false;
     }
 
-    uint32_t data_space = memory - code;
-    memcpy(m->ram, file + HEADER_SIZE, code);
-    memcpy(m->ram + code, file + HEADER_SIZE + code, data);
+    uint32_t data_space = exe.memory - exe.code;
+    memcpy(m->ram, exe.code_bytes, exe.code);
+    memcpy(m->ram + exe.code, exe.data_bytes, exe.data);
     free(file);
 
-    m->space.code = (Segment){ .base = 0, .size = code };
-    m->space.data = (Segment){ .base = code, .size = data_space };
-    m->space.stack_limit = NULL_GUARD + data_space - stack;
-    m->pc = entry;
+    m->space.code = (Segment){ .base = 0, .size = exe.code };
+    m->space.data = (Segment){ .base = exe.code, .size = data_space };
+    m->space.stack_limit = NULL_GUARD + data_space - exe.stack;
+    m->pc = exe.entry;
     m->r[REG_SP] = NULL_GUARD + data_space;
-    m->r[0] = NULL_GUARD + align4(data) + align4(bss);
+    m->r[0] = NULL_GUARD + align4(exe.data) + align4(exe.bss);
     m->r[1] = m->space.stack_limit;
     return true;
 }
@@ -235,50 +123,19 @@ system_call(Machine *m, int argc, char **argv, int *status)
 }
 
 static void
-report_fault(Machine *m)
-{
-    char text[96] = "?";
-    uint32_t ins;
-    if (machine_fetch(m, m->fault_pc, &ins))
-        disasm(ins, m->fault_pc, text, sizeof(text));
-
-    fprintf(stderr, "fault: %s at ", fault_name(m->fault));
-    print_location(m->fault_pc);
-    fprintf(stderr, ": %s\n", text);
-    if (m->fault == FAULT_DATA_ADDRESS || m->fault == FAULT_ALIGNMENT || m->fault == FAULT_STACK)
-        fprintf(stderr, "  address 0x%08x\n", m->fault_addr);
-    static const char *names[REG_COUNT] = { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "sp" };
-    for (int i = 0; i < REG_COUNT; i++)
-        fprintf(stderr, "  %s %08x%s", names[i], m->r[i], i % 3 == 2 ? "\n" : "");
-
-    // Anything on the stack that looks like a code address is probably a
-    // return address.
-    fprintf(stderr, "  stack:\n");
-    int shown = 0;
-    for (uint32_t sp = m->r[REG_SP]; shown < 12; sp += 4) {
-        const uint8_t *p = machine_data(m, sp, 4);
-        if (p == NULL)
-            break;
-        uint32_t v = read32(p);
-        if (v % 4 == 0 && v >= NULL_GUARD + 4 && v - NULL_GUARD <= m->space.code.size) {
-            fprintf(stderr, "    ");
-            print_location(v - 4);
-            fprintf(stderr, "\n");
-            shown++;
-        }
-    }
-}
-
-static void
 usage(void)
 {
-    fprintf(stderr, "usage: terrarium [--trace] [--stats] program.bin [arguments...]\n");
+    fprintf(stderr, "usage: terrarium [--trace] [--stats] program.bin [arguments...]\n"
+                    "       terrarium boot disk.img [kernel.sym]\n");
     exit(2);
 }
 
 int
 main(int argc, char **argv)
 {
+    if ((argc == 3 || argc == 4) && strcmp(argv[1], "boot") == 0)
+        return boot(argv[2], argc == 4 ? argv[3] : NULL);
+
     bool trace = false;
     bool stats = false;
     int i = 1;
@@ -321,11 +178,12 @@ main(int argc, char **argv)
         if (stop == STOP_SYS) {
             if (!system_call(&m, prog_argc, prog_argv, &status))
                 break;
-        } else if (stop == STOP_HALT) {
-            status = (int)(m.r[0] & 0xff);
-            break;
         } else if (stop == STOP_FAULT) {
             report_fault(&m);
+            status = 70;
+            break;
+        } else if (stop != STOP_BUDGET) {
+            fprintf(stderr, "terrarium: unexpected stop %d\n", stop);
             status = 70;
             break;
         }

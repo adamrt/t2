@@ -23,8 +23,8 @@ message:
 
 A name starts with a letter or `_`, followed by letters, digits and `_`.
 Register names (`r0`–`r7`, `sp`) and keywords (`if`, `goto`, `call`,
-`return`, `push`, `pop`, `copy`, `fill`, `sys`, `halt`, `u8`, `u16`, `u32`)
-can't be used as names.
+`return`, `push`, `pop`, `copy`, `fill`, `sys`, `halt`, `io`, `resume`,
+`wait`, `u8`, `u16`, `u32`) can't be used as names.
 
 A **value** is a number, a character, or a name, optionally preceded by `-`:
 
@@ -114,6 +114,15 @@ fill r0, r1, r2     ; set r2 bytes at [r0] to the low byte of r1
 
 ```asm
 sys 2               ; system call
+```
+
+These only work in kernel mode (see [isa.md](isa.md)):
+
+```asm
+r0 = io r1          ; read the port numbered r1
+io r1 = r0          ; write r0 to the port numbered r1
+resume              ; run user mode until it traps
+wait                ; sleep until an interrupt is pending
 halt
 ```
 

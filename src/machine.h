@@ -61,6 +61,12 @@ enum {
     OP_FILL,
 
     OP_SYS = 0x80,
+
+    OP_IN = 0x90,
+    OP_OUT,
+    OP_RESUME,
+    OP_WAIT,
+
     OP_HALT = 0xff,
 };
 
@@ -71,6 +77,7 @@ typedef enum {
     FMT_ILLEGAL,
     FMT_ABC,  // three registers
     FMT_ABI,  // two registers and imm16
+    FMT_AB,   // two registers
     FMT_AI,   // one register and imm16
     FMT_A,    // one register
     FMT_I,    // imm16
@@ -97,6 +104,8 @@ typedef enum {
     FAULT_ALIGNMENT,
     FAULT_DIVIDE,
     FAULT_STACK,
+    FAULT_PRIVILEGED,
+    FAULT_PORT,
 } Fault;
 
 typedef enum {
@@ -104,21 +113,70 @@ typedef enum {
     STOP_HALT,
     STOP_SYS,
     STOP_FAULT,
+    STOP_WAIT,
 } Stop;
 
-typedef struct {
+// Why the kernel's last resume ended.
+enum {
+    CAUSE_SYS = 1,
+    CAUSE_FAULT = 2,
+    CAUSE_INTERRUPT = 3,
+};
+
+// The CPU's own ports. Devices use the ports from PORT_DEVICES up.
+enum {
+    PORT_CAUSE = 0x00,
+    PORT_VALUE = 0x01,
+    PORT_ADDRESS = 0x02,
+    PORT_USER_PC = 0x03,
+    PORT_USER_CODE_BASE = 0x04,
+    PORT_USER_CODE_SIZE = 0x05,
+    PORT_USER_DATA_BASE = 0x06,
+    PORT_USER_DATA_SIZE = 0x07,
+    PORT_USER_STACK_LIMIT = 0x08,
+    PORT_PENDING = 0x09,
+    PORT_CYCLES = 0x0a,
+    PORT_USER_R0 = 0x10, // through PORT_USER_R0 + 8 for sp
+    PORT_DEVICES = 0x20,
+};
+
+typedef struct Machine Machine;
+
+// Device ports. Each returns false for a port it doesn't have.
+typedef bool (*PortRead)(Machine *m, uint32_t port, uint32_t *value);
+typedef bool (*PortWrite)(Machine *m, uint32_t port, uint32_t value);
+
+struct Machine {
     uint32_t r[REG_COUNT];
     uint32_t pc;
-    uint64_t cycles;
-
-    uint8_t *ram;
     AddressSpace space;
+    bool kernel;
+
+    // The registers, pc and address space of the mode that isn't running.
+    uint32_t saved_r[REG_COUNT];
+    uint32_t saved_pc;
+    AddressSpace saved_space;
+
+    // With a kernel, system calls, faults and interrupts in user mode return
+    // to the kernel. Without one, they stop machine_run.
+    bool has_kernel;
+    uint32_t cause;
+    uint32_t value;
+    uint32_t address;
+    uint32_t pending;    // interrupt bits waiting for the kernel
+
+    uint64_t cycles;
+    uint8_t *ram;
+
+    PortRead port_read;
+    PortWrite port_write;
+    void *host;
 
     uint32_t sys;        // number of the last sys instruction
     Fault fault;
     uint32_t fault_pc;
     uint32_t fault_addr;
-} Machine;
+};
 
 bool machine_init(Machine *m);
 void machine_free(Machine *m);
