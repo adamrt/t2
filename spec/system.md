@@ -34,6 +34,7 @@ monitor, so the same tools run on both.
 | 24 | available  | r0 handle                                         | bytes ready to read, -1 when nothing more will come |
 | 25 | screen_info | r0 buffer for four words                         | 0                          |
 | 26 | seek       | r0 handle, r1 position                            | the new position, at most the file's size |
+| 27 | trace_spawns | r0 the writing end of a pipe, or -1 to stop     | 0                          |
 
 ## Handles
 
@@ -91,3 +92,11 @@ glyph width and height. It fails when there is no screen.
 The kernel draws each window's frame and title bar. Dragging the title bar
 moves the window, clicking a window brings it to the front, and keys go to
 the front window.
+
+## Tracing
+
+After `trace_spawns`, every program the process starts, and every program
+those start, report their system calls into the pipe as lines of text:
+the program's name, the call with its path or first argument, and the
+result. Reports are dropped when the pipe is full rather than slowing the
+program down. `trace program arguments...` shows them.

@@ -27,6 +27,7 @@ fn processes(buffer: []u8) -> u32;
 fn kill(process: u32) -> u32;
 fn memory_info(free: *u32) -> u32;
 fn seek(handle: u32, position: u32) -> u32;
+fn trace_spawns(handle: u32) -> u32;
 
 // A directory listing record, as list() returns them.
 struct ListEntry {
@@ -79,14 +80,18 @@ fn get_args(arena: *Arena, args: [][]u8) -> u32 {
     return count;
 }
 
-// Prints "program: message detail" to standard error.
+// Prints "program: message detail" to standard error, in one piece.
 fn complain(program: []u8, message: []u8, detail: []u8) {
-    write_all(STDERR, program);
-    write_all(STDERR, ": ");
-    write_all(STDERR, message);
+    var text: [512]u8;
+    var w: Writer;
+    writer_init(&w, STDERR, text[:]);
+    put(&w, program);
+    put(&w, ": ");
+    put(&w, message);
     if detail.len > 0 {
-        write_all(STDERR, " ");
-        write_all(STDERR, detail);
+        put(&w, " ");
+        put(&w, detail);
     }
-    write_all(STDERR, "\n");
+    put(&w, "\n");
+    flush(&w);
 }

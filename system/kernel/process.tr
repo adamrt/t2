@@ -50,6 +50,8 @@ struct Process {
     wake_time: u32;         // when a sleep ends, or 0
     cycles: u32;
     permissions: u32;
+    trace: *Object;         // where to report this process's system calls
+    trace_spawns: *Object;  // where to report those of processes it starts
 }
 
 var processes: [MAX_PROCESSES]Process;
@@ -200,6 +202,15 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
             handles[i].refs += 1;
         }
     }
+    if parent != null {
+        p.trace = parent.trace_spawns;
+        if p.trace == null {
+            p.trace = parent.trace;
+        }
+        if p.trace != null {
+            p.trace.refs += 1;
+        }
+    }
     p.state = State.Ready;
     return p;
 }
@@ -210,6 +221,14 @@ fn exit_process(p: *Process, status: u32) {
             release_object(p.handles[i]);
             p.handles[i] = null;
         }
+    }
+    if p.trace != null {
+        release_object(p.trace);
+        p.trace = null;
+    }
+    if p.trace_spawns != null {
+        release_object(p.trace_spawns);
+        p.trace_spawns = null;
     }
     release_memory(p);
     p.status = status;

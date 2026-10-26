@@ -204,6 +204,12 @@ _seek:
     sys 26
     return
 
+; fn trace_spawns(handle: u32) -> u32;
+_trace_spawns:
+    r0 = [sp + 4]
+    sys 27
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

@@ -1,0 +1,24 @@
+Terrarium: 49152 KiB for programs
+
+Welcome to Terrarium. Type 'help' for help.
+
+/> ls: args() = 1
+ls: arg(0) = 4
+ls: info("/src") = 0
+asm/
+bin/
+fonts/
+hello.asm
+hello.tr
+kernel/
+scripts/
+tc/
+tools/
+ls: list("/src") = 576
+ls: write(1) = 64
+/> cat: can't read /nothing
+cat: args() = 1
+cat: arg(0) = 8
+cat: open("/nothing") = failed
+cat: write(2) = 25
+/> Terrarium: every process has ended

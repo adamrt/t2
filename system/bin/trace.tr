@@ -1,0 +1,65 @@
+// trace runs a program and shows every system call it makes, and the calls
+// of any programs it starts.
+//
+//     trace ls /bin
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+    allow = "read write spawn window processes recovery";
+}
+
+var buffer: [4096]u8;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    if arg_count() == 0 {
+        complain("trace", "usage: trace program [arguments...]", "");
+        return 2;
+    }
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    var path: [256]u8;
+    var n: u32 = 0;
+    var name = args[0];
+    var slash = false;
+    for i in 0..name.len {
+        if name[i] == '/' {
+            slash = true;
+        }
+    }
+    if !slash {
+        copy(path[:], "/bin/");
+        n = 5;
+    }
+    copy(path[n:], name);
+    n += name.len;
+    var rest: [2048]u8;
+    var used: u32 = 0;
+    for i in 1..count {
+        copy(rest[used:], args[i]);
+        used += args[i].len;
+        rest[used] = 0;
+        used += 1;
+    }
+
+    var write_end: u32;
+    var read_end = open_pipe(&write_end);
+    trace_spawns(write_end);
+    var child = spawn(path[0:n], rest[0:used], STDIN, STDOUT, STDERR);
+    trace_spawns(FAILED);
+    close(write_end);
+    if child == FAILED {
+        complain("trace", "can't run", name);
+        return 1;
+    }
+    while true {
+        var got = read(read_end, buffer[:]);
+        if got == 0 || got == FAILED {
+            break;
+        }
+        write_all(STDERR, buffer[0:got]);
+    }
+    return wait(child);
+}

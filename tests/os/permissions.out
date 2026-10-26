@@ -5,19 +5,19 @@ Welcome to Terrarium. Type 'help' for help.
 /> /bin/edit
   memory  2048 KiB
   stack   32 KiB
-  code    14332 bytes
+  code    14492 bytes
   data    1094435 bytes
   allows  read write window 
 /> /bin/echo
   memory  64 KiB
   stack   16 KiB
-  code    3072 bytes
+  code    3084 bytes
   data    4161 bytes
   allows  nothing
 /> /bin/tc
   memory  32768 KiB
   stack   256 KiB
-  code    70056 bytes
+  code    70068 bytes
   data    22542 bytes
   allows  read write 
 /> build-asm

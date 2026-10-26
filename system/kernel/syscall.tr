@@ -68,6 +68,7 @@ enum Call {
     Available,
     ScreenInfo,
     Seek,
+    TraceSpawns,
 }
 
 fn new_object(kind: ObjectKind) -> *Object {
@@ -409,6 +410,18 @@ fn system_call(p: *Process, number: u32) {
                 result = o.position;
             }
         }
+        Call.TraceSpawns => {
+            if p.trace_spawns != null {
+                release_object(p.trace_spawns);
+                p.trace_spawns = null;
+            }
+            var o = handle_object(p, r[0]);
+            if o != null && o.kind == ObjectKind.PipeWriter {
+                o.refs += 1;
+                p.trace_spawns = o;
+            }
+            result = 0;
+        }
         Call.ScreenInfo => {
             var info = user_bytes(p, r[0], 16);
             if info.ptr != null && has_screen() {
@@ -420,9 +433,88 @@ fn system_call(p: *Process, number: u32) {
             }
         }
     }
+    if p.state == State.Blocked {
+        return;
+    }
+    if p.trace != null {
+        trace_call(p, number, result);
+    }
     if p.state == State.Ready {
         r[0] = result;
     }
+}
+
+fn call_name(number: u32) -> []u8 {
+    match number {
+        0 => { return "exit"; }
+        1 => { return "read"; }
+        2 => { return "write"; }
+        3 => { return "open"; }
+        4 => { return "close"; }
+        5 => { return "args"; }
+        6 => { return "arg"; }
+        7 => { return "spawn"; }
+        8 => { return "wait"; }
+        9 => { return "pipe"; }
+        10 => { return "info"; }
+        11 => { return "list"; }
+        12 => { return "remove"; }
+        13 => { return "make_dir"; }
+        14 => { return "set_dir"; }
+        15 => { return "get_dir"; }
+        16 => { return "time"; }
+        17 => { return "sleep"; }
+        18 => { return "processes"; }
+        19 => { return "kill"; }
+        20 => { return "memory"; }
+        21 => { return "window_open"; }
+        22 => { return "window_draw"; }
+        23 => { return "event_wait"; }
+        24 => { return "available"; }
+        25 => { return "screen_info"; }
+        26 => { return "seek"; }
+    }
+    return "call";
+}
+
+var trace_text: [256]u8;
+
+// Reports a system call to the tracing pipe, dropping it if the pipe is full.
+fn trace_call(p: *Process, number: u32, result: u32) {
+    var w: Writer;
+    writer_init(&w, STDOUT, trace_text[:]);
+    put(&w, p.name[0:p.name_len]);
+    put(&w, ": ");
+    put(&w, call_name(number));
+    put_byte(&w, '(');
+    // Calls with a path show it; the rest show their first argument.
+    var r = p.regs[:];
+    if number == 3 || (number >= 10 && number <= 14) || number == 7 {
+        var path = user_bytes(p, r[0], min(r[1], 64));
+        if path.ptr != null {
+            put_byte(&w, '"');
+            put(&w, path);
+            put_byte(&w, '"');
+        }
+    } else if number != 5 && number != 9 && number != 16 && number != 20 {
+        put_u32(&w, r[0]);
+    }
+    put(&w, ") = ");
+    if result == FAILED {
+        put(&w, "failed");
+    } else {
+        put_u32(&w, result);
+    }
+    put_byte(&w, '\n');
+    var pipe = p.trace.pipe;
+    if pipe.readers == 0 || pipe.count + w.used > PIPE_SIZE {
+        return;
+    }
+    for i in 0..w.used {
+        pipe.data[(pipe.start + pipe.count + i) % PIPE_SIZE] = trace_text[i];
+    }
+    pipe.count += w.used;
+    wake_all();
 }
 
 fn nth_arg(p: *Process, index: u32) -> []u8 {
