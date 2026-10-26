@@ -26,7 +26,7 @@ It needs a C11 compiler and SDL3.
 | The compiler (`system/tc/`)   | the language | 3,400 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
 | Libraries (`system/lib/`)     | both       | 1,500 |
-| 37 programs (`system/bin/`)   | the language | 4,700 |
+| 38 programs (`system/bin/`)   | the language | 4,900 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -67,7 +67,8 @@ result is byte for byte the compiler the host built. Some others to try:
 - `edit file` — a text editor (Ctrl-S, C, X, V, F); `files` — a file browser
 - `paint`, `view` — draw pixel art and look at TIM1 images
 - `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
-- `worm`, `piano`, `calc`, `clock` — a game, an instrument, and two tools
+- `worm`, `life`, `piano`, `calc`, `clock` — two games, an instrument, and
+  two tools
 - `monitor`, `ps`, `mem` — memory reserved and instructions used; the
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
