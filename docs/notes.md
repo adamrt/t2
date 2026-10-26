@@ -43,7 +43,9 @@ them to the parts of the window nothing covers, and reads images only from
 the program's own memory. When part of a window needs painting again, its
 program gets a draw event. Since programs only ever see "draw these commands
 in my window," per-window buffers could replace this without changing them.
-The host draws the mouse cursor.
+Each command list may visit 16 screens' worth of pixels, a fill rate of
+sorts, so no program can hold up the machine. The host draws the mouse
+cursor.
 
 **Permissions.** Each executable's header carries an `allow` word (read,
 write, spawn, window, processes, recovery, audio, network). A program gets
