@@ -83,8 +83,8 @@ result is byte for byte the compiler the host built. Some others to try:
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
 - `trace ls` — every system call a program makes, and how much memory it
-  used; `search text files...`
-  — the lines that contain some text; `sort`; `hex file` — its bytes
+  used; `search text files...` — the lines that contain some text; `sort`;
+  `hex file` — its bytes
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
   on the host. `fetch host port /path` goes the other way.
 - `chat 7000` in one Terrarium and `chat localhost 7000` in another (or
