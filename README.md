@@ -21,12 +21,12 @@ It needs a C11 compiler and SDL3.
 
 | Part                          | Written in | Lines |
 | ----------------------------- | ---------- | ----- |
-| The machine (`src/`)          | C11        | 2,900 |
+| The machine (`src/`)          | C11        | 3,000 |
 | The assembler (`system/asm/`) | assembly   | 2,500 |
 | The compiler (`system/tc/`)   | the language | 3,400 |
-| The kernel (`system/kernel/`) | the language | 2,600 |
-| Libraries (`system/lib/`)     | both       | 1,300 |
-| 30 programs (`system/bin/`)   | the language | 3,500 |
+| The kernel (`system/kernel/`) | the language | 2,800 |
+| Libraries (`system/lib/`)     | both       | 1,500 |
+| 34 programs (`system/bin/`)   | the language | 4,400 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -64,16 +64,16 @@ Hello from the Terrarium language!
 The last line rebuilds the compiler inside Terrarium and checks that the
 result is byte for byte the compiler the host built. Some others to try:
 
-- `edit file` — a text editor; `files` — a file browser
+- `edit file` — a text editor (Ctrl-S, C, X, V, F); `files` — a file browser
+- `paint`, `view` — draw pixel art and look at TIM1 images
 - `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
-- `worm`, `piano` — a game and an instrument
+- `worm`, `piano`, `calc`, `clock` — a game, an instrument, and two tools
 - `monitor`, `ps`, `mem` — memory reserved and instructions used; the
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
 - `trace ls` — every system call a program makes
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
   on the host. `fetch host port /path` goes the other way.
-- `view picture.tim` — Terrarium's own image format
 
 ## On the host
 
@@ -115,3 +115,6 @@ its README.
 | [system.md](spec/system.md)            | system calls, windows, tracing      |
 | [filesystem.md](spec/filesystem.md)    | the disk                            |
 | [formats.md](spec/formats.md)          | images and the other file formats   |
+
+[docs/notes.md](docs/notes.md) explains the decisions behind the design,
+where it differs from the original plan, and what it doesn't do yet.
