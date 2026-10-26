@@ -20,7 +20,7 @@ var long: bool;
 fn main(memory: []u8) -> u32 {
     arena_init(&arena, memory);
     writer_init(&out, STDOUT, out_buffer[:]);
-    var args: [32][]u8;
+    var args: [64][]u8;
     var count = get_args(&arena, args[:]);
     var paths: u32 = 0;
     var status: u32 = 0;

@@ -60,7 +60,7 @@ fn main(memory: []u8) -> u32 {
             }
             if e.kind == EVENT_DRAW {
                 draw();
-            } else if e.kind == EVENT_KEY_DOWN || e.kind == EVENT_TEXT {
+            } else if e.kind == EVENT_KEY_DOWN || (e.kind == EVENT_TEXT && e.key < 128) {
                 steer(e.key);
             }
             continue;

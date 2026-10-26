@@ -25,6 +25,11 @@ fn main(memory: []u8) -> u32 {
     check(is_continuation(word[2]) && !is_continuation(word[1]), 12);
     check('é' == 0xe9 && 'ß' == 0xdf, 13);
     check('€' == 0x20ac, 14);
+    // Bytes that aren't part of a whole character count one each.
+    check(char_count("a\x80b") == 3 && char_count("\xc3\xa9\xa9") == 2, 15);
+    var broken = "\xe2\x82\xe2\x82\xac";
+    check(char_count(broken) == 3 && char_start(broken, 5) == 2 && char_start(broken, 2) == 1, 16);
+    check(char_length("\xc3", 0) == 1 && char_length("\xc0\x80", 0) == 1 && char_length("\xf0\x9f\x98\x80", 0) == 4, 17);
     if failures == 0 {
         print("ok\n");
     }

@@ -11,7 +11,7 @@ var buffer: [16 * KiB]u8;
 fn main(memory: []u8) -> u32 {
     var arena: Arena;
     arena_init(&arena, memory);
-    var args: [32][]u8;
+    var args: [64][]u8;
     var count = get_args(&arena, args[:]);
     if count == 0 {
         count_file(STDIN, "");

@@ -330,13 +330,12 @@ fn redraw_all() {
     compute_visible();
     draw_fill(0, 0, screen_width, screen_height, DESKTOP);
     draw_text(12, screen_height - 24, 0xff8fb8ad, "Terrarium");
+    flush_commands();
+    // A list for each window keeps every list well inside the GPU's budget.
     for k in 0..order_count {
         draw_frame(order[k]);
-        if command_count > commands.len - 64 {
-            flush_commands();
-        }
+        flush_commands();
     }
-    flush_commands();
     for k in 0..order_count {
         post(&windows[order[k]], EventKind.Draw, 0, 0, 0, 0, 0);
     }

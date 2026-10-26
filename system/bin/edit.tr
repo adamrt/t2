@@ -102,6 +102,7 @@ fn main(memory: []u8) -> u32 {
             columns = min(((window_width - 2 * MARGIN) / font_width) as u32, MAX_COLUMNS);
             rows = min(((window_height - 2 * MARGIN) / font_height) as u32 - 1, MAX_ROWS);
             keep_cursor_visible();
+            draw();
             continue;
         }
         handle(&e);
@@ -189,32 +190,34 @@ fn delete_after() {
 
 // Characters -------------------------------------------------------------------
 
-// Positions are bytes, and a character can take up to four of them.
+// Positions are bytes, and a character can take up to four of them, so
+// these look at up to four bytes on either side.
 
 fn next_char(position: u32) -> u32 {
-    var p = position + 1;
-    var n = length();
-    while p < n && is_continuation(char_at(p)) {
-        p += 1;
+    var bytes: [4]u8;
+    var n = min(4, length() - position);
+    for i in 0..n {
+        bytes[i] = char_at(position + i);
     }
-    return p;
+    return position + char_length(bytes[0:n], 0);
 }
 
 fn previous_char(position: u32) -> u32 {
-    var p = position - 1;
-    while p > 0 && is_continuation(char_at(p)) {
-        p -= 1;
+    var bytes: [4]u8;
+    var n = min(4, position);
+    for i in 0..n {
+        bytes[i] = char_at(position - n + i);
     }
-    return p;
+    return position - n + char_start(bytes[0:n], n);
 }
 
 // The column of a position on the line that starts at start.
 fn column_of(start: u32, position: u32) -> u32 {
     var column: u32 = 0;
-    for i in start..position {
-        if !is_continuation(char_at(i)) {
-            column += 1;
-        }
+    var p = start;
+    while p < position {
+        p = next_char(p);
+        column += 1;
     }
     return column;
 }
@@ -582,10 +585,10 @@ fn draw_strings(x: i32, y: i32, line: []u8) {
             draw_text(&canvas, x + char_count(line[0:start]) as i32 * font_width, y, FOREGROUND, line[start:i]);
             var end = i + 1;
             while end < line.len && line[end] != '"' {
-                if line[end] == '\\' {
+                if line[end] == '\\' && end + 1 < line.len {
                     end += 1;
                 }
-                end += 1;
+                end += char_length(line, end);
             }
             end = min(end + 1, line.len);
             draw_text(&canvas, x + char_count(line[0:i]) as i32 * font_width, y, STRING, line[i:end]);

@@ -15,7 +15,7 @@ var used: u32;
 fn main(memory: []u8) -> u32 {
     var arena: Arena;
     arena_init(&arena, memory);
-    var args: [32][]u8;
+    var args: [64][]u8;
     var count = get_args(&arena, args[:]);
     text = alloc_bytes(&arena, MAX_TEXT);
     if count == 0 {
@@ -34,14 +34,6 @@ fn main(memory: []u8) -> u32 {
         if !ok {
             return 1;
         }
-    }
-    if used > 0 && text[used - 1] != '\n' {
-        if used == text.len {
-            complain("sort", "the text is too long", "");
-            return 1;
-        }
-        text[used] = '\n';
-        used += 1;
     }
 
     var lines = new(&arena, []u8, MAX_LINES);
@@ -71,7 +63,9 @@ fn main(memory: []u8) -> u32 {
     return 0;
 }
 
+// Reads all of a file, ending its last line if it isn't already.
 fn read_all(file: u32) -> bool {
+    var start = used;
     while true {
         if used == text.len {
             complain("sort", "the text is too long", "");
@@ -79,9 +73,17 @@ fn read_all(file: u32) -> bool {
         }
         var n = read(file, text[used:]);
         if n == 0 || n == FAILED {
-            return true;
+            break;
         }
         used += n;
+    }
+    if used > start && text[used - 1] != '\n' {
+        if used == text.len {
+            complain("sort", "the text is too long", "");
+            return false;
+        }
+        text[used] = '\n';
+        used += 1;
     }
     return true;
 }

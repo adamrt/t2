@@ -49,7 +49,7 @@ fn main(memory: []u8) -> u32 {
             continue;
         }
         ui_event(&ui, &e);
-        if ui.typed != 0 {
+        if ui.typed != 0 && ui.typed < 128 {
             press(ui.typed as u8);
         } else if ui.key == KEY_ENTER {
             press('=');

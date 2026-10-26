@@ -138,11 +138,13 @@ fn put_date(w: *Writer, seconds: u32) {
     put_two(w, d.minute);
 }
 
-// Collects a program's arguments into an array of slices. Returns how many.
+// Fills args with the program's arguments and returns how many there are. A
+// program given more than args can hold stops, rather than miss some.
 fn get_args(arena: *Arena, args: [][]u8) -> u32 {
     var count = arg_count();
     if count > args.len {
-        count = args.len;
+        write_all(STDERR, "too many arguments\n");
+        exit(2);
     }
     for i in 0..count {
         var buffer = alloc_bytes(arena, 256);

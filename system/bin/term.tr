@@ -104,6 +104,7 @@ fn main(memory: []u8) -> u32 {
             }
             if e.kind == EVENT_RESIZE {
                 resize(e.x, e.y);
+                changed = true;
             }
             if e.kind == EVENT_DRAW || handle_key(&e) {
                 changed = true;

@@ -99,32 +99,56 @@ fn is_letter(c: u8) -> bool {
 }
 
 // Text is UTF-8. These count and step over its characters, which take one to
-// four bytes each.
+// four bytes each. A byte that isn't part of a whole character counts as one
+// on its own, the way the GPU draws it: as "?".
 
 fn is_continuation(c: u8) -> bool {
     return (c & 0xc0) == 0x80;
 }
 
+// The bytes in the character that starts at text[at].
+fn char_length(text: []u8, at: u32) -> u32 {
+    var b = text[at];
+    var more: u32 = 0;
+    if b >= 0xc2 && b < 0xe0 {
+        more = 1;
+    } else if b >= 0xe0 && b < 0xf0 {
+        more = 2;
+    } else if b >= 0xf0 && b < 0xf5 {
+        more = 3;
+    }
+    if more >= text.len - at {
+        return 1;
+    }
+    for k in 1..more + 1 {
+        if !is_continuation(text[at + k]) {
+            return 1;
+        }
+    }
+    return more + 1;
+}
+
 fn char_count(text: []u8) -> u32 {
     var n: u32 = 0;
-    for i in 0..text.len {
-        if !is_continuation(text[i]) {
-            n += 1;
-        }
+    var i: u32 = 0;
+    while i < text.len {
+        i += char_length(text, i);
+        n += 1;
     }
     return n;
 }
 
 // Where the character that ends at text[end] starts.
 fn char_start(text: []u8, end: u32) -> u32 {
-    var p = end;
-    while p > 0 {
-        p -= 1;
-        if !is_continuation(text[p]) {
-            break;
+    for k in 2..5 {
+        if end >= k && char_length(text, end - k) == k {
+            return end - k;
         }
     }
-    return p;
+    if end == 0 {
+        return 0;
+    }
+    return end - 1;
 }
 
 // Writes a character as UTF-8 at the start of out. Returns the bytes it

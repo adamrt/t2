@@ -16,7 +16,7 @@ manifest {
     allow = "read write spawn window processes recovery audio network";
 }
 
-const MAX_WORDS = 32;
+const MAX_WORDS = 64;
 const MAX_STAGES = 8;
 
 struct Stage {
