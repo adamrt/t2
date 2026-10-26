@@ -2,7 +2,8 @@
 //
 //     ls [-l] [path...]
 //
-// With -l it also shows each file's size. Directories end with "/".
+// With -l it also shows each file's size and when it last changed.
+// Directories end with "/".
 
 manifest {
     memory = 256 * KiB;
@@ -51,7 +52,7 @@ fn show(path: []u8) -> bool {
         return false;
     }
     if f.kind != KIND_DIR {
-        line(path, f.kind, f.size);
+        line(path, f.kind, f.size, f.time);
         return true;
     }
     var n = list(path, listing[:]);
@@ -68,7 +69,7 @@ fn show(path: []u8) -> bool {
         }
     }
     for i in 0..count {
-        line(entry_name(&entries[i]), entries[i].kind, entries[i].size);
+        line(entry_name(&entries[i]), entries[i].kind, entries[i].size, entries[i].time);
     }
     return true;
 }
@@ -87,8 +88,13 @@ fn before(a: *ListEntry, b: *ListEntry) -> bool {
     return x.len < y.len;
 }
 
-fn line(name: []u8, kind: u32, size: u32) {
+fn line(name: []u8, kind: u32, size: u32, time: u32) {
     if long {
+        if time == 0 {
+            put(&out, "                ");
+        } else {
+            put_date(&out, time);
+        }
         var digits: [12]u8;
         var w: Writer;
         writer_init(&w, STDOUT, digits[:]);

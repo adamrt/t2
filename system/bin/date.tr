@@ -1,0 +1,19 @@
+// date prints the local date and time.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    var out: Writer;
+    var text: [64]u8;
+    writer_init(&out, STDOUT, text[:]);
+    var now = date();
+    put_date(&out, now);
+    put_byte(&out, ':');
+    put_two(&out, now % 60);
+    put_byte(&out, '\n');
+    flush(&out);
+    return 0;
+}

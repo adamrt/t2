@@ -61,16 +61,17 @@ for t in tests/lang/*.tr; do
     if [ $status -eq 0 ] && [ "$got" = ok ]; then report ok $t; else report "exit $status: $got" $t; fi
 done
 
-# Each session boots a fresh copy of the disk and compares what it prints.
+# Each session boots a fresh copy of the disk, with the clock stopped at one
+# moment, and compares what it prints.
 for t in tests/os/*.txt; do
     name=$(basename $t .txt)
     cp build/disk.img $OUT/disk.img
     if [ "$1" = --update ]; then
-        timeout 60 $VM boot --headless $OUT/disk.img < $t > tests/os/$name.out 2>&1
+        timeout 60 $VM boot --headless --date 1790000000 $OUT/disk.img < $t > tests/os/$name.out 2>&1
         echo "updated tests/os/$name.out"
         continue
     fi
-    got=$(timeout 60 $VM boot --headless $OUT/disk.img < $t 2>&1)
+    got=$(timeout 60 $VM boot --headless --date 1790000000 $OUT/disk.img < $t 2>&1)
     if [ "$got" = "$(cat tests/os/$name.out)" ]; then report ok $t; else report "output differs" $t; fi
 done
 

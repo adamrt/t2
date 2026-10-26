@@ -266,6 +266,11 @@ _window_resizable:
     sys 35
     return
 
+; fn date() -> u32;
+_date:
+    sys 36
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

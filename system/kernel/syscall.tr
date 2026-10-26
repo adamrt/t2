@@ -146,6 +146,7 @@ enum Call {
     ClipboardSet,
     ClipboardGet,
     WindowResizable,
+    Date,
 }
 
 // Text copied by one program for another to paste.
@@ -406,10 +407,11 @@ fn system_call(p: *Process, number: u32) {
         }
         Call.Info => {
             path = path_argument(p, r[0], r[1], path_buffer[:]);
-            var info = user_bytes(p, r[2], 8);
+            var info = user_bytes(p, r[2], 12);
             if path.len > 0 && info.ptr != null && lookup(path, &f) {
                 set_word(info, 0, f.kind);
                 set_word(info, 4, f.size);
+                set_word(info, 8, f.time);
                 result = 0;
             }
         }
@@ -539,6 +541,9 @@ fn system_call(p: *Process, number: u32) {
             r[1] = io_read(0x60);
             result = io_read(0x64);
         }
+        Call.Date => {
+            result = date_now();
+        }
         Call.WindowResizable => {
             var o = handle_object(p, r[0]);
             if o != null && o.kind == ObjectKind.Window {
@@ -648,6 +653,7 @@ fn call_name(number: u32) -> []u8 {
         33 => { return "clipboard_set"; }
         34 => { return "clipboard_get"; }
         35 => { return "window_resizable"; }
+        36 => { return "date"; }
     }
     return "call";
 }
@@ -951,7 +957,8 @@ fn directory_empty(dir: *FileRef) -> bool {
 }
 
 // Fills the buffer with 64-byte records: a name of up to 48 bytes padded with
-// zeros, the kind, the size, and 8 zero bytes. Returns the bytes used.
+// zeros, the kind, the size, the time it changed, and 4 zero bytes. Returns
+// the bytes used.
 fn list_directory(dir: *FileRef, buffer: []u8) -> u32 {
     var e: Entry;
     var n: u32 = 0;
@@ -965,6 +972,7 @@ fn list_directory(dir: *FileRef, buffer: []u8) -> u32 {
             copy(record, e.name[0:e.name_len]);
             set_word(record, 48, e.file.kind);
             set_word(record, 52, e.file.size);
+            set_word(record, 56, e.file.time);
             n += 64;
         }
     }

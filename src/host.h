@@ -43,6 +43,7 @@ typedef struct {
     bool mute;              // a silent sound device, even with a window
     int32_t drag[4];        // a mouse drag after the typing: x0, y0, x1, y1
     bool has_drag;
+    uint32_t date;          // a fixed time of day, for repeatable tests, or 0
 } BootOptions;
 
 int boot(const BootOptions *options);

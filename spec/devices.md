@@ -23,6 +23,7 @@ Interrupt bit 1 is raised when input arrives or ends.
 | ------ | - | ------------------------------------------------------------ |
 | `0x22` | r | microseconds since the machine started (wraps after 71 minutes) |
 | `0x23` | w | raise interrupt bit 0 after this many microseconds; 0 cancels |
+| `0x24` | r | the host's local time, in seconds since 1970, as if the local zone were UTC |
 
 Interrupt bits: 0 timer, 1 console, 2 input, 3 vertical blank, 4 network.
 

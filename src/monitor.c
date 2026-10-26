@@ -153,6 +153,8 @@ main(int argc, char **argv)
                 o.screenshot = argv[++i];
             } else if (strcmp(argv[i], "--type") == 0 && i + 1 < argc) {
                 o.type = argv[++i];
+            } else if (strcmp(argv[i], "--date") == 0 && i + 1 < argc) {
+                o.date = (uint32_t)strtoul(argv[++i], NULL, 10);
             } else if (strcmp(argv[i], "--drag") == 0 && i + 1 < argc) {
                 if (sscanf(argv[++i], "%d,%d,%d,%d", &o.drag[0], &o.drag[1], &o.drag[2], &o.drag[3]) != 4)
                     usage();

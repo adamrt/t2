@@ -21,6 +21,7 @@ enum {
     PORT_CONSOLE_READ = 0x21,
     PORT_CLOCK = 0x22,
     PORT_TIMER = 0x23,
+    PORT_DATE = 0x24,
     PORT_DISK_BLOCK = 0x30,
     PORT_DISK_ADDRESS = 0x31,
     PORT_DISK_COUNT = 0x32,
@@ -78,6 +79,7 @@ typedef struct {
     uint32_t audio_address;
     uint32_t audio_length;
     uint32_t audio_status;
+    uint32_t date;          // a fixed date, or 0 for the host's
 } Host;
 
 static uint64_t
@@ -122,6 +124,18 @@ device_read(Machine *m, uint32_t port, uint32_t *value)
     case PORT_CLOCK:
         *value = (uint32_t)(now() - h->start);
         return true;
+    case PORT_DATE: {
+        if (h->date != 0) {
+            *value = h->date;
+            return true;
+        }
+        // Local time, counted in seconds as if the local zone were UTC.
+        time_t t = time(NULL);
+        struct tm local;
+        localtime_r(&t, &local);
+        *value = (uint32_t)(t + local.tm_gmtoff);
+        return true;
+    }
     case PORT_DISK_STATUS:
         *value = h->disk_status;
         return true;
@@ -411,7 +425,7 @@ int
 boot(const BootOptions *o)
 {
     const char *disk_path = o->disk;
-    Host h = { .start = now() };
+    Host h = { .start = now(), .date = o->date };
     Machine m;
     if (!machine_init(&m)) {
         fprintf(stderr, "terrarium: out of memory\n");

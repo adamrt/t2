@@ -17,7 +17,7 @@ monitor, so the same tools run on both.
 | 7  | spawn      | r0 path, r1 length, r2 args, r3 length, r4 input, r5 output, r6 errors | process id |
 | 8  | wait       | r0 process id                                     | its exit status            |
 | 9  | pipe       |                                                   | reading handle; writing handle in r1 |
-| 10 | info       | r0 path, r1 length, r2 buffer for kind and size   | 0                          |
+| 10 | info       | r0 path, r1 length, r2 buffer for kind, size and time | 0                      |
 | 11 | list       | r0 path, r1 length, r2 buffer, r3 length          | bytes of records           |
 | 12 | remove     | r0 path, r1 length                                | 0                          |
 | 13 | make_dir   | r0 path, r1 length                                | 0                          |
@@ -43,6 +43,7 @@ monitor, so the same tools run on both.
 | 33 | clipboard_set | r0 text, r1 length (at most 64 KiB)            | 0                          |
 | 34 | clipboard_get | r0 buffer, r1 length                           | the clipboard's length     |
 | 35 | window_resizable | r0 handle, r1 least width, r2 least height  | 0                          |
+| 36 | date       |                                                   | local time, in seconds since 1970 |
 
 ## Handles
 
@@ -71,8 +72,8 @@ collects an ended child's status with `wait`.
 ## Records
 
 `list` fills its buffer with 64-byte records: a name of up to 48 bytes
-padded with zeros, then the kind (1 file, 2 directory), the size, and 8 zero
-bytes.
+padded with zeros, then the kind (1 file, 2 directory), the size, the time
+it last changed (as from `date`), and 4 zero bytes.
 
 `processes` fills its buffer with 48-byte records: the id, the parent's id,
 the state (1 ready, 2 waiting, 3 ended), the memory reserved, the CPU cycles

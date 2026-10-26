@@ -44,7 +44,7 @@ A directory's contents are 64-byte entries:
 | 48     | kind  | 0 unused, 1 file, 2 directory                   |
 | 52     | first | the first block                                 |
 | 56     | size  | the size in bytes                               |
-| 60     | —     | reserved, zero                                  |
+| 60     | time  | when it last changed, in local seconds since 1970, or 0 |
 
 A name can't contain `/` or a zero byte, and can't be `.` or `..`. Removing a
 file marks its entry unused, and new entries fill unused ones first.

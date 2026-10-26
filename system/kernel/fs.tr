@@ -20,6 +20,7 @@ struct FileRef {
     kind: u32;
     first: u32;
     size: u32;
+    time: u32;          // when it last changed, in local seconds since 1970
     parent: u32;        // the first block of the directory holding the entry
     index: u32;         // the entry's number in that directory
 }
@@ -221,6 +222,9 @@ fn write_at(f: *FileRef, position: u32, bytes: []u8) -> u32 {
     }
     if position + done > f.size {
         f.size = position + done;
+    }
+    if done > 0 {
+        f.time = date_now();
         update_entry(f);
     }
     return done;
@@ -230,6 +234,7 @@ fn truncate(f: *FileRef) {
     free_chain(f.first);
     f.first = 0;
     f.size = 0;
+    f.time = date_now();
     update_entry(f);
 }
 
@@ -251,6 +256,7 @@ fn load_entry(dir: *FileRef, index: u32, e: *Entry) -> bool {
     e.file.kind = get_word(bytes, 48);
     e.file.first = get_word(bytes, 52);
     e.file.size = get_word(bytes, 56);
+    e.file.time = get_word(bytes, 60);
     e.file.parent = dir.first;
     e.file.index = index;
     return true;
@@ -278,7 +284,13 @@ fn update_entry(f: *FileRef) {
     set_word(meta, offset + 48, f.kind);
     set_word(meta, offset + 52, f.first);
     set_word(meta, offset + 56, f.size);
+    set_word(meta, offset + 60, f.time);
     write_meta(b);
+}
+
+// Local time, in seconds since 1970.
+fn date_now() -> u32 {
+    return io_read(0x24);
 }
 
 fn find_entry(dir: *FileRef, name: []u8, e: *Entry) -> bool {
@@ -309,6 +321,7 @@ fn add_entry(dir: *FileRef, name: []u8, kind: u32, out: *FileRef) -> bool {
     mem_fill(&meta[offset], 0, ENTRY_SIZE);
     copy(meta[offset:offset + NAME_SIZE], name);
     set_word(meta, offset + 48, kind);
+    set_word(meta, offset + 60, date_now());
     write_meta(b);
     if index == count {
         dir.size += ENTRY_SIZE;
@@ -317,6 +330,7 @@ fn add_entry(dir: *FileRef, name: []u8, kind: u32, out: *FileRef) -> bool {
     out.kind = kind;
     out.first = 0;
     out.size = 0;
+    out.time = date_now();
     out.parent = dir.first;
     out.index = index;
     return true;
