@@ -15,7 +15,7 @@ TC_SOURCE = $(LIBRARY) $(sort $(wildcard system/tc/*.tr))
 KERNEL_SOURCE = $(LIBRARY) $(sort $(wildcard system/kernel/*.tr))
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp manifest hold trace piano fetch serve
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp manifest hold trace piano fetch serve worm
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.
@@ -24,6 +24,7 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
 	system/lib/gfx.tr:/lib/gfx.tr system/lib/math.tr:/lib/math.tr system/lib/image.tr:/lib/image.tr \
 	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm \
+	$(foreach f,$(wildcard spec/*.md),$(f):/docs/$(notdir $(f))) README.md:/docs/README.md \
 	$(foreach f,$(SOURCES),$(f):/src/$(patsubst system/%,%,$(f)))
 
 # The system's own source goes on the disk too, so Terrarium can rebuild it.
@@ -74,7 +75,7 @@ $(BUILD)/mkimage.bin: system/tools/mkimage.tr system/lib/image.tr $(LIBRARY) $(R
 $(BUILD)/terra.tfn: system/fonts/terra.txt $(BUILD)/mkfont.bin
 	$(VM) $(BUILD)/mkfont.bin -o $@ system/fonts/terra.txt
 
-$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr $(SOURCES)
+$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr $(SOURCES) $(wildcard spec/*.md) README.md
 	$(VM) $(BUILD)/mkdisk.bin -o $@ -k $(BUILD)/kernel.bin $(DISK_FILES)
 
 # Terrarium runs on a copy of the disk, so what you do in it lasts until the

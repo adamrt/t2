@@ -8,7 +8,7 @@ manifest {
 
 const WIDTH = 150;
 const BUTTON = 26;
-const COUNT = 8;
+const COUNT = 9;
 
 var canvas: Canvas;
 var words: [512]u32;
@@ -24,6 +24,7 @@ fn label(i: u32) -> []u8 {
         4 => { return "Cube"; }
         5 => { return "Fractal"; }
         6 => { return "Piano"; }
+        7 => { return "Worm"; }
     }
     return "GPU demo";
 }
@@ -37,6 +38,7 @@ fn program(i: u32) -> []u8 {
         4 => { return "/bin/cube"; }
         5 => { return "/bin/fractal"; }
         6 => { return "/bin/piano"; }
+        7 => { return "/bin/worm"; }
     }
     return "/bin/demo";
 }
