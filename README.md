@@ -50,7 +50,7 @@ It needs a C11 compiler and SDL3.
 ## Inside Terrarium
 
 The desktop starts with a launcher and a terminal. Programs live in `/bin`
-(`help` lists them), libraries in `/lib`, the documentation in `/docs`, and
+(`help` lists them, and `help edit` explains one), libraries in `/lib`, the documentation in `/docs`, and
 the whole system's source in `/src`.
 
 ```

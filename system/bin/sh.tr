@@ -346,6 +346,10 @@ fn run_builtin(stage: *Stage) -> bool {
         return true;
     }
     if text_equal(name, "help") {
+        if stage.count > 1 {
+            show_notes(stage.words[1]);
+            return true;
+        }
         print("Commands are programs in /bin:\n  ");
         var buffer: [4096]u8;
         var n = list("/bin", buffer[:]);
@@ -356,11 +360,44 @@ fn run_builtin(stage: *Stage) -> bool {
             print(" ");
             i += 64;
         }
-        print("\nBuilt in: cd, exit, help.\n");
+        print("\nBuilt in: cd, exit, help. 'help name' explains a program.\n");
         print("'|' connects commands; '<', '>' and '>>' redirect to files.\n");
         return true;
     }
     return false;
+}
+
+// Prints the comment at the top of a program's source, which explains it.
+fn show_notes(program: []u8) {
+    var path: [128]u8;
+    var file = FAILED;
+    if program.len < 100 {
+        copy(path[:], "/src/bin/");
+        copy(path[9:], program);
+        copy(path[9 + program.len:], ".tr");
+        file = open(path[0:program.len + 12], MODE_READ);
+    }
+    if file == FAILED {
+        complain("help", "no notes for", program);
+        return;
+    }
+    var buffer: [1024]u8;
+    var reader: Reader;
+    reader_init(&reader, file, buffer[:]);
+    var line: [256]u8;
+    while true {
+        var n = read_line(&reader, line[:]);
+        if n == FAILED || n < 2 || line[0] != '/' || line[1] != '/' {
+            break;
+        }
+        var text = line[2:n];
+        if text.len > 0 && text[0] == ' ' {
+            text = text[1:];
+        }
+        print(text);
+        print("\n");
+    }
+    close(file);
 }
 
 fn run_pipeline() -> u32 {
