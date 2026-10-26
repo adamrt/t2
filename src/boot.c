@@ -3,6 +3,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include "gui.h"
 #include "host.h"
 
 #include <poll.h>
@@ -24,11 +25,15 @@ enum {
     PORT_DISK_COMMAND = 0x33,
     PORT_DISK_STATUS = 0x34,
     PORT_DISK_SIZE = 0x35,
+    PORT_INPUT_COUNT = 0x58,
+    PORT_INPUT_READ = 0x59,
 };
 
 enum {
     IRQ_TIMER = 1,
     IRQ_CONSOLE = 2,
+    IRQ_INPUT = 4,
+    IRQ_VBLANK = 8,
 };
 
 enum {
@@ -52,6 +57,12 @@ typedef struct {
     uint32_t disk_address;
     uint32_t disk_count;
     uint32_t disk_status;
+
+    Gui *gui;
+    Gpu gpu;
+    InputQueue events;
+    bool vblank;            // the kernel wants vertical blank interrupts
+    uint64_t next_vblank;
 } Host;
 
 static uint64_t
@@ -102,8 +113,31 @@ device_read(Machine *m, uint32_t port, uint32_t *value)
     case PORT_DISK_SIZE:
         *value = h->disk_blocks;
         return true;
+    case PORT_INPUT_COUNT:
+        *value = h->events.count;
+        return true;
     }
-    return false;
+    return gpu_read(&h->gpu, port, value);
+}
+
+// Copies the oldest input event to a physical address.
+static bool
+read_input(Machine *m, Host *h, uint32_t addr)
+{
+    if (addr > RAM_SIZE - 16)
+        return false;
+    InputEvent e = { 0 };
+    if (h->events.count > 0) {
+        e = h->events.events[h->events.start];
+        h->events.start = (h->events.start + 1) % INPUT_QUEUE;
+        h->events.count--;
+    }
+    uint32_t words[4] = { e.type, e.a, e.b, e.c };
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++)
+            m->ram[addr + (uint32_t)(i * 4 + j)] = (uint8_t)(words[i] >> (j * 8));
+    }
+    return true;
 }
 
 static bool
@@ -133,8 +167,13 @@ device_write(Machine *m, uint32_t port, uint32_t value)
     case PORT_DISK_COMMAND:
         h->disk_status = (value == 1 || value == 2) ? disk_transfer(m, h, value == 2) : 1;
         return true;
+    case PORT_VIDEO_VBLANK:
+        h->vblank = value != 0;
+        return true;
+    case PORT_INPUT_READ:
+        return read_input(m, h, value);
     }
-    return false;
+    return gpu_write(&h->gpu, m, port, value);
 }
 
 // Moves waiting terminal input into the console buffer. With a timeout, waits
@@ -208,10 +247,146 @@ firmware(Machine *m, Host *h)
     return true;
 }
 
-int
-boot(const char *disk_path, const char *symbols)
+// Raises the interrupts for waiting input and the vertical blank.
+static void
+check_video(Machine *m, Host *h)
 {
+    if (h->events.count > 0)
+        m->pending |= IRQ_INPUT;
+    uint64_t t = now();
+    if (h->vblank && t >= h->next_vblank) {
+        m->pending |= IRQ_VBLANK;
+        h->next_vblank = t + 16667;
+    }
+}
+
+// How long the machine can sleep, in milliseconds, or -1 for as long as it likes.
+static int
+idle_time(Host *h)
+{
+    uint64_t t = now();
+    uint64_t until = 0;
+    if (h->timer != 0)
+        until = h->timer;
+    if (h->vblank && (until == 0 || h->next_vblank < until))
+        until = h->next_vblank;
+    if (until == 0)
+        return h->gui != NULL ? 50 : -1;
+    int ms = until > t ? (int)((until - t + 999) / 1000) : 0;
+    return h->gui != NULL && ms > 50 ? 50 : ms;
+}
+
+static void
+put32(FILE *f, uint32_t v)
+{
+    uint8_t b[4] = { (uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8), (uint8_t)v };
+    fwrite(b, 1, 4, f);
+}
+
+static uint32_t
+crc(uint32_t c, const uint8_t *p, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        c ^= p[i];
+        for (int k = 0; k < 8; k++)
+            c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1)));
+    }
+    return c;
+}
+
+static void
+chunk(FILE *f, const char *type, const uint8_t *data, size_t n)
+{
+    put32(f, (uint32_t)n);
+    uint32_t c = crc(0xffffffffu, (const uint8_t *)type, 4);
+    c = crc(c, data, n);
+    fwrite(type, 1, 4, f);
+    fwrite(data, 1, n, f);
+    put32(f, ~c);
+}
+
+// Saves the front buffer as an uncompressed PNG, for looking at from the host.
+static void
+screenshot(Gpu *g, const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    if (f == NULL || g->width == 0)
+        return;
+    fwrite("\x89PNG\r\n\x1a\n", 1, 8, f);
+    uint8_t header[13] = { 0 };
+    for (int i = 0; i < 4; i++) {
+        header[i] = (uint8_t)(g->width >> (24 - 8 * i));
+        header[4 + i] = (uint8_t)(g->height >> (24 - 8 * i));
+    }
+    header[8] = 8;
+    header[9] = 2;
+    chunk(f, "IHDR", header, 13);
+
+    size_t row = (size_t)g->width * 3 + 1;
+    size_t raw_size = row * g->height;
+    uint8_t *raw = malloc(raw_size);
+    for (uint32_t y = 0; y < g->height; y++) {
+        uint8_t *r = raw + y * row;
+        r[0] = 0;
+        for (uint32_t x = 0; x < g->width; x++) {
+            uint32_t p = g->front[(size_t)y * g->width + x];
+            r[1 + x * 3] = (uint8_t)(p >> 16);
+            r[2 + x * 3] = (uint8_t)(p >> 8);
+            r[3 + x * 3] = (uint8_t)p;
+        }
+    }
+    // zlib with stored blocks of at most 65535 bytes.
+    size_t blocks = (raw_size + 65534) / 65535;
+    size_t zsize = 2 + raw_size + blocks * 5 + 4;
+    uint8_t *z = malloc(zsize);
+    size_t at = 0;
+    z[at++] = 0x78;
+    z[at++] = 0x01;
+    uint32_t a = 1, b = 0;
+    for (size_t i = 0; i < raw_size; i += 65535) {
+        size_t n = raw_size - i < 65535 ? raw_size - i : 65535;
+        z[at++] = i + n == raw_size ? 1 : 0;
+        z[at++] = (uint8_t)n;
+        z[at++] = (uint8_t)(n >> 8);
+        z[at++] = (uint8_t)~n;
+        z[at++] = (uint8_t)(~n >> 8);
+        memcpy(z + at, raw + i, n);
+        at += n;
+        for (size_t k = 0; k < n; k++) {
+            a = (a + raw[i + k]) % 65521;
+            b = (b + a) % 65521;
+        }
+    }
+    uint32_t adler = b << 16 | a;
+    for (int i = 0; i < 4; i++)
+        z[at++] = (uint8_t)(adler >> (24 - 8 * i));
+    chunk(f, "IDAT", z, at);
+    chunk(f, "IEND", NULL, 0);
+    fclose(f);
+    free(raw);
+    free(z);
+}
+
+int
+boot(const BootOptions *o)
+{
+    const char *disk_path = o->disk;
     Host h = { .start = now() };
+    Machine m;
+    if (!machine_init(&m)) {
+        fprintf(stderr, "terrarium: out of memory\n");
+        return 2;
+    }
+    uint32_t width = o->width, height = o->height;
+    if (o->window) {
+        h.gui = gui_open(o->fullscreen, &width, &height);
+        if (h.gui == NULL)
+            return 2;
+    }
+    if (!gpu_init(&h.gpu, width, height)) {
+        fprintf(stderr, "terrarium: out of memory\n");
+        return 2;
+    }
     h.disk_file = fopen(disk_path, "r+b");
     size_t size = 0;
     h.disk = read_file(disk_path, &size);
@@ -221,35 +396,45 @@ boot(const char *disk_path, const char *symbols)
     }
     h.disk_blocks = (uint32_t)(size / BLOCK_SIZE);
 
-    Machine m;
-    if (!machine_init(&m)) {
-        fprintf(stderr, "terrarium: out of memory\n");
-        return 2;
-    }
     m.host = &h;
     m.port_read = device_read;
     m.port_write = device_write;
     if (!firmware(&m, &h))
         return 2;
-    if (symbols != NULL)
-        load_symbols(symbols);
+    if (o->symbols != NULL)
+        load_symbols(o->symbols);
 
     int status = 0;
+    const char *typing = o->type;
+    uint64_t next_key = h.start + 500000;
     for (;;) {
+        if (o->run_for != 0 && now() - h.start > (uint64_t)o->run_for * 1000)
+            break;
+        // Typed keys arrive one at a time, as if from a quick typist.
+        if (typing != NULL && *typing != '\0' && now() >= next_key && h.events.count < INPUT_QUEUE) {
+            uint32_t c = (uint8_t)*typing++;
+            InputEvent e = c == '\n' ? (InputEvent){ INPUT_KEY_DOWN, 10, 0, 0 } : (InputEvent){ INPUT_TEXT, c, 0, 0 };
+            h.events.events[(h.events.start + h.events.count) % INPUT_QUEUE] = e;
+            h.events.count++;
+            next_key = now() + 20000;
+        }
         read_console(&m, &h, 0);
         check_timer(&m, &h);
+        if (h.gui != NULL && !gui_poll(h.gui, &h.events))
+            break;
+        check_video(&m, &h);
         Stop stop = machine_run(&m, 100000);
+        if (h.gui != NULL)
+            gui_show(h.gui, &h.gpu);
         if (stop == STOP_WAIT) {
-            if (h.input_closed && h.timer == 0) {
+            int timeout = idle_time(&h);
+            if (h.input_closed && timeout < 0) {
                 fprintf(stderr, "terrarium: idle with no input left, stopping\n");
                 break;
             }
-            int timeout = -1;
-            if (h.timer != 0) {
-                uint64_t t = now();
-                timeout = h.timer > t ? (int)((h.timer - t + 999) / 1000) : 0;
-            }
-            if (h.input_closed) {
+            if (h.gui != NULL) {
+                gui_wait(h.gui, h.input_closed ? timeout : (timeout > 10 ? 10 : timeout));
+            } else if (h.input_closed) {
                 struct timespec t = { .tv_sec = timeout / 1000, .tv_nsec = (long)(timeout % 1000) * 1000000 };
                 nanosleep(&t, NULL);
             } else {
@@ -265,6 +450,9 @@ boot(const char *disk_path, const char *symbols)
         }
     }
     fflush(stdout);
+    if (o->screenshot != NULL)
+        screenshot(&h.gpu, o->screenshot);
+    gui_close(h.gui);
     machine_free(&m);
     return status;
 }

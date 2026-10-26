@@ -1,0 +1,563 @@
+// Windows on the shared screen.
+//
+// Every window draws straight into the one back buffer, through the GPU,
+// which moves its drawing to the window's place and clips it to the parts no
+// other window covers. Windows keep no pixels of their own: when part of one
+// comes into view, its program gets a draw event and paints it again.
+
+const PORT_VIDEO_WIDTH: u32 = 0x40;
+const PORT_VIDEO_HEIGHT: u32 = 0x41;
+const PORT_VIDEO_PRESENT: u32 = 0x42;
+const PORT_VIDEO_VBLANK: u32 = 0x43;
+const PORT_GPU_COMMANDS: u32 = 0x48;
+const PORT_GPU_LENGTH: u32 = 0x49;
+const PORT_GPU_SOURCE_BASE: u32 = 0x4a;
+const PORT_GPU_SOURCE_SIZE: u32 = 0x4b;
+const PORT_GPU_ORIGIN_X: u32 = 0x4c;
+const PORT_GPU_ORIGIN_Y: u32 = 0x4d;
+const PORT_GPU_CLIPS: u32 = 0x4e;
+const PORT_GPU_CLIP_COUNT: u32 = 0x4f;
+const PORT_GPU_FONT: u32 = 0x50;
+const PORT_GPU_RUN: u32 = 0x51;
+const PORT_GPU_STATUS: u32 = 0x52;
+const PORT_INPUT_COUNT: u32 = 0x58;
+const PORT_INPUT_READ: u32 = 0x59;
+
+const IRQ_INPUT: u32 = 4;
+const IRQ_VBLANK: u32 = 8;
+
+const INPUT_KEY_DOWN: u32 = 1;
+const INPUT_KEY_UP: u32 = 2;
+const INPUT_TEXT: u32 = 3;
+const INPUT_MOUSE_MOVE: u32 = 4;
+const INPUT_MOUSE_DOWN: u32 = 5;
+const INPUT_MOUSE_UP: u32 = 6;
+const INPUT_WHEEL: u32 = 7;
+
+enum EventKind {
+    None,
+    Draw,
+    KeyDown,
+    KeyUp,
+    Text,
+    MouseMove,
+    MouseDown,
+    MouseUp,
+    Wheel,
+    Close,
+}
+
+const GPU_FILL: u32 = 1;
+const GPU_TEXT: u32 = 4;
+
+const TITLE: i32 = 20;
+const BORDER: i32 = 1;
+const MAX_WINDOWS = 16;
+const MAX_CLIPS = 32;
+const QUEUE = 64;
+
+const DESKTOP: u32 = 0xff2d5a50;
+const FRAME: u32 = 0xff1e1e24;
+const TITLE_ACTIVE: u32 = 0xffe8c35a;
+const TITLE_INACTIVE: u32 = 0xff8a8a90;
+const TITLE_TEXT: u32 = 0xff1e1e24;
+const CONTENT: u32 = 0xfff2efe6;
+
+struct Rect {
+    x: i32;
+    y: i32;
+    w: i32;
+    h: i32;
+}
+
+struct Event {
+    kind: u32;
+    window: u32;
+    x: i32;
+    y: i32;
+    key: u32;
+    modifiers: u32;
+    buttons: u32;
+    reserved: u32;
+}
+
+struct Window {
+    used: bool;
+    owner: *Process;
+    handle: u32;
+    content: Rect;
+    title: [32]u8;
+    title_len: u32;
+    visible: [MAX_CLIPS]Rect;       // the content not covered by windows above
+    visible_count: u32;
+    events: [QUEUE]Event;
+    event_start: u32;
+    event_count: u32;
+}
+
+var screen_width: i32;
+var screen_height: i32;
+var font_width: u32;
+var font_height: u32;
+var windows: [MAX_WINDOWS]Window;
+var order: [MAX_WINDOWS]u32;        // window numbers, bottom first
+var order_count: u32;
+var focus: u32;                     // the window typing goes to, plus one, or 0
+var capture: u32;                   // the window a mouse press began in, plus one
+var drag: u32;                      // the window being moved, plus one
+var drag_x: i32;
+var drag_y: i32;
+var mouse_x: i32;
+var mouse_y: i32;
+var screen_dirty: bool;
+var cascade: i32;
+var commands: [4096]u32;
+var command_count: u32;
+var clip_list: [MAX_CLIPS * 4]i32;
+var input_words: [4]u32;
+
+fn wm_init() {
+    screen_width = io_read(PORT_VIDEO_WIDTH) as i32;
+    screen_height = io_read(PORT_VIDEO_HEIGHT) as i32;
+    if screen_width == 0 {
+        return;
+    }
+    var f: FileRef;
+    if !lookup("/system/font", &f) || f.size < 20 {
+        panic("no /system/font");
+    }
+    var font = alloc_bytes(&arena, f.size);
+    read_at(&f, 0, font);
+    font_width = get_word(font, 4);
+    font_height = get_word(font, 8);
+    io_write(PORT_GPU_FONT, physical(font));
+    redraw_all();
+}
+
+fn has_screen() -> bool {
+    return screen_width > 0;
+}
+
+// Rectangles -------------------------------------------------------------------
+
+fn set_rect(r: *Rect, x: i32, y: i32, w: i32, h: i32) {
+    r.x = x;
+    r.y = y;
+    r.w = w;
+    r.h = h;
+}
+
+fn frame_of(w: *Window, r: *Rect) {
+    set_rect(r, w.content.x - BORDER, w.content.y - TITLE - BORDER, w.content.w + 2 * BORDER, w.content.h + TITLE + 2 * BORDER);
+}
+
+fn inside(r: *Rect, x: i32, y: i32) -> bool {
+    return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+}
+
+fn max_i(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a;
+    }
+    return b;
+}
+
+fn min_i(a: i32, b: i32) -> i32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+var pieces: [MAX_CLIPS]Rect;
+
+// Removes cut from each rectangle in the list. Returns the new count.
+fn subtract(list: []Rect, count: u32, cut: *Rect) -> u32 {
+    var n: u32 = 0;
+    for i in 0..count {
+        var r = &list[i];
+        var x0 = max_i(r.x, cut.x);
+        var y0 = max_i(r.y, cut.y);
+        var x1 = min_i(r.x + r.w, cut.x + cut.w);
+        var y1 = min_i(r.y + r.h, cut.y + cut.h);
+        if x0 >= x1 || y0 >= y1 {
+            n = add_piece(n, r.x, r.y, r.w, r.h);
+            continue;
+        }
+        n = add_piece(n, r.x, r.y, r.w, y0 - r.y);
+        n = add_piece(n, r.x, y1, r.w, r.y + r.h - y1);
+        n = add_piece(n, r.x, y0, x0 - r.x, y1 - y0);
+        n = add_piece(n, x1, y0, r.x + r.w - x1, y1 - y0);
+    }
+    for i in 0..n {
+        list[i] = pieces[i];
+    }
+    return n;
+}
+
+fn add_piece(n: u32, x: i32, y: i32, w: i32, h: i32) -> u32 {
+    if w <= 0 || h <= 0 || n == MAX_CLIPS {
+        return n;
+    }
+    set_rect(&pieces[n], x, y, w, h);
+    return n + 1;
+}
+
+// Works out which parts of each window can be seen.
+fn compute_visible() {
+    for k in 0..order_count {
+        var w = &windows[order[k]];
+        set_rect(&w.visible[0], w.content.x, w.content.y, w.content.w, w.content.h);
+        w.visible_count = 1;
+        for above in k + 1..order_count {
+            var frame: Rect;
+            frame_of(&windows[order[above]], &frame);
+            w.visible_count = subtract(w.visible[:], w.visible_count, &frame);
+        }
+    }
+}
+
+// Drawing ----------------------------------------------------------------------
+
+fn command(word: u32) {
+    if command_count < commands.len {
+        commands[command_count] = word;
+        command_count += 1;
+    }
+}
+
+fn draw_fill(x: i32, y: i32, w: i32, h: i32, color: u32) {
+    command(GPU_FILL);
+    command(x as u32);
+    command(y as u32);
+    command(w as u32);
+    command(h as u32);
+    command(color);
+}
+
+fn draw_text(x: i32, y: i32, color: u32, text: []u8) {
+    command(GPU_TEXT);
+    command(x as u32);
+    command(y as u32);
+    command(color);
+    command(text.ptr as u32);
+    command(text.len);
+    command(1);
+}
+
+// Runs the kernel's own commands over the whole screen.
+fn flush_commands() {
+    if command_count == 0 {
+        return;
+    }
+    clip_list[0] = 0;
+    clip_list[1] = 0;
+    clip_list[2] = screen_width;
+    clip_list[3] = screen_height;
+    io_write(PORT_GPU_SOURCE_BASE, 0);
+    io_write(PORT_GPU_SOURCE_SIZE, ram_size);
+    io_write(PORT_GPU_ORIGIN_X, 0);
+    io_write(PORT_GPU_ORIGIN_Y, 0);
+    io_write(PORT_GPU_CLIPS, (&clip_list[0] as u32) - GUARD);
+    io_write(PORT_GPU_CLIP_COUNT, 1);
+    io_write(PORT_GPU_COMMANDS, (&commands[0] as u32) - GUARD);
+    io_write(PORT_GPU_LENGTH, command_count);
+    io_write(PORT_GPU_RUN, 1);
+    command_count = 0;
+    mark_dirty();
+}
+
+fn mark_dirty() {
+    screen_dirty = true;
+    io_write(PORT_VIDEO_VBLANK, 1);
+}
+
+// Shows the back buffer once something has changed.
+fn present() {
+    if screen_dirty {
+        io_write(PORT_VIDEO_PRESENT, 1);
+        screen_dirty = false;
+    }
+    io_write(PORT_VIDEO_VBLANK, 0);
+}
+
+fn draw_frame(n: u32) {
+    var w = &windows[n];
+    var frame: Rect;
+    frame_of(w, &frame);
+    draw_fill(frame.x, frame.y, frame.w, frame.h, FRAME);
+    var bar = TITLE_INACTIVE;
+    if focus == n + 1 {
+        bar = TITLE_ACTIVE;
+    }
+    draw_fill(w.content.x, frame.y + BORDER, w.content.w, TITLE - 1, bar);
+    var text_y = frame.y + BORDER + (TITLE - 1 - font_height as i32) / 2;
+    draw_text(w.content.x + 8, text_y, TITLE_TEXT, w.title[0:w.title_len]);
+    // The close box at the right end of the title bar.
+    var box = w.content.x + w.content.w - 16;
+    draw_fill(box, frame.y + 5, 10, 10, FRAME);
+    draw_fill(box + 2, frame.y + 7, 6, 6, bar);
+    draw_fill(w.content.x, w.content.y, w.content.w, w.content.h, CONTENT);
+}
+
+// Repaints the desktop and every frame, and asks every window to paint itself.
+fn redraw_all() {
+    compute_visible();
+    draw_fill(0, 0, screen_width, screen_height, DESKTOP);
+    draw_text(12, screen_height - 24, 0xff8fb8ad, "Terrarium");
+    for k in 0..order_count {
+        draw_frame(order[k]);
+        if command_count > commands.len - 64 {
+            flush_commands();
+        }
+    }
+    flush_commands();
+    for k in 0..order_count {
+        post(&windows[order[k]], EventKind.Draw, 0, 0, 0, 0, 0);
+    }
+}
+
+// Runs a program's commands in one of its windows.
+fn window_draw(p: *Process, w: *Window, list: []u8) -> u32 {
+    var n = w.visible_count;
+    for i in 0..n {
+        clip_list[i * 4] = w.visible[i].x;
+        clip_list[i * 4 + 1] = w.visible[i].y;
+        clip_list[i * 4 + 2] = w.visible[i].w;
+        clip_list[i * 4 + 3] = w.visible[i].h;
+    }
+    io_write(PORT_GPU_SOURCE_BASE, p.region + p.code_size);
+    io_write(PORT_GPU_SOURCE_SIZE, p.memory - p.code_size);
+    io_write(PORT_GPU_ORIGIN_X, w.content.x as u32);
+    io_write(PORT_GPU_ORIGIN_Y, w.content.y as u32);
+    io_write(PORT_GPU_CLIPS, (&clip_list[0] as u32) - GUARD);
+    io_write(PORT_GPU_CLIP_COUNT, n);
+    io_write(PORT_GPU_COMMANDS, physical(list));
+    io_write(PORT_GPU_LENGTH, list.len / 4);
+    io_write(PORT_GPU_RUN, 1);
+    mark_dirty();
+    return io_read(PORT_GPU_STATUS);
+}
+
+// Windows ----------------------------------------------------------------------
+
+fn window_open(p: *Process, title: []u8, width: u32, height: u32) -> *Window {
+    if !has_screen() || width == 0 || height == 0 || width > screen_width as u32 || height > screen_height as u32 {
+        return null;
+    }
+    var w: *Window = null;
+    var n: u32 = 0;
+    for i in 0..MAX_WINDOWS {
+        if !windows[i].used {
+            w = &windows[i];
+            n = i;
+            break;
+        }
+    }
+    if w == null {
+        return null;
+    }
+    mem_fill(w as *u8, 0, size_of(Window));
+    w.used = true;
+    w.owner = p;
+    w.title_len = min(title.len, 32);
+    copy(w.title[:], title[0:w.title_len]);
+    w.content.w = width as i32;
+    w.content.h = height as i32;
+    w.content.x = 40 + cascade;
+    w.content.y = 40 + TITLE + cascade;
+    if w.content.x + w.content.w > screen_width {
+        w.content.x = max_i(BORDER, screen_width - w.content.w - BORDER);
+    }
+    if w.content.y + w.content.h > screen_height {
+        w.content.y = max_i(TITLE + BORDER, screen_height - w.content.h - BORDER);
+    }
+    cascade = (cascade + 30) % 180;
+    order[order_count] = n;
+    order_count += 1;
+    focus = n + 1;
+    redraw_all();
+    return w;
+}
+
+fn window_close(w: *Window) {
+    var n = window_number(w);
+    var k: u32 = 0;
+    while k < order_count && order[k] != n {
+        k += 1;
+    }
+    for i in k..order_count - 1 {
+        order[i] = order[i + 1];
+    }
+    order_count -= 1;
+    w.used = false;
+    if focus == n + 1 {
+        focus = 0;
+        if order_count > 0 {
+            focus = order[order_count - 1] + 1;
+        }
+    }
+    if capture == n + 1 {
+        capture = 0;
+    }
+    if drag == n + 1 {
+        drag = 0;
+    }
+    redraw_all();
+}
+
+fn window_number(w: *Window) -> u32 {
+    return ((w as u32) - (&windows[0] as u32)) / size_of(Window);
+}
+
+fn raise(n: u32) {
+    var k: u32 = 0;
+    while k < order_count && order[k] != n {
+        k += 1;
+    }
+    var changed = k + 1 < order_count || focus != n + 1;
+    for i in k..order_count - 1 {
+        order[i] = order[i + 1];
+    }
+    order[order_count - 1] = n;
+    focus = n + 1;
+    if changed {
+        redraw_all();
+    }
+}
+
+// The topmost window whose frame holds the point, plus one, or 0.
+fn window_at(x: i32, y: i32) -> u32 {
+    var k = order_count;
+    while k > 0 {
+        k -= 1;
+        var frame: Rect;
+        frame_of(&windows[order[k]], &frame);
+        if inside(&frame, x, y) {
+            return order[k] + 1;
+        }
+    }
+    return 0;
+}
+
+// Events -----------------------------------------------------------------------
+
+fn post(w: *Window, kind: EventKind, x: i32, y: i32, key: u32, modifiers: u32, buttons: u32) {
+    if w.event_count == QUEUE {
+        return;
+    }
+    // A window only needs one draw at a time.
+    if kind == EventKind.Draw {
+        for i in 0..w.event_count {
+            if w.events[(w.event_start + i) % QUEUE].kind == EventKind.Draw as u32 {
+                return;
+            }
+        }
+    }
+    var e = &w.events[(w.event_start + w.event_count) % QUEUE];
+    e.kind = kind as u32;
+    e.window = w.handle;
+    e.x = x;
+    e.y = y;
+    e.key = key;
+    e.modifiers = modifiers;
+    e.buttons = buttons;
+    e.reserved = 0;
+    w.event_count += 1;
+}
+
+// Takes the oldest event for any of the process's windows into out.
+fn take_event(p: *Process, out: *Event) -> bool {
+    for i in 0..MAX_WINDOWS {
+        var w = &windows[i];
+        if w.used && w.owner == p && w.event_count > 0 {
+            *out = w.events[w.event_start];
+            w.event_start = (w.event_start + 1) % QUEUE;
+            w.event_count -= 1;
+            return true;
+        }
+    }
+    return false;
+}
+
+fn post_mouse(n: u32, kind: EventKind, buttons: u32) {
+    var w = &windows[n - 1];
+    post(w, kind, mouse_x - w.content.x, mouse_y - w.content.y, 0, 0, buttons);
+}
+
+fn receive_input() {
+    while io_read(PORT_INPUT_COUNT) > 0 {
+        io_write(PORT_INPUT_READ, (&input_words[0] as u32) - GUARD);
+        var kind = input_words[0];
+        var a = input_words[1];
+        var b = input_words[2];
+        var c = input_words[3];
+        if kind == INPUT_KEY_DOWN || kind == INPUT_KEY_UP || kind == INPUT_TEXT {
+            if focus != 0 {
+                var event = EventKind.Text;
+                if kind == INPUT_KEY_DOWN {
+                    event = EventKind.KeyDown;
+                } else if kind == INPUT_KEY_UP {
+                    event = EventKind.KeyUp;
+                }
+                post(&windows[focus - 1], event, 0, 0, a, b, 0);
+            }
+        } else if kind == INPUT_MOUSE_MOVE {
+            mouse_x = a as i32;
+            mouse_y = b as i32;
+            if drag != 0 {
+                var w = &windows[drag - 1];
+                w.content.x = mouse_x - drag_x;
+                w.content.y = max_i(mouse_y - drag_y, TITLE + BORDER);
+                redraw_all();
+            } else if capture != 0 {
+                post_mouse(capture, EventKind.MouseMove, c);
+            } else {
+                var n = window_at(mouse_x, mouse_y);
+                if n != 0 && inside(&windows[n - 1].content, mouse_x, mouse_y) {
+                    post_mouse(n, EventKind.MouseMove, c);
+                }
+            }
+        } else if kind == INPUT_MOUSE_DOWN {
+            mouse_x = a as i32;
+            mouse_y = b as i32;
+            press(c);
+        } else if kind == INPUT_MOUSE_UP {
+            mouse_x = a as i32;
+            mouse_y = b as i32;
+            drag = 0;
+            if capture != 0 {
+                post_mouse(capture, EventKind.MouseUp, c);
+                capture = 0;
+            }
+        } else if kind == INPUT_WHEEL {
+            var n = window_at(mouse_x, mouse_y);
+            if n != 0 {
+                post(&windows[n - 1], EventKind.Wheel, a as i32, b as i32, 0, 0, 0);
+            }
+        }
+    }
+}
+
+fn press(button: u32) {
+    var n = window_at(mouse_x, mouse_y);
+    if n == 0 {
+        return;
+    }
+    raise(n - 1);
+    var w = &windows[n - 1];
+    if inside(&w.content, mouse_x, mouse_y) {
+        capture = n;
+        post_mouse(n, EventKind.MouseDown, button);
+        return;
+    }
+    if mouse_y < w.content.y && mouse_x >= w.content.x + w.content.w - 18 {
+        post(w, EventKind.Close, 0, 0, 0, 0, 0);
+        return;
+    }
+    if mouse_y < w.content.y {
+        drag = n;
+        drag_x = mouse_x - w.content.x;
+        drag_y = mouse_y - w.content.y;
+    }
+}

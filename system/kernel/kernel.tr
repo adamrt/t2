@@ -59,6 +59,7 @@ fn main(memory: []u8) -> u32 {
     if !fs_init() {
         panic("the disk has no file system");
     }
+    wm_init();
     put(&log, "Terrarium: ");
     put_u32(&log, (ram_size - free_memory) / KiB);
     put(&log, " KiB for programs\n");
@@ -108,6 +109,12 @@ fn handle_interrupts() {
     io_write(PORT_PENDING, pending);
     if pending & IRQ_CONSOLE != 0 {
         receive_console();
+    }
+    if pending & IRQ_INPUT != 0 {
+        receive_input();
+    }
+    if pending & IRQ_VBLANK != 0 {
+        present();
     }
     wake_all();
 }

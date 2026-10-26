@@ -161,6 +161,42 @@ _memory_info:
     [r2] = r1
     return
 
+; fn window_open(title: []u8, width: u32, height: u32) -> u32;
+_window_open:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    r3 = [sp + 16]
+    sys 21
+    return
+
+; fn window_draw(window: u32, commands: []u32) -> u32;
+_window_draw:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    sys 22
+    return
+
+; fn event_wait(event: *Event, timeout: u32) -> u32;
+_event_wait:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 23
+    return
+
+; fn available(handle: u32) -> u32;
+_available:
+    r0 = [sp + 4]
+    sys 24
+    return
+
+; fn screen_info(info: *ScreenInfo) -> u32;
+_screen_info:
+    r0 = [sp + 4]
+    sys 25
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

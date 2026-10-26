@@ -1,0 +1,179 @@
+// term, a terminal: a window with a shell in it. What you type is edited
+// here a line at a time, drawn after whatever the shell has printed, and
+// sent to the shell when you press Enter.
+
+manifest {
+    memory = 512 * KiB;
+    stack = 32 * KiB;
+}
+
+const COLUMNS = 80;
+const ROWS = 30;
+const MARGIN = 4;
+const BACKGROUND: u32 = 0xff1b1d23;
+const FOREGROUND: u32 = 0xffd8d4c8;
+const CURSOR: u32 = 0xffe8c35a;
+
+var cells: [ROWS * COLUMNS]u8;
+var cursor_x: u32;
+var cursor_y: u32;
+var typed: [256]u8;
+var typed_len: u32;
+var canvas: Canvas;
+var words: [4096]u32;
+var buffer: [4096]u8;
+var font_width: i32;
+var font_height: i32;
+var to_shell: u32;
+var from_shell: u32;
+
+fn main(memory: []u8) -> u32 {
+    var screen: ScreenInfo;
+    if screen_info(&screen) == FAILED {
+        complain("term", "there is no screen", "");
+        return 1;
+    }
+    font_width = screen.font_width as i32;
+    font_height = screen.font_height as i32;
+    var window = window_open("Terminal", COLUMNS * screen.font_width + 2 * MARGIN, ROWS * screen.font_height + 2 * MARGIN);
+    if window == FAILED {
+        complain("term", "can't open a window", "");
+        return 1;
+    }
+    canvas_init(&canvas, window, words[:]);
+    mem_fill(&cells[0], ' ', cells.len);
+
+    var shell_input: u32;
+    var shell_output: u32;
+    var input_end = open_pipe(&to_shell);
+    from_shell = open_pipe(&shell_output);
+    shell_input = input_end;
+    var shell = spawn("/bin/sh", "", shell_input, shell_output, shell_output);
+    close(shell_input);
+    close(shell_output);
+    if shell == FAILED {
+        complain("term", "can't start /bin/sh", "");
+        return 1;
+    }
+
+    while true {
+        var changed = false;
+        while true {
+            var n = available(from_shell);
+            if n == FAILED {
+                return 0;
+            }
+            if n == 0 {
+                break;
+            }
+            var got = read(from_shell, buffer[0:min(n, buffer.len)]);
+            for i in 0..got {
+                put_char(buffer[i]);
+            }
+            changed = true;
+        }
+        var e: Event;
+        if event_wait(&e, 20) == 1 {
+            if e.kind == EVENT_CLOSE {
+                kill(shell);
+                return 0;
+            }
+            if e.kind == EVENT_DRAW || handle_key(&e) {
+                changed = true;
+            }
+        }
+        if changed {
+            draw();
+        }
+    }
+    return 0;
+}
+
+fn min(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+// Returns true if the screen changed.
+fn handle_key(e: *Event) -> bool {
+    if e.kind == EVENT_TEXT {
+        if typed_len + 1 < typed.len {
+            typed[typed_len] = e.key as u8;
+            typed_len += 1;
+        }
+        return true;
+    }
+    if e.kind != EVENT_KEY_DOWN {
+        return false;
+    }
+    if e.key == KEY_ENTER {
+        typed[typed_len] = '\n';
+        typed_len += 1;
+        for i in 0..typed_len {
+            put_char(typed[i]);
+        }
+        write_all(to_shell, typed[0:typed_len]);
+        typed_len = 0;
+        return true;
+    }
+    if e.key == KEY_BACKSPACE && typed_len > 0 {
+        typed_len -= 1;
+        return true;
+    }
+    return false;
+}
+
+fn put_char(c: u8) {
+    if c == '\n' {
+        cursor_x = 0;
+        new_line();
+        return;
+    }
+    if c == '\t' {
+        put_char(' ');
+        while cursor_x % 8 != 0 {
+            put_char(' ');
+        }
+        return;
+    }
+    if c < 32 || c > 126 {
+        return;
+    }
+    if cursor_x == COLUMNS {
+        cursor_x = 0;
+        new_line();
+    }
+    cells[cursor_y * COLUMNS + cursor_x] = c;
+    cursor_x += 1;
+}
+
+fn new_line() {
+    if cursor_y + 1 < ROWS {
+        cursor_y += 1;
+        return;
+    }
+    copy(cells[:], cells[COLUMNS:]);
+    mem_fill(&cells[(ROWS - 1) * COLUMNS], ' ', COLUMNS);
+}
+
+fn draw() {
+    draw_fill(&canvas, 0, 0, COLUMNS * font_width + 2 * MARGIN, ROWS * font_height + 2 * MARGIN, BACKGROUND);
+    for row in 0..ROWS {
+        var line = cells[row * COLUMNS:(row + 1) * COLUMNS];
+        var end: u32 = COLUMNS;
+        while end > 0 && line[end - 1] == ' ' {
+            end -= 1;
+        }
+        if end > 0 {
+            draw_text(&canvas, MARGIN, MARGIN + row as i32 * font_height, FOREGROUND, line[0:end]);
+        }
+    }
+    var x = MARGIN + cursor_x as i32 * font_width;
+    var y = MARGIN + cursor_y as i32 * font_height;
+    draw_text(&canvas, x, y, FOREGROUND, typed[0:typed_len]);
+    x += typed_len as i32 * font_width;
+    draw_fill(&canvas, x, y, font_width, font_height, CURSOR);
+    present(&canvas);
+}

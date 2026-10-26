@@ -583,7 +583,8 @@ fn check_binary(e: *Node) -> *Type {
     }
     if op == Tok.Shl || op == Tok.Shr {
         if lt == t_untyped {
-            fail(e, "give the value a type before shifting it");
+            coerce(e.a, lt, t_u32);
+            lt = t_u32;
         }
         if !is_int(lt) {
             fail(e, "only integers can be shifted");

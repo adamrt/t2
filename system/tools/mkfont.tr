@@ -1,0 +1,142 @@
+// mkfont turns a font drawn as text into a TFN1 font for the GPU.
+//
+//     mkfont -o font.tfn font.txt
+//
+// The text has "width N" and "height N" lines, then for each glyph a line
+// "glyph CODE" followed by one line per row, where "#" is a lit pixel. Lines
+// starting with "#" before a glyph are comments.
+//
+// A TFN1 font is five words, "TFN1", width, height, first code and glyph
+// count, then each glyph's rows, one byte per row with the leftmost pixel in
+// the top bit.
+
+manifest {
+    memory = 1 * MiB;
+    stack = 16 * KiB;
+}
+
+var arena: Arena;
+var line: [256]u8;
+var glyphs: [256 * 16]u8;
+var present: [256]bool;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    if arg_count() != 3 {
+        fail("usage: mkfont -o font.tfn font.txt");
+    }
+    var output = argument(1);
+    var file = open(argument(2), 0);
+    if file == FAILED {
+        fail("can't read the font");
+    }
+    var reader: Reader;
+    reader_init(&reader, file, alloc_bytes(&arena, 4096));
+
+    var width: u32 = 0;
+    var height: u32 = 0;
+    var glyph: u32 = 256;
+    var row: u32 = 0;
+    while true {
+        var n = read_line(&reader, line[:]);
+        if n == FAILED {
+            break;
+        }
+        var text = line[0:n];
+        if glyph < 256 && row < height {
+            if text.len < width {
+                fail("a row is too short");
+            }
+            var bits: u32 = 0;
+            for x in 0..width {
+                if text[x] == '#' {
+                    bits |= 0x80 >> x;
+                }
+            }
+            glyphs[glyph * 16 + row] = bits as u8;
+            row += 1;
+            continue;
+        }
+        if text.len == 0 || text[0] == '#' {
+            continue;
+        }
+        var word = first_word(text);
+        var value = parse_u32(first_word(text[word.len:]));
+        if text_equal(word, "width") {
+            width = value;
+        } else if text_equal(word, "height") {
+            height = value;
+        } else if text_equal(word, "glyph") {
+            if value >= 256 || width == 0 || width > 8 || height == 0 || height > 16 {
+                fail("bad glyph, or width and height missing");
+            }
+            glyph = value;
+            present[glyph] = true;
+            row = 0;
+        } else {
+            fail("unknown line in the font");
+        }
+    }
+
+    var first: u32 = 0;
+    while first < 256 && !present[first] {
+        first += 1;
+    }
+    var last: u32 = 255;
+    while last > first && !present[last] {
+        last -= 1;
+    }
+    var count = last - first + 1;
+    var out = open(output, 1);
+    if out == FAILED || first == 256 {
+        fail("can't write the font");
+    }
+    var header: [20]u8;
+    copy(header[:], "TFN1");
+    set_word(header[:], 4, width);
+    set_word(header[:], 8, height);
+    set_word(header[:], 12, first);
+    set_word(header[:], 16, count);
+    write_all(out, header[:]);
+    for c in first..last + 1 {
+        write_all(out, glyphs[c * 16:c * 16 + height]);
+    }
+    close(out);
+    return 0;
+}
+
+fn fail(message: []u8) {
+    write_all(STDERR, "mkfont: ");
+    write_all(STDERR, message);
+    write_all(STDERR, "\n");
+    exit(1);
+}
+
+fn argument(index: u32) -> []u8 {
+    var buffer = alloc_bytes(&arena, 256);
+    var n = arg(index, buffer);
+    if n > buffer.len {
+        fail("argument is too long");
+    }
+    return buffer[0:n];
+}
+
+// The first word of text, after any spaces.
+fn first_word(text: []u8) -> []u8 {
+    var start: u32 = 0;
+    while start < text.len && text[start] == ' ' {
+        start += 1;
+    }
+    var end = start;
+    while end < text.len && text[end] != ' ' {
+        end += 1;
+    }
+    return text[start:end];
+}
+
+fn set_word(bytes: []u8, offset: u32, value: u32) {
+    bytes[offset] = (value & 255) as u8;
+    bytes[offset + 1] = ((value >> 8) & 255) as u8;
+    bytes[offset + 2] = ((value >> 16) & 255) as u8;
+    bytes[offset + 3] = (value >> 24) as u8;
+}

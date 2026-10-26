@@ -52,6 +52,8 @@ var count: u32 = 0;     // fine
 var count = 0;          // error: say which type
 ```
 
+A constant shifted by an amount that isn't constant is a `u32`.
+
 `KiB` (1024) and `MiB` (1048576) are predefined.
 
 ### Structs and enums

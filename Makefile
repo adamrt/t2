@@ -4,21 +4,23 @@ BUILD = build
 VM = $(BUILD)/terrarium
 ASM = $(VM) $(BUILD)/asm.bin
 TC = $(VM) $(BUILD)/tc.bin
-MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c
+MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c src/gpu.c src/gui.c
+SDL_CFLAGS := $(shell pkg-config --cflags sdl3)
+SDL_LIBS := $(shell pkg-config --libs sdl3)
 
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
-OS_LIBRARY = $(LIBRARY) system/lib/os.tr
+OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr
 TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
 KERNEL_SOURCE = $(LIBRARY) $(wildcard system/kernel/*.tr)
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.
 DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
-	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc \
+	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc $(BUILD)/terra.tfn:/system/font \
 	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
 	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm
 
@@ -26,9 +28,9 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 
 all: $(VM) $(TOOLS) $(BUILD)/disk.img
 
-$(VM): $(MACHINE) src/machine.h src/host.h
+$(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $(MACHINE)
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(MACHINE) $(SDL_LIBS)
 
 # Each tool is built by its seed, then rebuilt by that result, so the tools
 # you run are always built by themselves.
@@ -55,7 +57,14 @@ $(BUILD)/mkdisk.bin: system/tools/mkdisk.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
 	$(TC) -o $(BUILD)/mkdisk.asm $(LIBRARY) system/tools/mkdisk.tr
 	$(ASM) -o $@ $(RUNTIME) $(BUILD)/mkdisk.asm
 
-$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr
+$(BUILD)/mkfont.bin: system/tools/mkfont.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
+	$(TC) -o $(BUILD)/mkfont.asm $(LIBRARY) system/tools/mkfont.tr
+	$(ASM) -o $@ $(RUNTIME) $(BUILD)/mkfont.asm
+
+$(BUILD)/terra.tfn: system/fonts/terra.txt $(BUILD)/mkfont.bin
+	$(VM) $(BUILD)/mkfont.bin -o $@ system/fonts/terra.txt
+
+$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr
 	$(VM) $(BUILD)/mkdisk.bin -o $@ -k $(BUILD)/kernel.bin $(DISK_FILES)
 
 # Terrarium runs on a copy of the disk, so what you do in it lasts until the

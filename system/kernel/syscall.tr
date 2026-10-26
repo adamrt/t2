@@ -10,6 +10,7 @@ enum ObjectKind {
     File,
     PipeReader,
     PipeWriter,
+    Window,
 }
 
 struct Object {
@@ -19,6 +20,7 @@ struct Object {
     position: u32;
     writable: bool;
     pipe: *Pipe;
+    window: *Window;
 }
 
 const PIPE_SIZE = 4096;
@@ -60,6 +62,11 @@ enum Call {
     Processes,
     Kill,
     Memory,
+    WindowOpen,
+    WindowDraw,
+    EventWait,
+    Available,
+    ScreenInfo,
 }
 
 fn new_object(kind: ObjectKind) -> *Object {
@@ -87,6 +94,9 @@ fn release_object(o: *Object) {
     }
     if o.pipe != null && o.pipe.readers == 0 && o.pipe.writers == 0 {
         o.pipe.used = false;
+    }
+    if o.kind == ObjectKind.Window {
+        window_close(o.window);
     }
     o.kind = ObjectKind.Free;
     wake_all();
@@ -324,6 +334,38 @@ fn system_call(p: *Process, number: u32) {
             r[1] = memory_end - memory_start - memory_used();
             result = memory_end - memory_start;
         }
+        Call.WindowOpen => {
+            var title = user_bytes(p, r[0], r[1]);
+            if title.ptr != null {
+                result = open_window(p, title, r[2], r[3]);
+            }
+        }
+        Call.WindowDraw => {
+            var o = handle_object(p, r[0]);
+            var list = user_bytes(p, r[1], r[2] * 4);
+            if o != null && o.kind == ObjectKind.Window && list.ptr != null && r[2] < 0x100000 {
+                result = window_draw(p, o.window, list);
+            }
+        }
+        Call.EventWait => {
+            result = event_wait(p);
+        }
+        Call.Available => {
+            var o = handle_object(p, r[0]);
+            if o != null {
+                result = available(o);
+            }
+        }
+        Call.ScreenInfo => {
+            var info = user_bytes(p, r[0], 16);
+            if info.ptr != null && has_screen() {
+                set_word(info, 0, screen_width as u32);
+                set_word(info, 4, screen_height as u32);
+                set_word(info, 8, font_width);
+                set_word(info, 12, font_height);
+                result = 0;
+            }
+        }
     }
     if p.state == State.Ready {
         r[0] = result;
@@ -425,6 +467,75 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             pipe.count += n;
             wake_all();
             return n;
+        }
+    }
+    return FAILED;
+}
+
+fn open_window(p: *Process, title: []u8, width: u32, height: u32) -> u32 {
+    var o = new_object(ObjectKind.Window);
+    if o == null {
+        return FAILED;
+    }
+    o.window = window_open(p, title, width, height);
+    if o.window == null {
+        o.kind = ObjectKind.Free;
+        return FAILED;
+    }
+    var handle = add_handle(p, o);
+    o.window.handle = handle;
+    return handle;
+}
+
+// event_wait(event, timeout): waits up to timeout milliseconds for an event
+// for one of the process's windows; -1 waits as long as it takes. Returns 1
+// with an event, or 0 if the time ran out.
+fn event_wait(p: *Process) -> u32 {
+    var r = p.regs[:];
+    var buffer = user_bytes(p, r[0], size_of(Event));
+    if buffer.ptr == null {
+        return FAILED;
+    }
+    var e: Event;
+    if take_event(p, &e) {
+        copy(buffer, (&e as *u8)[0:size_of(Event)]);
+        p.wake_time = 0;
+        return 1;
+    }
+    if r[1] == 0 {
+        return 0;
+    }
+    if r[1] != FAILED {
+        if p.wake_time == 0 {
+            p.wake_time = clock_ms() + r[1];
+        }
+        if clock_ms() >= p.wake_time {
+            p.wake_time = 0;
+            return 0;
+        }
+    }
+    block(p);
+    return 0;
+}
+
+// How many bytes can be read without waiting, or FAILED when nothing more
+// will come.
+fn available(o: *Object) -> u32 {
+    match o.kind {
+        ObjectKind.Console => {
+            if console_count == 0 && console_closed {
+                return FAILED;
+            }
+            return console_count;
+        }
+        ObjectKind.PipeReader => {
+            if o.pipe.count == 0 && o.pipe.writers == 0 {
+                return FAILED;
+            }
+            return o.pipe.count;
+        }
+        ObjectKind.File => {
+            return o.file.size - o.position;
         }
     }
     return FAILED;

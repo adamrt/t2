@@ -28,6 +28,11 @@ monitor, so the same tools run on both.
 | 18 | processes  | r0 buffer, r1 length                              | bytes of records           |
 | 19 | kill       | r0 process id                                     | 0                          |
 | 20 | memory     |                                                   | bytes for programs; free bytes in r1 |
+| 21 | window_open | r0 title, r1 length, r2 width, r3 height         | handle                     |
+| 22 | window_draw | r0 handle, r1 commands, r2 words                 | 0, or the GPU's error      |
+| 23 | event_wait | r0 buffer for an event, r1 milliseconds (-1 forever) | 1 with an event, 0 if none came |
+| 24 | available  | r0 handle                                         | bytes ready to read, -1 when nothing more will come |
+| 25 | screen_info | r0 buffer for four words                         | 0                          |
 
 ## Handles
 
@@ -62,3 +67,26 @@ bytes.
 `processes` fills its buffer with 48-byte records: the id, the parent's id,
 the state (1 ready, 2 waiting, 3 ended), the memory reserved, the CPU cycles
 used, and a name of up to 28 bytes.
+
+## Windows
+
+Windows share the screen's back buffer. A program draws in its window by
+handing `window_draw` a list of GPU commands (see [devices.md](devices.md)),
+with coordinates measured from the window's top left. The kernel points the
+GPU at the window and clips to the parts of it that other windows don't
+cover, and images and text come from the program's own memory. Windows keep
+no pixels, so whenever part of one needs painting again its program gets a
+draw event.
+
+`event_wait` fills eight words: the kind, the window's handle, x, y, key,
+modifiers, buttons, and 0. The kinds are 1 draw, 2 key down, 3 key up,
+4 text (the key is a character), 5 mouse move, 6 mouse down, 7 mouse up,
+8 wheel, and 9 close (the close box was clicked). Mouse positions are
+relative to the window; keys are as in [devices.md](devices.md).
+
+`screen_info` gives the screen's width and height, and the system font's
+glyph width and height. It fails when there is no screen.
+
+The kernel draws each window's frame and title bar. Dragging the title bar
+moves the window, clicking a window brings it to the front, and keys go to
+the front window.

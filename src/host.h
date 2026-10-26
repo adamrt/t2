@@ -28,3 +28,17 @@ const char *parse_executable(const uint8_t *file, size_t size, Executable *exe);
 void load_symbols(const char *program);
 void print_location(uint32_t addr);
 void report_fault(Machine *m);
+
+typedef struct {
+    const char *disk;
+    const char *symbols;
+    bool window;
+    bool fullscreen;
+    uint32_t width;         // a screen without a window, for testing
+    uint32_t height;
+    uint32_t run_for;       // milliseconds before stopping, or 0
+    const char *screenshot; // where to save the screen when stopping
+    const char *type;       // keys to press once the system has started
+} BootOptions;
+
+int boot(const BootOptions *options);

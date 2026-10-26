@@ -64,7 +64,7 @@ done
 for t in tests/os/*.txt; do
     name=$(basename $t .txt)
     cp build/disk.img $OUT/disk.img
-    got=$(timeout 60 $VM boot $OUT/disk.img < $t 2>&1)
+    got=$(timeout 60 $VM boot --headless $OUT/disk.img < $t 2>&1)
     if [ "$got" = "$(cat tests/os/$name.out)" ]; then report ok $t; else report "output differs" $t; fi
 done
 

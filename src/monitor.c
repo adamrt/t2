@@ -10,7 +10,6 @@
 #include <string.h>
 #include <unistd.h>
 
-int boot(const char *disk, const char *symbols);
 
 enum {
     SYS_EXIT,
@@ -126,15 +125,42 @@ static void
 usage(void)
 {
     fprintf(stderr, "usage: terrarium [--trace] [--stats] program.bin [arguments...]\n"
-                    "       terrarium boot disk.img [kernel.sym]\n");
+                    "       terrarium boot [--headless] [--fullscreen] disk.img [kernel.sym]\n"
+                    "       terrarium boot [--screen WxH] [--run-for ms] [--screenshot out.png] disk.img\n");
     exit(2);
 }
 
 int
 main(int argc, char **argv)
 {
-    if ((argc == 3 || argc == 4) && strcmp(argv[1], "boot") == 0)
-        return boot(argv[2], argc == 4 ? argv[3] : NULL);
+    if (argc >= 3 && strcmp(argv[1], "boot") == 0) {
+        BootOptions o = { .window = true };
+        int i = 2;
+        for (; i < argc && argv[i][0] == '-'; i++) {
+            if (strcmp(argv[i], "--headless") == 0) {
+                o.window = false;
+            } else if (strcmp(argv[i], "--fullscreen") == 0) {
+                o.fullscreen = true;
+            } else if (strcmp(argv[i], "--screen") == 0 && i + 1 < argc) {
+                if (sscanf(argv[++i], "%ux%u", &o.width, &o.height) != 2)
+                    usage();
+                o.window = false;
+            } else if (strcmp(argv[i], "--run-for") == 0 && i + 1 < argc) {
+                o.run_for = (uint32_t)atoi(argv[++i]);
+            } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
+                o.screenshot = argv[++i];
+            } else if (strcmp(argv[i], "--type") == 0 && i + 1 < argc) {
+                o.type = argv[++i];
+            } else {
+                usage();
+            }
+        }
+        if (i == argc || argc - i > 2)
+            usage();
+        o.disk = argv[i];
+        o.symbols = i + 1 < argc ? argv[i + 1] : NULL;
+        return boot(&o);
+    }
 
     bool trace = false;
     bool stats = false;

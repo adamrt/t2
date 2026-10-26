@@ -7,6 +7,10 @@ manifest {
 }
 
 fn main(memory: []u8) -> u32 {
+    var screen: ScreenInfo;
+    if screen_info(&screen) != FAILED {
+        spawn("/bin/term", "", STDIN, STDOUT, STDERR);
+    }
     print("\nWelcome to Terrarium. Type 'help' for help.\n\n");
     var shell = spawn("/bin/sh", "", STDIN, STDOUT, STDERR);
     if shell == FAILED {

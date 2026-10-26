@@ -6,9 +6,13 @@ assembler, the compiler, the kernel, the shell and the programs.
 
 ```sh
 make            # the machine, the tools (built by themselves), and a disk
-make run        # boot Terrarium in this terminal
+make run        # boot Terrarium: a window with a terminal, and a console here
 make test
 ```
+
+`make run` opens a window with the desktop and a terminal, and the host
+terminal becomes Terrarium's console, with its own shell. Try `demo` in
+either.
 
 Inside Terrarium:
 
@@ -38,11 +42,16 @@ build/terrarium build/hello.bin
 | `system/kernel/`   | The kernel                                             |
 | `system/bin/`      | The shell and programs                                 |
 | `system/lib/`      | The runtime and libraries                              |
-| `system/tools/`    | `mkdisk`, which builds disk images                     |
+| `system/tools/`    | `mkdisk` and `mkfont`, which build disks and fonts     |
+| `system/fonts/`    | Terra, the system font, drawn as text                  |
 | `bootstrap/`       | Seed builds of the tools, see its README               |
 | `tests/`           | Instruction, fault, language and system tests          |
 
-`build/terrarium boot disk.img [kernel.sym]` starts the whole machine.
+`build/terrarium boot [--headless] [--fullscreen] disk.img [kernel.sym]`
+starts the whole machine; `--headless` leaves out the screen. For testing,
+`--screen WxH` gives it a screen without a window, `--type text` presses
+keys once it has started, `--run-for ms` stops it, and `--screenshot
+out.png` saves the screen when it stops.
 `build/terrarium [--trace] [--stats] program.bin [arguments...]` runs one
 program directly on the development monitor. With `--trace` it prints every instruction,
 and `--stats` prints the cycle count at exit. If a `program.sym` file sits
