@@ -46,10 +46,8 @@ enum {
     IRQ_NET = 16,
 };
 
-enum {
-    CONSOLE_EMPTY = 0xffffffffu,
-    CONSOLE_CLOSED = 0xfffffffeu,
-};
+#define CONSOLE_EMPTY 0xffffffffu
+#define CONSOLE_CLOSED 0xfffffffeu
 
 typedef struct {
     uint8_t input[4096];

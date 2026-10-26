@@ -24,11 +24,12 @@ processes run again and repeat the call. The kernel never keeps half-finished
 calls.
 
 **Tools in Terrarium's own languages.** The assembler is written in
-Terrarium assembly and the compiler in the Terrarium language. Throwaway
-Python versions (not kept) built them once; since then each builds itself
-from the seeds in `bootstrap/`. Inside Terrarium,
-`sh /src/scripts/build-tc` rebuilds the compiler and checks that it matches
-the host's build byte for byte.
+Terrarium assembly and the compiler in the Terrarium language. To build
+them from nothing, `bootstrap/` has both again in C99, ported step for step
+so they give the same output byte for byte, which `make test` checks. The C
+tools build the Terrarium ones, which then rebuild themselves. Inside
+Terrarium, `sh /src/scripts/build-tc` rebuilds the compiler and checks that
+it matches the host's build byte for byte.
 
 **Memory.** A program declares its memory once. The kernel reserves exactly
 that or refuses to start it, and `main` gets the whole heap as a slice to

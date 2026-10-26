@@ -1,4 +1,4 @@
-CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion -Wstrict-prototypes
+CFLAGS = -std=c99 -pedantic -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion -Wstrict-prototypes
 BUILD = build
 
 VM = $(BUILD)/terrarium
@@ -15,6 +15,9 @@ COMPILE = $(TC) -L system/lib
 TC_SOURCE = $(sort $(wildcard system/tc/*.tr))
 KERNEL_SOURCE = $(sort $(wildcard system/kernel/*.tr))
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
+# The assembler and compiler in C, which build the real ones from nothing.
+ASM0 = $(BUILD)/asm0
+TC0 = $(BUILD)/tc0
 
 PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp manifest hold trace piano fetch serve worm calc date clock paint search sort hex life mv play chat
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
@@ -31,7 +34,7 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 SOURCES = $(wildcard system/tc/*.tr system/kernel/*.tr system/kernel/*.asm system/bin/*.tr system/tools/*.tr \
 	system/asm/*.asm system/fonts/*.txt) system/scripts/build-tc system/scripts/build-asm
 
-.PHONY: all test seed run clean
+.PHONY: all test run clean
 
 all: $(VM) $(TOOLS) $(BUILD)/disk.img $(BUILD)/mkimage.bin $(BUILD)/mksound.bin
 
@@ -39,14 +42,22 @@ $(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h src/audio.h src/n
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(MACHINE) $(SDL_LIBS)
 
-# Each tool is built by its seed, then rebuilt by that result, so the tools
-# you run are always built by themselves.
-$(BUILD)/asm.bin: system/asm/asm.asm bootstrap/asm.bin $(VM)
-	$(VM) bootstrap/asm.bin -o $(BUILD)/asm-stage1.bin system/asm/asm.asm
+$(ASM0): bootstrap/asm.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -o $@ bootstrap/asm.c
+
+$(TC0): $(wildcard bootstrap/tc/*.c) bootstrap/tc/tc.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -o $@ $(wildcard bootstrap/tc/*.c)
+
+# The C tools build each Terrarium tool from its source, then that result
+# builds it again, so the tools you run are always built by themselves.
+$(BUILD)/asm.bin: system/asm/asm.asm $(ASM0) $(VM)
+	$(ASM0) -o $(BUILD)/asm-stage1.bin system/asm/asm.asm
 	$(VM) $(BUILD)/asm-stage1.bin -o $@ -s $(BUILD)/asm.sym system/asm/asm.asm
 
-$(BUILD)/tc.bin: $(TC_SOURCE) $(LIBRARIES) $(RUNTIME) bootstrap/tc.bin $(BUILD)/asm.bin
-	$(VM) bootstrap/tc.bin -L system/lib -o $(BUILD)/tc-stage1.asm $(TC_SOURCE)
+$(BUILD)/tc.bin: $(TC_SOURCE) $(LIBRARIES) $(RUNTIME) $(TC0) $(BUILD)/asm.bin
+	$(TC0) -L system/lib -o $(BUILD)/tc-stage1.asm $(TC_SOURCE)
 	$(ASM) -o $(BUILD)/tc-stage1.bin $(RUNTIME) $(BUILD)/tc-stage1.asm
 	$(VM) $(BUILD)/tc-stage1.bin -L system/lib -o $(BUILD)/tc.asm $(TC_SOURCE)
 	$(ASM) -o $@ -s $(BUILD)/tc.sym $(RUNTIME) $(BUILD)/tc.asm
@@ -80,17 +91,8 @@ $(BUILD)/run.img: $(BUILD)/disk.img
 run: all $(BUILD)/run.img
 	$(VM) boot $(if $(WINDOW),,--fullscreen) $(BUILD)/run.img $(BUILD)/kernel.sym
 
-test: all
+test: all $(ASM0) $(TC0)
 	tests/run.sh
-
-# Replaces the seeds after checking that each tool reproduces itself.
-seed: all
-	$(ASM) -o $(BUILD)/asm-check.bin system/asm/asm.asm
-	cmp $(BUILD)/asm.bin $(BUILD)/asm-check.bin
-	$(COMPILE) -o $(BUILD)/tc-check.asm $(TC_SOURCE)
-	cmp $(BUILD)/tc.asm $(BUILD)/tc-check.asm
-	cp $(BUILD)/asm.bin bootstrap/asm.bin
-	cp $(BUILD)/tc.bin bootstrap/tc.bin
 
 clean:
 	rm -rf $(BUILD)

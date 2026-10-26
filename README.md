@@ -15,7 +15,8 @@ make run        # boot Terrarium fullscreen; this terminal becomes its console
 make test       # instructions, faults, the language, and whole-system sessions
 ```
 
-It needs a C11 compiler and SDL3. Terrarium fills the screen at a
+It needs a C99 compiler and SDL3, nothing else: even the assembler and
+compiler are built from source, by their C versions in `bootstrap/`. Terrarium fills the screen at a
 whole-number scale (Cmd-Q quits on a Mac); `make run WINDOW=1` opens a
 window instead.
 
@@ -23,7 +24,8 @@ window instead.
 
 | Part                          | Written in | Lines |
 | ----------------------------- | ---------- | ----- |
-| The machine (`src/`)          | C11        | 3,000 |
+| The machine (`src/`)          | C99        | 3,000 |
+| The tools in C (`bootstrap/`) | C99        | 5,200 |
 | The assembler (`system/asm/`) | assembly   | 2,500 |
 | The compiler (`system/tc/`)   | the language | 3,800 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
@@ -116,8 +118,8 @@ a screen without a window, `--type text` presses keys once it has started,
 control characters are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
 typing, and `--date seconds` stops the clock at one moment.
 
-The assembler and compiler build themselves from seeds in `bootstrap/`; see
-its README.
+The assembler and compiler are built by their C versions in `bootstrap/`,
+then rebuild themselves; see its README.
 
 ## Documentation
 
