@@ -414,6 +414,9 @@ fn run_pipeline() -> u32 {
         input = next_input;
     }
     if background {
+        if ids[stage_count - 1] == FAILED {
+            return 1;
+        }
         var out: Writer;
         var buffer: [64]u8;
         writer_init(&out, STDOUT, buffer[:]);
