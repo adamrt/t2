@@ -2,77 +2,86 @@
 
 Not built yet. Today `os.time()` counts milliseconds since the machine
 started, and `os.date()` gives the host's local time in seconds since 1970.
-This is what time should become.
+This is what time should become: two kinds of time, each in two 32-bit
+words, so nothing needs 64-bit arithmetic.
 
-## Two clocks
+## Two types
 
-| Clock     | For                                   | Value                                   |
-| --------- | ------------------------------------- | --------------------------------------- |
-| Wall      | file times, messages, dates           | `u32` seconds since 2000-01-01 00:00 UTC |
-| Monotonic | timers, animation, measuring how long | `u32` milliseconds since the machine started |
+```
+struct Time {           // when something happened: the wall clock
+    day u32             // days since 0000-01-01
+    milli u32           // milliseconds since midnight, 0 to 86,399,999
+}
 
-Keeping them apart matters more than the epoch. The wall clock can jump
-when the host's clock is set; the monotonic clock never goes back, so
-durations come from it.
+struct Instant {        // for measuring: the monotonic clock
+    second u32          // seconds since the machine started
+    nano u32            // 0 to 999,999,999
+}
+```
 
-Both are 32-bit because the machine is: the CPU and the language have no
-64-bit integers, and adding them would cost far more than it buys. Seconds
-since 2000 last until 2136. Milliseconds wrap after 49.7 days, but the
-difference of two readings is still right for anything shorter, since the
-subtraction wraps too.
+**Time** labels moments: file changes, messages, dates. It is UTC, on the
+Gregorian calendar carried back to year 0 (which is 1 BC, as ISO 8601
+numbers it), and it reaches 11.7 million years. A date without a time of
+day, like a birthday, is just a day number: 1 April 1980 is day 723,271.
+Day numbers work as plain numbers: `b - a` is the days between, `d + 7` a
+week later, `a < b` the earlier.
 
-## Dates and timestamps
+**Instant** measures: timeouts, animation, benchmarks, how long something
+took. It never jumps when the host's clock is set, which the wall clock can.
+Durations always come from it, never from subtracting two Times. Sound and
+video keep time by counting samples and frames, never by the wall clock.
 
-Two numbers for two jobs, both 32-bit:
+## Leap years and leap seconds
 
-| Type      | Counts                                  | Reaches                     | For                         |
-| --------- | --------------------------------------- | --------------------------- | --------------------------- |
-| Date      | `u32` days since 0000-01-01             | 11.7 million years          | birthdays, calendars, history |
-| Timestamp | `u32` seconds since 2000-01-01 00:00 UTC | 2000 to 2136                | when things happen here     |
+Leap years only matter when a day number becomes a year, month and day:
+divisible by 4 is a leap year, by 100 isn't, by 400 is. That's a few lines
+of 32-bit arithmetic.
 
-A date needs no seconds, which is what buys its range, and counting from
-year 0 keeps every date positive: 1 April 1980 is day 723,271. Year 0 is 1
-BC, as ISO 8601 numbers it, and the calendar is the Gregorian one all the
-way back. Dates work as plain numbers: `b - a` is the days between, `d + 7`
-a week later, `a < b` the earlier.
-
-A timestamp is a moment this machine saw, like a file changing, so it never
-comes before 2000; 32 bits of seconds only span 136 years, so its count has
-to start near now. The two meet at one constant: 2000-01-01 is day 730,485,
-so a timestamp's date is `730485 + seconds / 86400`. A moment before 2000 to
-the second, if anything needs one, is a date and the seconds into that day.
+Every day has exactly 86,400 seconds, as in Unix time: leap seconds aren't
+represented. They can't be predicted from a formula, and they're being
+abandoned: none will be added after 2035. Around one, the host's clock may
+repeat a second or stretch it, and Time follows the host. That is harmless
+for labelling moments and would be wrong for keeping time, which is why
+nothing keeps time with Time. RFC 7164 reached the same conclusion for
+streaming media: RTP's media clock runs steadily, and only its mapping to
+wall-clock time is disturbed by leap seconds.
 
 ## UTC
 
 Everything is UTC inside. A program that shows local time adds an offset
 for display; daylight saving and time-zone rules can come later without
-changing a timestamp. Time as text is ISO 8601: `2026-10-26T18:30:00Z`.
-Leap seconds are ignored, as Unix does: every day has 86,400 seconds.
+changing a stored Time. Time as text is ISO 8601:
+`2026-10-26T18:30:00.250Z`.
 
-## The module
+## The modules
+
+Since a struct can't be returned in the language, the calls fill one in.
 
 ```
 import time
+import clock
 
-var start = time.monotonic()
+var now time.Time
+time.now(&now)
+var d time.Calendar                  // year, month, day, hour, minute, second, milli
+time.to_calendar(&now, &d)
+time.put(&w, &now)                   // 2026-10-26T18:30:00.250Z
+var birthday = time.day(1980, 4, 1)  // 723,271
+
+var start clock.Instant
+clock.now(&start)
 do_work()
-var took = time.monotonic() - start        // milliseconds
-
-var now = time.now()                        // seconds since 2000, UTC
-var birthday = time.date(1980, 4, 1)        // day 723,271
-var days = time.today() - birthday
-var d time.Calendar
-time.calendar(birthday, &d)                 // year, month and day again
-time.put(&w, now)                           // 2026-10-26T18:30:00Z
-time.sleep(500)
+var took = clock.millis_since(&start)
+clock.sleep(500)                     // milliseconds
 ```
 
-The host turns its own clock into seconds since 2000 at the device: Unix
-time minus 946,684,800.
+The host turns its own clock into a Time at the device. 1970-01-01 is day
+719,528, so a Unix time `t` is day `719528 + t / 86400`, at
+`t % 86400 * 1000` milliseconds.
 
 ## A clock for tests
 
 Since we own the machine, the monotonic clock can follow the CPU's cycle
-counter instead of the host's clock, so a program sees the same times every
-run: replayable games, timeouts that test the same way each time. The wall
-clock can already be stopped at one moment with `--date`.
+counter instead of the host's clock, so a program sees the same Instants
+every run: replayable games, timeouts that test the same way each time. The
+wall clock can already be stopped at one moment with `--date`.
