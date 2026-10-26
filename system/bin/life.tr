@@ -133,9 +133,9 @@ fn step() {
         for column in 0..COLUMNS {
             var left = (column + COLUMNS - 1) % COLUMNS;
             var right = (column + 1) % COLUMNS;
-            var n = cells[up + left] + cells[up + column] + cells[up + right]
-                + cells[here + left] + cells[here + right]
-                + cells[down + left] + cells[down + column] + cells[down + right];
+            var n = cells[up + left] + cells[up + column] + cells[up + right] +
+                cells[here + left] + cells[here + right] +
+                cells[down + left] + cells[down + column] + cells[down + right];
             var alive: u8 = 0;
             if n == 3 || (n == 2 && cells[here + column] == 1) {
                 alive = 1;

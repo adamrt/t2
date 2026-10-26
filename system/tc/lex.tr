@@ -37,12 +37,14 @@ var lex_file: u32;
 var lex_text: []u8;
 var lex_pos: u32;
 var lex_line: u32;
+var lex_last: Tok;          // the token before, which decides how a line ends
 
 fn lex_start(file: u32) {
     lex_file = file;
     lex_text = files[file].text;
     lex_pos = 0;
     lex_line = 1;
+    lex_last = Tok.Semicolon;
     next_token();
 }
 
@@ -59,10 +61,27 @@ fn peek_char(offset: u32) -> u8 {
     return lex_text[lex_pos + offset];
 }
 
-fn skip_space() {
+// A line that ends with one of these ends its statement too, as if it ended
+// with a semicolon.
+fn ends_statement(kind: Tok) -> bool {
+    match kind {
+        Tok.Name, Tok.Int, Tok.Fixed, Tok.Str, Tok.RParen, Tok.RBracket, Tok.KwReturn,
+        Tok.KwBreak, Tok.KwContinue, Tok.KwTrue, Tok.KwFalse, Tok.KwNull => {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Skips spaces and comments. Returns true, without going past it, at the end
+// of a line that ends a statement.
+fn skip_space() -> bool {
     while lex_pos < lex_text.len {
         var c = lex_text[lex_pos];
         if c == '\n' {
+            if ends_statement(lex_last) {
+                return true;
+            }
             lex_line += 1;
             lex_pos += 1;
         } else if c == ' ' || c == '\t' || c == '\r' {
@@ -72,17 +91,28 @@ fn skip_space() {
                 lex_pos += 1;
             }
         } else {
-            return;
+            return false;
         }
     }
+    return ends_statement(lex_last);
 }
 
 // Reads the next token into tok.
 fn next_token() {
-    skip_space();
+    read_token();
+    lex_last = tok.kind;
+}
+
+fn read_token() {
+    var line_ends = skip_space();
     tok.file = lex_file;
     tok.line = lex_line;
     tok.value = 0;
+    if line_ends {
+        tok.kind = Tok.Semicolon;
+        tok.text = "end of line";
+        return;
+    }
     if lex_pos >= lex_text.len {
         tok.kind = Tok.End;
         tok.text = "end of file";

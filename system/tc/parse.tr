@@ -136,12 +136,25 @@ fn expect_name() -> []u8 {
     return text;
 }
 
+// A statement or declaration ends with a semicolon, or with the end of its
+// line, or just before the } that closes its block.
+fn expect_end() {
+    if tok.kind != Tok.RBrace {
+        expect(Tok.Semicolon, ";");
+    }
+}
+
+// Whether a type starts here, as the result after a function's parameters.
+fn starts_type(kind: Tok) -> bool {
+    return kind == Tok.Name || kind == Tok.Star || kind == Tok.LBracket || kind == Tok.KwFn;
+}
+
 fn parse_file(file: u32) {
     lex_start(file);
     var f = &files[file];
     while take(Tok.KwImport) {
         var m = load_module(expect_name());
-        expect(Tok.Semicolon, ";");
+        expect_end();
         if imported(file, modules[m]) == 0 {
             if f.import_count == MAX_IMPORTS {
                 parse_fail("too many imports");
@@ -167,7 +180,7 @@ fn parse_declaration() -> *Node {
         while !take(Tok.RParen) {
             var p = node(N.Param);
             p.name = expect_name();
-            expect(Tok.Colon, ":");
+            take(Tok.Colon);
             p.a = parse_type();
             append(&params, p);
             if tok.kind != Tok.RParen {
@@ -175,7 +188,7 @@ fn parse_declaration() -> *Node {
             }
         }
         n.list = params.first;
-        if take(Tok.Arrow) {
+        if take(Tok.Arrow) || starts_type(tok.kind) {
             n.a = parse_type();
         }
         if !take(Tok.Semicolon) {
@@ -191,9 +204,9 @@ fn parse_declaration() -> *Node {
         while !take(Tok.RBrace) {
             var f = node(N.Field);
             f.name = expect_name();
-            expect(Tok.Colon, ":");
+            take(Tok.Colon);
             f.a = parse_type();
-            expect(Tok.Semicolon, ";");
+            expect_end();
             append(&fields, f);
         }
         n.list = fields.first;
@@ -211,7 +224,7 @@ fn parse_declaration() -> *Node {
                 item.a = parse_expr();
             }
             append(&items, item);
-            if tok.kind != Tok.RBrace {
+            if tok.kind != Tok.RBrace && !take(Tok.Semicolon) {
                 expect(Tok.Comma, ",");
             }
         }
@@ -221,20 +234,20 @@ fn parse_declaration() -> *Node {
     if take(Tok.KwConst) {
         n = node(N.Const);
         n.name = expect_name();
-        if take(Tok.Colon) {
+        if take(Tok.Colon) || tok.kind != Tok.Assign {
             n.a = parse_type();
         }
         expect(Tok.Assign, "=");
         n.b = parse_expr();
-        expect(Tok.Semicolon, ";");
+        expect_end();
         return n;
     }
     if take(Tok.KwVar) {
         n = node(N.Global);
         n.name = expect_name();
-        expect(Tok.Colon, ":");
+        take(Tok.Colon);
         n.a = parse_type();
-        expect(Tok.Semicolon, ";");
+        expect_end();
         return n;
     }
     if take(Tok.KwManifest) {
@@ -246,7 +259,7 @@ fn parse_declaration() -> *Node {
             entry.name = expect_name();
             expect(Tok.Assign, "=");
             entry.a = parse_expr();
-            expect(Tok.Semicolon, ";");
+            expect_end();
             append(&entries, entry);
         }
         n.list = entries.first;
@@ -273,7 +286,7 @@ fn parse_type() -> *Node {
             }
         }
         n.list = params.first;
-        if take(Tok.Arrow) {
+        if take(Tok.Arrow) || starts_type(tok.kind) {
             n.a = parse_type();
         }
         return n;
@@ -335,7 +348,7 @@ fn parse_statement() -> *Node {
         n = node(N.Var);
         next_token();
         n.name = expect_name();
-        if take(Tok.Colon) {
+        if take(Tok.Colon) || (tok.kind != Tok.Assign && tok.kind != Tok.Semicolon) {
             n.a = parse_type();
         }
         if take(Tok.Assign) {
@@ -344,7 +357,7 @@ fn parse_statement() -> *Node {
         if n.a == null && n.b == null {
             parse_fail("a variable needs a type or a value");
         }
-        expect(Tok.Semicolon, ";");
+        expect_end();
         return n;
     }
     if tok.kind == Tok.KwIf {
@@ -411,7 +424,7 @@ fn parse_statement() -> *Node {
             n.kind = N.Continue;
         }
         next_token();
-        expect(Tok.Semicolon, ";");
+        expect_end();
         return n;
     }
     if tok.kind == Tok.KwReturn {
@@ -420,7 +433,7 @@ fn parse_statement() -> *Node {
         if tok.kind != Tok.Semicolon {
             n.a = parse_expr();
         }
-        expect(Tok.Semicolon, ";");
+        expect_end();
         return n;
     }
     n = node(N.ExprStmt);
@@ -434,7 +447,7 @@ fn parse_statement() -> *Node {
     } else {
         n.a = e;
     }
-    expect(Tok.Semicolon, ";");
+    expect_end();
     return n;
 }
 
