@@ -86,9 +86,9 @@ accents added.
 - Text is UTF-8, left to right, one character per cell. Terra draws ASCII
   and Latin-1 (accented letters and the common symbols); anything else shows
   as `?`.
-- The language has no function pointers, generics or methods, and every
-  top-level name in a program shares one namespace, so library names need
-  care.
+- The language has no generics or methods (a struct can hold functions
+  instead), and every top-level name in a program shares one namespace, so
+  library names need care.
 - The editor copies whole lines; it has no selection.
 - Sound through the host was never listened to. The tests only use the
   silent device, which keeps the same time.
@@ -99,7 +99,7 @@ accents added.
 ## Ideas
 
 - A user-space desktop, now that windows, events and permissions exist.
-- Function pointers and modules in the language.
+- Modules in the language.
 - Translating hot code to native ARM64.
 - UDP, and a chat program or a networked game.
 - A streaming audio format and a player.

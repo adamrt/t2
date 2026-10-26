@@ -5,7 +5,7 @@
 // stack, and r7 points at the current function's frame.
 //
 // Only functions that main can reach are generated: starting from main, each
-// call puts its function in the queue.
+// call or use of a function as a value puts it in the queue.
 
 struct StringData {
     node: *Node;
@@ -571,7 +571,11 @@ fn gen_value(e: *Node) {
                 put(&out, "r0 = _");
                 put(&out, e.sym.name);
                 end_line();
-                load("r0", t);
+                if e.sym.kind == SymKind.Fn {
+                    use_function(e.sym);
+                } else {
+                    load("r0", t);
+                }
             }
         }
         N.Member => {
@@ -717,8 +721,15 @@ fn push_args(a: *Node, p: *Node) -> u32 {
 }
 
 fn gen_call(e: *Node) {
-    var size = push_args(e.list, e.sym.node.list);
-    emit_call(e.sym);
+    var size: u32;
+    if e.sym != null {
+        size = push_args(e.list, e.sym.node.list);
+        emit_call(e.sym);
+    } else {
+        size = push_args(e.list, e.a.ty.params);
+        gen_expr(e.a);
+        emit("call r0");
+    }
     if size > 0 {
         emit_value("sp += ", size);
     }

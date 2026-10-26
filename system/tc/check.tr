@@ -263,7 +263,7 @@ fn coerce(e: *Node, t: *Type, want: *Type) {
         e.ty = want;
         return;
     }
-    if t == t_null && want.kind == TypeKind.Ptr {
+    if t == t_null && (want.kind == TypeKind.Ptr || want.kind == TypeKind.Func) {
         e.ty = want;
         return;
     }
@@ -322,7 +322,7 @@ fn lookup(e: *Node) -> *Type {
             return s.ty;
         }
         SymKind.Fn => {
-            fail_name(e, "a function can only be called:", e.name);
+            return func_type(s.node.list, s.ty);
         }
     }
     fail_name(e, "this is a type:", e.name);
@@ -492,27 +492,29 @@ fn check_member(e: *Node) -> *Type {
     return null;
 }
 
+// A call to a function by its name is direct. Anything else, like a
+// variable or field holding a function, is called through its value.
 fn check_call(e: *Node) -> *Type {
-    if e.a.kind != N.Name {
-        fail(e, "only named functions can be called");
+    var params: *Node;
+    var result: *Type;
+    var s: *Sym = null;
+    if e.a.kind == N.Name && !is_local(e.a.name) {
+        s = find_sym(e.a.name);
     }
-    var local = scope;
-    while local != null {
-        if text_equal(local.name, e.a.name) {
-            fail_name(e, "not a function:", e.a.name);
+    if s != null && s.kind == SymKind.Fn {
+        declare(s);
+        e.sym = s;
+        params = s.node.list;
+        result = s.ty;
+    } else {
+        var t = check(e.a, null);
+        if t.kind != TypeKind.Func {
+            fail(e, "only functions can be called");
         }
-        local = local.next;
+        params = t.params;
+        result = t.elem;
     }
-    var s = find_sym(e.a.name);
-    if s == null {
-        fail_name(e, "unknown name", e.a.name);
-    }
-    if s.kind != SymKind.Fn {
-        fail_name(e, "not a function:", e.a.name);
-    }
-    declare(s);
-    e.sym = s;
-    var p = s.node.list;
+    var p = params;
     var a = e.list;
     while p != null && a != null {
         coerce(a, check(a, p.ty), p.ty);
@@ -520,9 +522,23 @@ fn check_call(e: *Node) -> *Type {
         a = a.next;
     }
     if p != null || a != null {
-        fail_name(e, "wrong number of arguments for", s.name);
+        if s != null && s.kind == SymKind.Fn {
+            fail_name(e, "wrong number of arguments for", s.name);
+        }
+        fail(e, "wrong number of arguments");
     }
-    return s.ty;
+    return result;
+}
+
+fn is_local(name: []u8) -> bool {
+    var local = scope;
+    while local != null {
+        if text_equal(local.name, name) {
+            return true;
+        }
+        local = local.next;
+    }
+    return false;
 }
 
 fn check_unary(e: *Node, want: *Type) -> *Type {
@@ -628,9 +644,9 @@ fn check_binary(e: *Node) -> *Type {
     } else {
         ty = arith(lt);
         if arith(rt) != ty {
-            if lt.kind == TypeKind.Ptr && rt == t_null {
+            if (lt.kind == TypeKind.Ptr || lt.kind == TypeKind.Func) && rt == t_null {
                 ty = lt;
-            } else if lt == t_null && rt.kind == TypeKind.Ptr {
+            } else if lt == t_null && (rt.kind == TypeKind.Ptr || rt.kind == TypeKind.Func) {
                 ty = rt;
             } else {
                 error_start(e.file, e.line);
@@ -653,10 +669,10 @@ fn check_binary(e: *Node) -> *Type {
     }
     e.operand = ty;
     if comparison {
-        if (ty.kind == TypeKind.Ptr || ty.kind == TypeKind.Bool) && op != Tok.Equal && op != Tok.NotEqual {
-            fail(e, "pointers and bools can only be compared with == and !=");
+        if (ty.kind == TypeKind.Ptr || ty.kind == TypeKind.Bool || ty.kind == TypeKind.Func) && op != Tok.Equal && op != Tok.NotEqual {
+            fail(e, "pointers, functions and bools can only be compared with == and !=");
         }
-        if ty.kind != TypeKind.Int && ty.kind != TypeKind.Fixed && ty.kind != TypeKind.Enum && ty.kind != TypeKind.Ptr && ty.kind != TypeKind.Bool {
+        if ty.kind != TypeKind.Int && ty.kind != TypeKind.Fixed && ty.kind != TypeKind.Enum && ty.kind != TypeKind.Ptr && ty.kind != TypeKind.Bool && ty.kind != TypeKind.Func {
             fail(e, "these values can't be compared");
         }
         return t_bool;

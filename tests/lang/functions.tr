@@ -1,0 +1,98 @@
+// Functions as values. Prints "ok", or the number of the first failed check.
+
+struct Op {
+    name: []u8;
+    run: fn(u32) -> u32;
+}
+
+var failures: u32;
+var counter: u32;
+var handler: fn();
+
+fn check(ok: bool, number: u32) {
+    if !ok && failures == 0 {
+        failures = number;
+    }
+}
+
+fn double(x: u32) -> u32 {
+    return x * 2;
+}
+
+fn square(x: u32) -> u32 {
+    return x * x;
+}
+
+fn bump() {
+    counter += 1;
+}
+
+fn apply(f: fn(u32) -> u32, x: u32) -> u32 {
+    return f(x);
+}
+
+fn total(xs: []u32) -> u32 {
+    var sum: u32 = 0;
+    for i in 0..xs.len {
+        sum += xs[i];
+    }
+    return sum;
+}
+
+fn pick(big: bool) -> fn(u32) -> u32 {
+    if big {
+        return square;
+    }
+    return double;
+}
+
+fn descending(a: u32, b: u32) -> bool {
+    return a > b;
+}
+
+fn sort(xs: []u32, before: fn(u32, u32) -> bool) {
+    for i in 1..xs.len {
+        var j = i;
+        while j > 0 && before(xs[j], xs[j - 1]) {
+            var t = xs[j];
+            xs[j] = xs[j - 1];
+            xs[j - 1] = t;
+            j -= 1;
+        }
+    }
+}
+
+fn main(memory: []u8) -> u32 {
+    check(apply(double, 5) == 10 && apply(square, 5) == 25, 1);
+    var f: fn(u32) -> u32 = square;
+    check(f(4) == 16, 2);
+    var ops: [2]Op;
+    ops[0].run = double;
+    ops[1].run = square;
+    check(ops[1].run(3) == 9 && ops[0].run(3) == 6, 3);
+    var g = double;
+    check(g == double && g != square, 4);
+    check(handler == null, 5);
+    handler = bump;
+    handler();
+    handler();
+    check(counter == 2, 6);
+    var table: [2]fn(u32) -> u32;
+    table[1] = pick(true);
+    check(table[1](5) == 25 && pick(false)(5) == 10, 7);
+    var numbers: [4]u32;
+    numbers[0] = 3;
+    numbers[1] = 9;
+    numbers[2] = 1;
+    numbers[3] = 4;
+    var sum = total;
+    check(sum(numbers[:]) == 17, 8);
+    sort(numbers[:], descending);
+    check(numbers[0] == 9 && numbers[1] == 4 && numbers[2] == 3 && numbers[3] == 1, 9);
+    var p = &ops[0];
+    check(p.run(10) == 20, 10);
+    if failures == 0 {
+        print("ok\n");
+    }
+    return failures;
+}

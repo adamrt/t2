@@ -30,6 +30,7 @@ functions `main` can reach end up in the program.
 | `*T`      | pointer to a `T`, or `null`                              |
 | `[]T`     | slice: a pointer and a length                            |
 | `[N]T`    | array of `N` values                                      |
+| `fn(T, U) -> R` | a function taking a `T` and a `U` and giving an `R`, or `null` |
 | `Name`    | a struct or enum                                         |
 
 Arithmetic happens on `u32` and `i32`. A `u8` or `u16` becomes a `u32` when
@@ -100,6 +101,28 @@ checked. `p[0:n]` makes a slice from a pointer, and is the one unchecked
 operation.
 
 Following `null` stops the program, because nothing lives at low addresses.
+
+### Functions as values
+
+A function's name without a call is its value, with a type like
+`fn(u32, []u8) -> bool`, or `fn(u32)` for one that gives nothing back.
+Variables, fields, parameters and results can hold functions, and calling
+one calls the function it holds:
+
+```
+struct Button {
+    label: []u8;
+    pressed: fn(*Button);
+}
+
+fn sort(items: []u32, before: fn(u32, u32) -> bool) { ... }
+
+button.pressed(&button);
+sort(numbers[:], descending);
+```
+
+Functions compare with `==` and `!=`, including against `null`. Calling
+`null` stops the program.
 
 Source files are UTF-8. A string literal is a `[]u8` holding its text as
 UTF-8, and a character literal like `'a'` or `'é'` is the character's
@@ -206,4 +229,5 @@ Compiled code is plain assembly, so assembly can call it and be called.
   the lower address, then the length.
 - The result is in r0, or for a slice the pointer in r0 and length in r1.
 - A function may change r0–r6. It keeps r7 (the frame pointer) and sp.
-- A name `foo` in the language is `_foo` in assembly.
+- A name `foo` in the language is `_foo` in assembly. A function value is
+  its code address, and calling one is `call` with a register.

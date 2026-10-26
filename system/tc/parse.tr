@@ -17,6 +17,7 @@ enum N {
     TypePtr,        // a: element
     TypeSlice,      // a: element
     TypeArray,      // a: length, b: element
+    TypeFn,         // list: parameter types, a: result type
 
     // Statements
     Block,          // list: statements
@@ -242,6 +243,23 @@ fn parse_declaration() -> *Node {
 
 fn parse_type() -> *Node {
     var n: *Node;
+    if tok.kind == Tok.KwFn {
+        n = node(N.TypeFn);
+        next_token();
+        expect(Tok.LParen, "(");
+        var params: List;
+        while !take(Tok.RParen) {
+            append(&params, parse_type());
+            if tok.kind != Tok.RParen {
+                expect(Tok.Comma, ",");
+            }
+        }
+        n.list = params.first;
+        if take(Tok.Arrow) {
+            n.a = parse_type();
+        }
+        return n;
+    }
     if tok.kind == Tok.Star {
         n = node(N.TypePtr);
         next_token();

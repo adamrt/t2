@@ -9,6 +9,7 @@ enum TypeKind {
     Array,
     Struct,
     Enum,
+    Func,           // a function's address, called through
     Untyped,        // a number that hasn't taken a type yet
     Null,
     Void,
@@ -20,14 +21,15 @@ struct Type {
     align: u32;
     signed: bool;
     name: []u8;         // for builtin types
-    elem: *Type;        // what a pointer, slice or array holds
+    elem: *Type;        // what a pointer, slice or array holds, or a function's result
     length: u32;        // an array's length
     sym: *Sym;          // the struct or enum that declares it
     fields: *Field;
+    params: *Node;      // a function type's parameters, each with its type
     ptr: *Type;         // the pointer to this type, once made
     slice: *Type;       // the slice of this type, once made
     arrays: *Type;      // arrays of this type, linked by next
-    next: *Type;
+    next: *Type;        // also links the function types
 }
 
 struct Field {
@@ -75,6 +77,7 @@ var t_bool: *Type;
 var t_untyped: *Type;
 var t_null: *Type;
 var t_void: *Type;
+var func_types: *Type;
 
 fn make_type(kind: TypeKind, name: []u8, size: u32) -> *Type {
     var t = new(&arena, Type);
@@ -145,12 +148,36 @@ fn array_of(t: *Type, length: u32) -> *Type {
     return a;
 }
 
+// The function type with these parameters and result. Equal signatures
+// share one type, so types can be compared as pointers.
+fn func_type(params: *Node, result: *Type) -> *Type {
+    var t = func_types;
+    while t != null {
+        var a = t.params;
+        var b = params;
+        while a != null && b != null && a.ty == b.ty {
+            a = a.next;
+            b = b.next;
+        }
+        if a == null && b == null && t.elem == result {
+            return t;
+        }
+        t = t.next;
+    }
+    t = make_type(TypeKind.Func, "", 4);
+    t.params = params;
+    t.elem = result;
+    t.next = func_types;
+    func_types = t;
+    return t;
+}
+
 fn is_int(t: *Type) -> bool {
     return t.kind == TypeKind.Int;
 }
 
 fn is_scalar(t: *Type) -> bool {
-    return t.kind == TypeKind.Int || t.kind == TypeKind.Fixed || t.kind == TypeKind.Bool || t.kind == TypeKind.Ptr || t.kind == TypeKind.Enum;
+    return t.kind == TypeKind.Int || t.kind == TypeKind.Fixed || t.kind == TypeKind.Bool || t.kind == TypeKind.Ptr || t.kind == TypeKind.Enum || t.kind == TypeKind.Func;
 }
 
 fn is_fixed(t: *Type) -> bool {
@@ -187,6 +214,22 @@ fn put_type(w: *Writer, t: *Type) {
         }
         TypeKind.Struct, TypeKind.Enum => {
             put(w, t.sym.name);
+        }
+        TypeKind.Func => {
+            put(w, "fn(");
+            var p = t.params;
+            while p != null {
+                put_type(w, p.ty);
+                if p.next != null {
+                    put(w, ", ");
+                }
+                p = p.next;
+            }
+            put_byte(w, ')');
+            if t.elem != t_void {
+                put(w, " -> ");
+                put_type(w, t.elem);
+            }
         }
         else => {
             put(w, t.name);
@@ -442,29 +485,47 @@ fn declare(s: *Sym) {
             s.ty = resolve(n.a);
         }
         SymKind.Fn => {
-            var p = n.list;
-            while p != null {
-                p.ty = resolve(p.a);
-                if !is_scalar(p.ty) && p.ty.kind != TypeKind.Slice {
-                    fail(p, "parameters must be integers, bool, enums, pointers or slices");
-                }
-                p = p.next;
-            }
-            s.ty = t_void;
-            if n.a != null {
-                s.ty = resolve(n.a);
-                if !is_scalar(s.ty) && s.ty.kind != TypeKind.Slice {
-                    fail(n, "results must be integers, bool, enums, pointers or slices");
-                }
-            }
+            resolve_params(n.list);
+            s.ty = resolve_result(n.a);
         }
     }
     s.state = 2;
 }
 
+// Gives each parameter its type. A parameter's type node is in a, or for a
+// function type, the parameter is the type node itself.
+fn resolve_params(p: *Node) {
+    while p != null {
+        var tn = p.a;
+        if p.kind != N.Param {
+            tn = p;
+        }
+        p.ty = resolve(tn);
+        if !is_scalar(p.ty) && p.ty.kind != TypeKind.Slice {
+            fail(p, "parameters must be integers, bool, enums, pointers, functions or slices");
+        }
+        p = p.next;
+    }
+}
+
+fn resolve_result(tn: *Node) -> *Type {
+    if tn == null {
+        return t_void;
+    }
+    var t = resolve(tn);
+    if !is_scalar(t) && t.kind != TypeKind.Slice {
+        fail(tn, "results must be integers, bool, enums, pointers, functions or slices");
+    }
+    return t;
+}
+
 // The type a type node names, complete enough to know its size.
 fn resolve(tn: *Node) -> *Type {
     match tn.kind {
+        N.TypeFn => {
+            resolve_params(tn.list);
+            return func_type(tn.list, resolve_result(tn.a));
+        }
         N.TypePtr => {
             return ptr_to(resolve_ref(tn.a));
         }
