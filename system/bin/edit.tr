@@ -232,6 +232,10 @@ fn delete_after() {
 // Forgets what could be redone, since a new change replaces it.
 fn drop_redo() {
     redo_count = change_count;
+    // A save among the dropped changes no longer matches any state.
+    if saved_at != NONE && saved_at > change_count {
+        saved_at = NONE;
+    }
     history_used = 0;
     if change_count > 0 {
         history_used = changes[change_count - 1].start + changes[change_count - 1].length;
@@ -453,7 +457,9 @@ fn load() {
     close(file);
     // Keep the gap after the text, with the cursor at the start.
     var n = gap_start;
-    mem_copy(&text[CAPACITY - n], &text[0], n);
+    if n > 0 {
+        mem_copy(&text[CAPACITY - n], &text[0], n);
+    }
     gap_start = 0;
     gap_end = CAPACITY - n;
 }
@@ -488,13 +494,16 @@ fn handle(e: *Event) {
     if change_count > 0 {
         last = &changes[change_count - 1];
     }
+    // A key that types something also sends its character as text, which is
+    // what counts; its key down changes nothing.
+    var typing_key = e.kind == EVENT_KEY_DOWN && e.key >= 32 && e.key < 127 && (e.modifiers & (MOD_CTRL | MOD_SUPER)) == 0;
     var goes_on = e.kind == EVENT_TEXT && typing && !has_selection() && change_count > 0 && last.inserted && last.position + last.length == cursor;
-    if !goes_on {
+    if !goes_on && (e.kind == EVENT_TEXT || (e.kind == EVENT_KEY_DOWN && !typing_key)) {
         action += 1;
     }
     if e.kind == EVENT_TEXT {
         typing = true;
-    } else if e.kind == EVENT_KEY_DOWN || e.kind == EVENT_MOUSE_DOWN {
+    } else if (e.kind == EVENT_KEY_DOWN && !typing_key) || e.kind == EVENT_MOUSE_DOWN {
         typing = false;
     }
     if asking != Ask.Nothing && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {

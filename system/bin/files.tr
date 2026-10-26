@@ -52,7 +52,7 @@ fn main(memory: []u8) -> u32 {
             rows = ((height - 28) / ROW) as u32;
         } else if e.kind == EVENT_MOUSE_DOWN {
             var row = (e.y - 24) / ROW;
-            if row >= 0 {
+            if row >= 0 && (row as u32) < rows {
                 click(top + row as u32);
             }
         } else if e.kind == EVENT_WHEEL {

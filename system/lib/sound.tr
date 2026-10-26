@@ -5,6 +5,7 @@ const SOUND_HEADER: u32 = 16;
 const SOUND_BLOCK: u32 = 256;          // the bytes in a full block
 const BLOCK_SAMPLES: u32 = 505;        // the samples in a full block
 const SOUND_STEPS: u32 = 89;
+const MAX_SOUND_RATE: u32 = 192000;
 
 struct SoundHeader {
     rate: u32;
@@ -56,7 +57,7 @@ fn sound_header(bytes: []u8, h: *SoundHeader) -> bool {
     }
     h.rate = read_word(bytes, 4);
     h.samples = read_word(bytes, 8);
-    return h.rate > 0;
+    return h.rate > 0 && h.rate <= MAX_SOUND_RATE;
 }
 
 fn write_sound_header(bytes: []u8, rate: u32, samples: u32) {

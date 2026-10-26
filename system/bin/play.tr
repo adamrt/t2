@@ -79,7 +79,7 @@ fn play_file(name: []u8) -> bool {
     if rate == 0 {
         rate = 22050;
     }
-    var step = (h.rate << 16) / rate;
+    var step = (h.rate / rate << 16) + (h.rate % rate << 16) / rate;
     var position: u32 = 0;
     var left = h.samples;
     while left > 0 {

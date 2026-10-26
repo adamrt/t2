@@ -471,18 +471,27 @@ boot(const BootOptions *o)
             break;
         // Typed keys arrive one at a time, as if from a quick typist. A newline
         // is Enter, escape is Escape, backspace is Backspace, and other
-        // control characters are Ctrl with a letter.
-        if (typing != NULL && *typing != '\0' && now() >= next_key && h.events.count < INPUT_QUEUE) {
+        // control characters are Ctrl with a letter. A key that types an
+        // ASCII character sends key down, the text, and key up, as the window
+        // does; other characters send only their text.
+        if (typing != NULL && *typing != '\0' && now() >= next_key && h.events.count + 3 <= INPUT_QUEUE) {
             const uint8_t *s = (const uint8_t *)typing;
             uint32_t c = utf8_next(&s, s + strlen(typing));
             typing = (const char *)s;
-            InputEvent e = { INPUT_TEXT, c, 0, 0 };
-            if (c == '\n' || c == 27 || c == '\t' || c == '\b')
-                e = (InputEvent){ INPUT_KEY_DOWN, c == '\n' ? 10 : c, 0, 0 };
-            else if (c < 32)
-                e = (InputEvent){ INPUT_KEY_DOWN, 'a' + c - 1, 2, 0 };
-            h.events.events[(h.events.start + h.events.count) % INPUT_QUEUE] = e;
-            h.events.count++;
+            InputQueue *q = &h.events;
+            if (c == '\n' || c == 27 || c == '\t' || c == '\b') {
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_KEY_DOWN, c == '\n' ? 10 : c, 0, 0 };
+            } else if (c < 32) {
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_KEY_DOWN, 'a' + c - 1, 2, 0 };
+            } else if (c < 127) {
+                bool shifted = c >= 'A' && c <= 'Z';
+                uint32_t key = shifted ? c - 'A' + 'a' : c;
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_KEY_DOWN, key, shifted ? 1u : 0u, 0 };
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_TEXT, c, 0, 0 };
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_KEY_UP, key, shifted ? 1u : 0u, 0 };
+            } else {
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_TEXT, c, 0, 0 };
+            }
             next_key = now() + 20000;
         } else if ((typing == NULL || *typing == '\0') && drag_step >= 0 && now() >= next_key + 300000 && h.events.count + 2 < INPUT_QUEUE) {
             // The drag comes after the typing, in 10 steps: down, moves, up.

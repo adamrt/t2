@@ -43,7 +43,7 @@ fn main(memory: []u8) -> u32 {
             channels = body[2] | (body[3] << 8);
             rate = read_word(body, 4);
             var bits = body[14] | (body[15] << 8);
-            if format != 1 || bits != 16 || channels == 0 || channels > 8 || rate == 0 {
+            if format != 1 || bits != 16 || channels == 0 || channels > 8 || rate == 0 || rate > MAX_SOUND_RATE {
                 fail("only 16-bit PCM WAVs work");
             }
         } else if text_equal(wav[at:at + 4], "data") {

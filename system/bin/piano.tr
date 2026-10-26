@@ -164,6 +164,9 @@ fn main(memory: []u8) -> u32 {
         var redraw = false;
         while event_wait(&e, 15) == 1 {
             if e.kind == EVENT_CLOSE {
+                if recording {
+                    record();
+                }
                 return 0;
             }
             if e.kind == EVENT_TEXT && (e.key == 'r' || e.key == 'R') {

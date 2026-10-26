@@ -18,7 +18,7 @@ fn main(memory: []u8) -> u32 {
         complain("trace", "usage: trace program [arguments...]", "");
         return 2;
     }
-    var args: [32][]u8;
+    var args: [64][]u8;
     var count = get_args(&arena, args[:]);
     var path: [256]u8;
     var n: u32 = 0;

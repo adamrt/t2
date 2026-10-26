@@ -54,7 +54,7 @@ needs only a block at a time.
 | Offset | Field      | Meaning                                          |
 | ------ | ---------- | ------------------------------------------------ |
 | 0      | magic      | the bytes `TSN1`                                 |
-| 4      | rate       | samples per second                               |
+| 4      | rate       | samples per second, at most 192000               |
 | 8      | samples    | how many samples there are                       |
 | 12     | block size | 256                                              |
 | 16     | blocks     | one after another                                |
