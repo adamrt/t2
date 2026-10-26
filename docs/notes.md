@@ -103,4 +103,4 @@ accents added.
 - Modules in the language.
 - Translating hot code to native ARM64.
 - UDP, and a networked game.
-- A file dialog, and resizing for the monitor, paint and view.
+- A file dialog, and resizing for paint and view.

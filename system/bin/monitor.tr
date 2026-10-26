@@ -1,6 +1,7 @@
 // monitor shows what the machine is doing: the memory each process reserved,
 // how many instructions each runs per second, and how busy the CPU has been.
-// Stop ends a process, for when one misbehaves.
+// Stop ends a process, for when one misbehaves. Dragging the strip under the
+// window resizes it.
 
 manifest {
     memory = 256 * KiB;
@@ -26,13 +27,18 @@ var history: [HISTORY]u32;
 var history_at: u32;
 var last_time: u32;
 var line_text: [96]u8;
+var width: i32;
+var height: i32;
 
 fn main(memory: []u8) -> u32 {
+    width = WIDTH;
+    height = HEIGHT;
     var window = window_open("Monitor", WIDTH, HEIGHT);
     if window == FAILED {
         complain("monitor", "can't open a window", "");
         return 1;
     }
+    window_resizable(window, 440, 240);
     canvas_init(&canvas, window, words[:], strings[:]);
     ui_init(&ui, &canvas);
     last_time = time();
@@ -45,6 +51,10 @@ fn main(memory: []u8) -> u32 {
             }
             if e.kind == EVENT_MOUSE_MOVE && ui.active == 0 {
                 continue;
+            }
+            if e.kind == EVENT_RESIZE {
+                width = e.x;
+                height = e.y;
             }
             ui_event(&ui, &e);
         } else {
@@ -91,7 +101,7 @@ fn sample() {
 }
 
 fn draw() {
-    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, rgb(242, 239, 230));
+    draw_fill(&canvas, 0, 0, width, height, rgb(242, 239, 230));
     var free: u32;
     var total = memory_info(&free);
     var used = total - free;
@@ -104,15 +114,18 @@ fn draw() {
     put_u32(&w, total / KiB);
     put(&w, " KiB reserved");
     draw_text(&canvas, 10, 8, rgb(30, 30, 36), line_text[0:w.used]);
-    draw_fill(&canvas, 10, 28, WIDTH - 20, 14, rgb(210, 205, 192));
-    var bar = ((WIDTH - 20) as u32 * (used / KiB) / (total / KiB)) as i32;
+    draw_fill(&canvas, 10, 28, width - 20, 14, rgb(210, 205, 192));
+    var bar = ((width - 20) as u32 * (used / KiB) / (total / KiB)) as i32;
     draw_fill(&canvas, 10, 28, bar, 14, rgb(45, 90, 80));
 
     draw_text(&canvas, 10, 52, rgb(120, 116, 106), "  id  name            memory   stack instructions/s");
+    // Instructions per second over the last minute or so, at the bottom.
+    var graph_h: i32 = 96;
+    var graph_y = height - graph_h - 14;
     for i in 0..count {
         var p = &records[i];
         var y = 72 + (i as i32) * 16;
-        if y > 200 {
+        if y > graph_y - 20 {
             break;
         }
         writer_init(&w, STDOUT, line_text[:]);
@@ -128,23 +141,20 @@ fn draw() {
         pad(&w, p.stack, 8);
         pad(&w, rates[i], 15);
         draw_text(&canvas, 10, y, rgb(30, 30, 36), line_text[0:w.used]);
-        if p.id > 1 && ui_button(&ui, p.id, WIDTH - 52, y - 1, 44, 17, "Stop") {
+        if p.id > 1 && ui_button(&ui, p.id, width - 52, y - 1, 44, 17, "Stop") {
             kill(p.id);
             sample();
         }
     }
 
-    // Instructions per second over the last minute or so.
-    var graph_y: i32 = 220;
-    var graph_h: i32 = 96;
-    draw_fill(&canvas, 10, graph_y, WIDTH - 20, graph_h, rgb(30, 30, 36));
+    draw_fill(&canvas, 10, graph_y, width - 20, graph_h, rgb(30, 30, 36));
     var peak: u32 = 1;
     for i in 0..HISTORY {
         if history[i] > peak {
             peak = history[i];
         }
     }
-    var bar_w: i32 = (WIDTH - 20) / HISTORY;
+    var bar_w: i32 = (width - 20) / HISTORY;
     for i in 0..HISTORY {
         var v = history[(history_at + i) % HISTORY];
         var h = ((v / 1000) * (graph_h as u32 - 4) / (peak / 1000 + 1)) as i32;
