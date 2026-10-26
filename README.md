@@ -26,7 +26,7 @@ It needs a C11 compiler and SDL3.
 | The compiler (`system/tc/`)   | the language | 3,400 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
 | Libraries (`system/lib/`)     | both       | 1,500 |
-| 34 programs (`system/bin/`)   | the language | 4,400 |
+| 35 programs (`system/bin/`)   | the language | 4,500 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -71,7 +71,8 @@ result is byte for byte the compiler the host built. Some others to try:
 - `monitor`, `ps`, `mem` — memory reserved and instructions used; the
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
-- `trace ls` — every system call a program makes
+- `trace ls` — every system call a program makes; `search text files...`
+  — the lines that contain some text
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
   on the host. `fetch host port /path` goes the other way.
 

@@ -1,0 +1,80 @@
+// search prints the lines of files that contain some text, with the file's
+// name and the line's number.
+//
+//     search alloc /src/tc/*.tr
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+    allow = "read";
+}
+
+var line: [1024]u8;
+var read_buffer: [8192]u8;
+var out: Writer;
+var out_buffer: [4096]u8;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    if arg_count() < 2 {
+        complain("search", "usage: search text file...", "");
+        return 2;
+    }
+    var args: [64][]u8;
+    var count = get_args(&arena, args[:]);
+    writer_init(&out, STDOUT, out_buffer[:]);
+    var found: u32 = 0;
+    for i in 1..count {
+        found += search_file(args[0], args[i]);
+    }
+    flush(&out);
+    if found == 0 {
+        return 1;
+    }
+    return 0;
+}
+
+fn contains(text: []u8, part: []u8) -> bool {
+    if part.len > text.len {
+        return false;
+    }
+    for start in 0..text.len - part.len + 1 {
+        if text_equal(text[start:start + part.len], part) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Returns how many lines matched.
+fn search_file(text: []u8, name: []u8) -> u32 {
+    var file = open(name, MODE_READ);
+    if file == FAILED {
+        flush(&out);
+        complain("search", "can't read", name);
+        return 0;
+    }
+    var reader: Reader;
+    reader_init(&reader, file, read_buffer[:]);
+    var number: u32 = 0;
+    var found: u32 = 0;
+    while true {
+        var n = read_line(&reader, line[:]);
+        if n == FAILED {
+            break;
+        }
+        number += 1;
+        if contains(line[0:n], text) {
+            put(&out, name);
+            put_byte(&out, ':');
+            put_u32(&out, number);
+            put(&out, ": ");
+            put(&out, line[0:n]);
+            put_byte(&out, '\n');
+            found += 1;
+        }
+    }
+    close(file);
+    return found;
+}
