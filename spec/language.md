@@ -4,12 +4,12 @@ A small language in the spirit of C: explicit types, structs, slices, no
 garbage collector and no hidden allocation. Files end in `.tr`.
 
 ```
-fn sum(values: []u32) -> u32 {
-    var total: u32 = 0;
+fn sum(values []u32) u32 {
+    var total u32 = 0
     for i in 0..values.len {
-        total += values[i];
+        total += values[i]
     }
-    return total;
+    return total
 }
 ```
 
@@ -32,7 +32,7 @@ program, so a module costs only what a program uses of it.
 | `*T`      | pointer to a `T`, or `null`                              |
 | `[]T`     | slice: a pointer and a length                            |
 | `[N]T`    | array of `N` values                                      |
-| `fn(T, U) -> R` | a function taking a `T` and a `U` and giving an `R`, or `null` |
+| `fn(T, U) R` | a function taking a `T` and a `U` and giving an `R`, or `null` |
 | `Name`    | a struct or enum                                         |
 
 Arithmetic happens on `u32` and `i32`. A `u8` or `u16` becomes a `u32` when
@@ -59,13 +59,13 @@ have no type of their own. They take the type their use needs, and it is an
 error if they don't fit. A variable can't take its type from one:
 
 ```
-var count: u32 = 0;     // fine
-var count = 0;          // error: say which type
+var count u32 = 0      // fine
+var count = 0          // error: say which type
 ```
 
 Arithmetic between constants without a type is worked out on 32-bit
 values, with division, remainder and right shifts unsigned, so `-9 / 2` is
-not `-4`. Give a constant a type, as in `const N: i32 = -9;`, and arithmetic
+not `-4`. Give a constant a type, as in `const N i32 = -9`, and arithmetic
 on it follows that type.
 
 A constant shifted by an amount that isn't constant is a `u32`.
@@ -76,8 +76,8 @@ A constant shifted by an amount that isn't constant is a `u32`.
 
 ```
 struct Point {
-    x: i32;
-    y: i32;
+    x i32
+    y i32
 }
 
 enum Color {
@@ -107,20 +107,20 @@ Following `null` stops the program, because nothing lives at low addresses.
 ### Functions as values
 
 A function's name without a call is its value, with a type like
-`fn(u32, []u8) -> bool`, or `fn(u32)` for one that gives nothing back.
+`fn(u32, []u8) bool`, or `fn(u32)` for one that gives nothing back.
 Variables, fields, parameters and results can hold functions, and calling
 one calls the function it holds:
 
 ```
 struct Button {
-    label: []u8;
-    pressed: fn(*Button);
+    label []u8
+    pressed fn(*Button)
 }
 
-fn sort(items: []u32, before: fn(u32, u32) -> bool) { ... }
+fn sort(items []u32, before fn(u32, u32) bool) { ... }
 
-button.pressed(&button);
-sort(numbers[:], descending);
+button.pressed(&button)
+sort(numbers[:], descending)
 ```
 
 Functions compare with `==` and `!=`, including against `null`. Calling
@@ -133,11 +133,11 @@ number. Escapes are `\n`, `\t`, `\r`, `\0`, `\\`, `\'`, `\"` and `\xNN`.
 ## Declarations
 
 ```
-const LIMIT = 100;
-const MASK: u32 = 0xff;
-var counter: u32;                       // globals start at zero
-fn add(a: u32, b: u32) -> u32 { return a + b; }
-fn write(file: u32, bytes: []u8) -> u32;    // implemented in assembly
+const LIMIT = 100
+const MASK u32 = 0xff
+var counter u32                         // globals start at zero
+fn add(a u32, b u32) u32 { return a + b }
+fn write(file u32, bytes []u8) u32      // implemented in assembly
 ```
 
 A function without a body is implemented in assembly, following the calling
@@ -152,9 +152,9 @@ A program declares its memory once:
 
 ```
 manifest {
-    memory = 4 * MiB;
-    stack = 64 * KiB;
-    allow = "read write window";
+    memory = 4 * MiB
+    stack = 64 * KiB
+    allow = "read write window"
 }
 ```
 
@@ -167,7 +167,7 @@ a program may do none of those.
 its exit status:
 
 ```
-fn main(memory: []u8) -> u32 { ... }
+fn main(memory []u8) u32 { ... }
 ```
 
 ## Modules
@@ -177,8 +177,8 @@ the module `io`. A file imports the modules it uses at its top, before
 anything else:
 
 ```
-import io;
-import gfx;
+import io
+import gfx
 ```
 
 Outside a module, its names are qualified with the module's name:
@@ -210,21 +210,28 @@ each one once, however many files import it. The library has these:
 ## Statements
 
 ```
-var x: u32 = 1;         // a local; without a value it starts at zero
-var t = next_token();   // the type comes from the value
-x = 2;
-x += 3;                 // also -= *= /= %= &= |= ^= <<= >>=
+var x u32 = 1           // a local; without a value it starts at zero
+var t = next_token()    // the type comes from the value
+x = 2
+x += 3                  // also -= *= /= %= &= |= ^= <<= >>=
 if x > 3 { ... } else if x == 0 { ... } else { ... }
-while x < 10 { x += 1; }
+while x < 10 { x += 1 }
 for i in 0..10 { ... }  // i counts from 0 to 9; a range of two constants is u32
 match color {
     Color.Red, Color.Green => { ... }
     else => { ... }
 }
-break;
-continue;
-return x;
+break
+continue
+return x
 ```
+
+A statement ends at the end of its line. A line ends a statement when its
+last token is a name, a number, a string, `)`, `]`, `true`, `false`,
+`null`, `return`, `break` or `continue`, so a long expression breaks after
+an operator or a comma, and a `{` goes on the line it opens. `;` separates
+statements on one line, and isn't needed before a `}`. Declarations end the
+same way.
 
 Conditions must be `bool`. `match` compares against constants, takes the
 first arm that matches, and does nothing if none does and there's no `else`.

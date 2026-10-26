@@ -11,145 +11,145 @@
 // count, then each glyph's rows, one byte per row with the leftmost pixel in
 // the top bit.
 
-import io;
-import mem;
-import os;
-import text;
+import io
+import mem
+import os
+import text
 
 manifest {
-    memory = 1 * MiB;
-    stack = 16 * KiB;
-    allow = "read write";
+    memory = 1 * MiB
+    stack = 16 * KiB
+    allow = "read write"
 }
 
-var arena: mem.Arena;
-var line: [256]u8;
-var glyphs: [256 * 16]u8;
-var present: [256]bool;
+var arena mem.Arena
+var line [256]u8
+var glyphs [256 * 16]u8
+var present [256]bool
 
-fn main(memory: []u8) -> u32 {
-    mem.arena_init(&arena, memory);
+fn main(memory []u8) u32 {
+    mem.arena_init(&arena, memory)
     if os.arg_count() != 3 {
-        fail("usage: mkfont -o font.tfn font.txt");
+        fail("usage: mkfont -o font.tfn font.txt")
     }
-    var output = argument(1);
-    var file = io.open(argument(2), 0);
+    var output = argument(1)
+    var file = io.open(argument(2), 0)
     if file == io.FAILED {
-        fail("can't read the font");
+        fail("can't read the font")
     }
-    var reader: io.Reader;
-    io.reader_init(&reader, file, mem.alloc_bytes(&arena, 4096));
+    var reader io.Reader
+    io.reader_init(&reader, file, mem.alloc_bytes(&arena, 4096))
 
-    var width: u32 = 0;
-    var height: u32 = 0;
-    var glyph: u32 = 256;
-    var row: u32 = 0;
+    var width u32 = 0
+    var height u32 = 0
+    var glyph u32 = 256
+    var row u32 = 0
     while true {
-        var n = io.read_line(&reader, line[:]);
+        var n = io.read_line(&reader, line[:])
         if n == io.FAILED {
-            break;
+            break
         }
-        var chars = line[0:n];
+        var chars = line[0:n]
         if glyph < 256 && row < height {
             if chars.len < width {
-                fail("a row is too short");
+                fail("a row is too short")
             }
-            var bits: u32 = 0;
+            var bits u32 = 0
             for x in 0..width {
                 if chars[x] == '#' {
-                    bits |= 0x80 >> x;
+                    bits |= 0x80 >> x
                 }
             }
-            glyphs[glyph * 16 + row] = bits as u8;
-            row += 1;
-            continue;
+            glyphs[glyph * 16 + row] = bits as u8
+            row += 1
+            continue
         }
         if chars.len == 0 || chars[0] == '#' {
-            continue;
+            continue
         }
-        var word = first_word(chars);
-        var value = text.parse_u32(first_word(chars[word.len:]));
+        var word = first_word(chars)
+        var value = text.parse_u32(first_word(chars[word.len:]))
         if text.equal(word, "width") {
-            width = value;
+            width = value
         } else if text.equal(word, "height") {
-            height = value;
+            height = value
         } else if text.equal(word, "glyph") {
             if value >= 256 || width == 0 || width > 8 || height == 0 || height > 16 {
-                fail("bad glyph, or width and height missing");
+                fail("bad glyph, or width and height missing")
             }
-            glyph = value;
-            present[glyph] = true;
-            row = 0;
+            glyph = value
+            present[glyph] = true
+            row = 0
         } else {
-            fail("unknown line in the font");
+            fail("unknown line in the font")
         }
     }
 
-    var first: u32 = 0;
+    var first u32 = 0
     while first < 256 && !present[first] {
-        first += 1;
+        first += 1
     }
-    var last: u32 = 255;
+    var last u32 = 255
     while last > first && !present[last] {
-        last -= 1;
+        last -= 1
     }
-    var count = last - first + 1;
+    var count = last - first + 1
     // Codes missing between the first and last draw as "?".
     for c in first..last + 1 {
         if !present[c] {
-            mem.copy(glyphs[c * 16:c * 16 + 16], glyphs['?' * 16:'?' * 16 + 16]);
+            mem.copy(glyphs[c * 16:c * 16 + 16], glyphs['?' * 16:'?' * 16 + 16])
         }
     }
-    var out = io.open(output, 1);
+    var out = io.open(output, 1)
     if out == io.FAILED || first == 256 {
-        fail("can't write the font");
+        fail("can't write the font")
     }
-    var header: [20]u8;
-    mem.copy(header[:], "TFN1");
-    set_word(header[:], 4, width);
-    set_word(header[:], 8, height);
-    set_word(header[:], 12, first);
-    set_word(header[:], 16, count);
-    io.write_all(out, header[:]);
+    var header [20]u8
+    mem.copy(header[:], "TFN1")
+    set_word(header[:], 4, width)
+    set_word(header[:], 8, height)
+    set_word(header[:], 12, first)
+    set_word(header[:], 16, count)
+    io.write_all(out, header[:])
     for c in first..last + 1 {
-        io.write_all(out, glyphs[c * 16:c * 16 + height]);
+        io.write_all(out, glyphs[c * 16:c * 16 + height])
     }
-    io.close(out);
-    return 0;
+    io.close(out)
+    return 0
 }
 
-fn fail(message: []u8) {
-    io.write_all(io.STDERR, "mkfont: ");
-    io.write_all(io.STDERR, message);
-    io.write_all(io.STDERR, "\n");
-    os.exit(1);
+fn fail(message []u8) {
+    io.write_all(io.STDERR, "mkfont: ")
+    io.write_all(io.STDERR, message)
+    io.write_all(io.STDERR, "\n")
+    os.exit(1)
 }
 
-fn argument(index: u32) -> []u8 {
-    var buffer = mem.alloc_bytes(&arena, 256);
-    var n = os.arg(index, buffer);
+fn argument(index u32) []u8 {
+    var buffer = mem.alloc_bytes(&arena, 256)
+    var n = os.arg(index, buffer)
     if n > buffer.len {
-        fail("argument is too long");
+        fail("argument is too long")
     }
-    return buffer[0:n];
+    return buffer[0:n]
 }
 
 // The first word of text, after any spaces.
-fn first_word(text: []u8) -> []u8 {
-    var start: u32 = 0;
+fn first_word(text []u8) []u8 {
+    var start u32 = 0
     while start < text.len && text[start] == ' ' {
-        start += 1;
+        start += 1
     }
-    var end = start;
+    var end = start
     while end < text.len && text[end] != ' ' {
-        end += 1;
+        end += 1
     }
-    return text[start:end];
+    return text[start:end]
 }
 
-fn set_word(bytes: []u8, offset: u32, value: u32) {
-    bytes[offset] = (value & 255) as u8;
-    bytes[offset + 1] = ((value >> 8) & 255) as u8;
-    bytes[offset + 2] = ((value >> 16) & 255) as u8;
-    bytes[offset + 3] = (value >> 24) as u8;
+fn set_word(bytes []u8, offset u32, value u32) {
+    bytes[offset] = (value & 255) as u8
+    bytes[offset + 1] = ((value >> 8) & 255) as u8
+    bytes[offset + 2] = ((value >> 16) & 255) as u8
+    bytes[offset + 3] = (value >> 24) as u8
 }

@@ -1,129 +1,129 @@
 // sort prints the lines of files, or of its input, in byte order.
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 640 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 640 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-const MAX_TEXT = 256 * KiB;
-const MAX_LINES = 16384;
+const MAX_TEXT = 256 * KiB
+const MAX_LINES = 16384
 
-var text: []u8;
-var used: u32;
+var text []u8
+var used u32
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
-    text = mem.alloc_bytes(&arena, MAX_TEXT);
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
+    text = mem.alloc_bytes(&arena, MAX_TEXT)
     if count == 0 {
         if !read_all(io.STDIN) {
-            return 1;
+            return 1
         }
     }
     for i in 0..count {
-        var file = io.open(args[i], io.MODE_READ);
+        var file = io.open(args[i], io.MODE_READ)
         if file == io.FAILED {
-            os.complain("sort", "can't read", args[i]);
-            return 1;
+            os.complain("sort", "can't read", args[i])
+            return 1
         }
-        var ok = read_all(file);
-        io.close(file);
+        var ok = read_all(file)
+        io.close(file)
         if !ok {
-            return 1;
+            return 1
         }
     }
 
-    var lines = new(&arena, []u8, MAX_LINES);
-    var spare = new(&arena, []u8, MAX_LINES);
-    var n: u32 = 0;
-    var start: u32 = 0;
+    var lines = new(&arena, []u8, MAX_LINES)
+    var spare = new(&arena, []u8, MAX_LINES)
+    var n u32 = 0
+    var start u32 = 0
     for i in 0..used {
         if text[i] == '\n' {
             if n == lines.len {
-                os.complain("sort", "there are too many lines", "");
-                return 1;
+                os.complain("sort", "there are too many lines", "")
+                return 1
             }
-            lines[n] = text[start:i + 1];
-            n += 1;
-            start = i + 1;
+            lines[n] = text[start:i + 1]
+            n += 1
+            start = i + 1
         }
     }
-    merge_sort(lines[0:n], spare);
+    merge_sort(lines[0:n], spare)
 
-    var out: io.Writer;
-    var buffer: [4096]u8;
-    io.writer_init(&out, io.STDOUT, buffer[:]);
+    var out io.Writer
+    var buffer [4096]u8
+    io.writer_init(&out, io.STDOUT, buffer[:])
     for i in 0..n {
-        io.put(&out, lines[i]);
+        io.put(&out, lines[i])
     }
-    io.flush(&out);
-    return 0;
+    io.flush(&out)
+    return 0
 }
 
 // Reads all of a file, ending its last line if it isn't already.
-fn read_all(file: u32) -> bool {
-    var start = used;
+fn read_all(file u32) bool {
+    var start = used
     while true {
         if used == text.len {
-            os.complain("sort", "the text is too long", "");
-            return false;
+            os.complain("sort", "the text is too long", "")
+            return false
         }
-        var n = io.read(file, text[used:]);
+        var n = io.read(file, text[used:])
         if n == 0 || n == io.FAILED {
-            break;
+            break
         }
-        used += n;
+        used += n
     }
     if used > start && text[used - 1] != '\n' {
         if used == text.len {
-            os.complain("sort", "the text is too long", "");
-            return false;
+            os.complain("sort", "the text is too long", "")
+            return false
         }
-        text[used] = '\n';
-        used += 1;
+        text[used] = '\n'
+        used += 1
     }
-    return true;
+    return true
 }
 
-fn before(a: []u8, b: []u8) -> bool {
-    var i: u32 = 0;
+fn before(a []u8, b []u8) bool {
+    var i u32 = 0
     while i < a.len && i < b.len {
         if a[i] != b[i] {
-            return a[i] < b[i];
+            return a[i] < b[i]
         }
-        i += 1;
+        i += 1
     }
-    return a.len < b.len;
+    return a.len < b.len
 }
 
 // Sorts lines, keeping equal lines in the order they came, using spare to
 // hold the halves while they're merged.
-fn merge_sort(lines: [][]u8, spare: [][]u8) {
+fn merge_sort(lines [][]u8, spare [][]u8) {
     if lines.len < 2 {
-        return;
+        return
     }
-    var half = lines.len / 2;
-    merge_sort(lines[0:half], spare);
-    merge_sort(lines[half:], spare);
+    var half = lines.len / 2
+    merge_sort(lines[0:half], spare)
+    merge_sort(lines[half:], spare)
     for i in 0..lines.len {
-        spare[i] = lines[i];
+        spare[i] = lines[i]
     }
-    var a: u32 = 0;
-    var b = half;
+    var a u32 = 0
+    var b = half
     for i in 0..lines.len {
         if b == lines.len || (a < half && !before(spare[b], spare[a])) {
-            lines[i] = spare[a];
-            a += 1;
+            lines[i] = spare[a]
+            a += 1
         } else {
-            lines[i] = spare[b];
-            b += 1;
+            lines[i] = spare[b]
+            b += 1
         }
     }
 }

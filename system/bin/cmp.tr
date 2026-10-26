@@ -1,91 +1,91 @@
 // cmp compares two files and says where they first differ.
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-var a_buffer: [16 * KiB]u8;
-var b_buffer: [16 * KiB]u8;
+var a_buffer [16 * KiB]u8
+var b_buffer [16 * KiB]u8
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [2][]u8;
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [2][]u8
     if os.arg_count() != 2 {
-        os.complain("cmp", "usage: cmp file1 file2", "");
-        return 2;
+        os.complain("cmp", "usage: cmp file1 file2", "")
+        return 2
     }
-    os.get_args(&arena, args[:]);
-    var a = io.open(args[0], io.MODE_READ);
-    var b = io.open(args[1], io.MODE_READ);
+    os.get_args(&arena, args[:])
+    var a = io.open(args[0], io.MODE_READ)
+    var b = io.open(args[1], io.MODE_READ)
     if a == io.FAILED || b == io.FAILED {
-        os.complain("cmp", "can't read both files", "");
-        return 2;
+        os.complain("cmp", "can't read both files", "")
+        return 2
     }
-    var offset: u32 = 0;
+    var offset u32 = 0
     while true {
-        var na = read_full(a, a_buffer[:]);
-        var nb = read_full(b, b_buffer[:]);
-        var n = na;
+        var na = read_full(a, a_buffer[:])
+        var nb = read_full(b, b_buffer[:])
+        var n = na
         if nb < n {
-            n = nb;
+            n = nb
         }
         for i in 0..n {
             if a_buffer[i] != b_buffer[i] {
-                differ(args[0], args[1], offset + i);
-                return 1;
+                differ(args[0], args[1], offset + i)
+                return 1
             }
         }
         if na != nb {
-            differ(args[0], args[1], offset + n);
-            return 1;
+            differ(args[0], args[1], offset + n)
+            return 1
         }
         if na == 0 {
-            break;
+            break
         }
-        offset += n;
+        offset += n
     }
-    var out: io.Writer;
-    var text: [256]u8;
-    io.writer_init(&out, io.STDOUT, text[:]);
-    io.put(&out, args[0]);
-    io.put(&out, " and ");
-    io.put(&out, args[1]);
-    io.put(&out, " are the same, ");
-    io.put_u32(&out, offset);
-    io.put(&out, " bytes\n");
-    io.flush(&out);
-    return 0;
+    var out io.Writer
+    var text [256]u8
+    io.writer_init(&out, io.STDOUT, text[:])
+    io.put(&out, args[0])
+    io.put(&out, " and ")
+    io.put(&out, args[1])
+    io.put(&out, " are the same, ")
+    io.put_u32(&out, offset)
+    io.put(&out, " bytes\n")
+    io.flush(&out)
+    return 0
 }
 
 // Fills the buffer unless the file ends first.
-fn read_full(file: u32, buffer: []u8) -> u32 {
-    var n: u32 = 0;
+fn read_full(file u32, buffer []u8) u32 {
+    var n u32 = 0
     while n < buffer.len {
-        var got = io.read(file, buffer[n:]);
+        var got = io.read(file, buffer[n:])
         if got == 0 || got == io.FAILED {
-            break;
+            break
         }
-        n += got;
+        n += got
     }
-    return n;
+    return n
 }
 
-fn differ(a: []u8, b: []u8, offset: u32) {
-    var out: io.Writer;
-    var text: [256]u8;
-    io.writer_init(&out, io.STDOUT, text[:]);
-    io.put(&out, a);
-    io.put(&out, " and ");
-    io.put(&out, b);
-    io.put(&out, " differ at byte ");
-    io.put_u32(&out, offset);
-    io.put_byte(&out, '\n');
-    io.flush(&out);
+fn differ(a []u8, b []u8, offset u32) {
+    var out io.Writer
+    var text [256]u8
+    io.writer_init(&out, io.STDOUT, text[:])
+    io.put(&out, a)
+    io.put(&out, " and ")
+    io.put(&out, b)
+    io.put(&out, " differ at byte ")
+    io.put_u32(&out, offset)
+    io.put_byte(&out, '\n')
+    io.flush(&out)
 }

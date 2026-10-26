@@ -15,34 +15,34 @@ start:
     call _main
     halt
 
-; fn io_read(port: u32) -> u32;
+; fn io_read(port u32) u32
 _io_read:
     r1 = [sp + 4]
     r0 = io r1
     return
 
-; fn io_write(port: u32, value: u32);
+; fn io_write(port u32, value u32)
 _io_write:
     r1 = [sp + 4]
     r0 = [sp + 8]
     io r1 = r0
     return
 
-; fn resume_user();  Runs the user program until it traps.
+; fn resume_user()  Runs the user program until it traps.
 _resume_user:
     resume
     return
 
-; fn wait_interrupt();
+; fn wait_interrupt()
 _wait_interrupt:
     wait
     return
 
-; fn power_off();
+; fn power_off()
 _power_off:
     halt
 
-; fn io.write(file: u32, bytes: []u8) -> u32;  Everything goes to the console.
+; fn io.write(file u32, bytes []u8) u32  Everything goes to the console.
 _io.write:
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -70,11 +70,11 @@ _os.arg_count:
     r0 = 0
     return
 
-; fn os.exit(status: u32);
+; fn os.exit(status u32)
 _os.exit:
     halt
 
-; fn mem.move(to: *u8, from: *u8, count: u32);
+; fn mem.move(to *u8, from *u8, count u32)
 _mem.move:
     r0 = [sp + 4]
     r1 = [sp + 8]
@@ -82,7 +82,7 @@ _mem.move:
     copy r0, r1, r2
     return
 
-; fn mem.fill(to: *u8, value: u32, count: u32);
+; fn mem.fill(to *u8, value u32, count u32)
 _mem.fill:
     r0 = [sp + 4]
     r1 = [sp + 8]
@@ -90,7 +90,7 @@ _mem.fill:
     fill r0, r1, r2
     return
 
-; fn os.stop();  Faults on purpose, so the machine shows where the kernel was.
+; fn os.stop()  Faults on purpose, so the machine shows where the kernel was.
 _os.stop:
     r0 = 0
     r0 = [r0]

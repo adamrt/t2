@@ -1,31 +1,31 @@
 // Exercises the language. Prints "ok", or the number of the first failed check.
 
-import io;
-import mem;
-import text;
+import io
+import mem
+import text
 
 manifest {
-    memory = 1 * MiB;
-    stack = 16 * KiB;
+    memory = 1 * MiB
+    stack = 16 * KiB
 }
 
-const COUNT = 4;
-const LIMIT: u32 = COUNT * 2 + 1;
-const NEGATIVE: i32 = -5;
+const COUNT = 4
+const LIMIT u32 = COUNT * 2 + 1
+const NEGATIVE i32 = -5
 
 struct Point {
-    x: i32;
-    y: i32;
+    x i32
+    y i32
 }
 
 struct Shape {
-    kind: Kind;
-    corner: Point;
-    tag: u8;
-    weight: u16;
-    points: [COUNT]Point;
-    next: *Shape;
-    name: []u8;
+    kind Kind
+    corner Point
+    tag u8
+    weight u16
+    points [COUNT]Point
+    next *Shape
+    name []u8
 }
 
 enum Kind {
@@ -35,189 +35,189 @@ enum Kind {
     Moon,
 }
 
-var failures: u32;
-var shared: Shape;
-var out: io.Writer;
-var out_buffer: [64]u8;
+var failures u32
+var shared Shape
+var out io.Writer
+var out_buffer [64]u8
 
-fn check(ok: bool, number: u32) {
+fn check(ok bool, number u32) {
     if !ok && failures == 0 {
-        failures = number;
+        failures = number
     }
 }
 
-fn add(a: i32, b: i32) -> i32 {
-    return a + b;
+fn add(a i32, b i32) i32 {
+    return a + b
 }
 
-fn factorial(n: u32) -> u32 {
+fn factorial(n u32) u32 {
     if n <= 1 {
-        return 1;
+        return 1
     }
-    return n * factorial(n - 1);
+    return n * factorial(n - 1)
 }
 
-fn sum(values: []u32) -> u32 {
-    var total: u32 = 0;
+fn sum(values []u32) u32 {
+    var total u32 = 0
     for i in 0..values.len {
-        total += values[i];
+        total += values[i]
     }
-    return total;
+    return total
 }
 
-fn first_word(text: []u8) -> []u8 {
-    var i: u32 = 0;
+fn first_word(text []u8) []u8 {
+    var i u32 = 0
     while i < text.len && text[i] != ' ' {
-        i += 1;
+        i += 1
     }
-    return text[0:i];
+    return text[0:i]
 }
 
-fn kind_name(k: Kind) -> []u8 {
+fn kind_name(k Kind) []u8 {
     match k {
-        Kind.Square => { return "square"; }
-        Kind.Circle, Kind.Star => { return "round"; }
-        else => { return "other"; }
+        Kind.Square => { return "square" }
+        Kind.Circle, Kind.Star => { return "round" }
+        else => { return "other" }
     }
-    return "";
+    return ""
 }
 
-fn bump(p: *Point) {
-    p.x += 1;
-    (*p).y = p.y + 2;
+fn bump(p *Point) {
+    p.x += 1
+    (*p).y = p.y + 2
 }
 
-fn main(memory: []u8) -> u32 {
+fn main(memory []u8) u32 {
     // Integers.
-    var a: u32 = 7;
-    var b: i32 = -7;
-    check(a / 2 == 3, 1);
-    check(b / 2 == -3, 2);
-    check(b % 2 == -1, 3);
-    check(b >> 1 == -4, 4);
-    check(a << 3 == 56, 5);
-    check((0xf0 | 0x0f) & 0x3c == 0x3c, 6);
-    check(~0 as u32 == 0xffffffff, 7);
-    check(-b == 7, 8);
-    check(add(NEGATIVE, 3) == -2, 9);
-    check(LIMIT == 9 && COUNT == 4, 10);
-    check(factorial(5) == 120, 11);
-    var big: u32 = 0xfffffffe;
-    big += 3;
-    check(big == 1, 12);
-    check(b < 0 && a > 0 && b <= -7 && a >= 7, 13);
-    check(0xffffffff > 1, 14);
+    var a u32 = 7
+    var b i32 = -7
+    check(a / 2 == 3, 1)
+    check(b / 2 == -3, 2)
+    check(b % 2 == -1, 3)
+    check(b >> 1 == -4, 4)
+    check(a << 3 == 56, 5)
+    check((0xf0 | 0x0f) & 0x3c == 0x3c, 6)
+    check(~0 as u32 == 0xffffffff, 7)
+    check(-b == 7, 8)
+    check(add(NEGATIVE, 3) == -2, 9)
+    check(LIMIT == 9 && COUNT == 4, 10)
+    check(factorial(5) == 120, 11)
+    var big u32 = 0xfffffffe
+    big += 3
+    check(big == 1, 12)
+    check(b < 0 && a > 0 && b <= -7 && a >= 7, 13)
+    check(0xffffffff > 1, 14)
 
     // Small integers wrap when stored.
-    var small: u8 = 250;
-    small = (small + 10) as u8;
-    check(small == 4, 15);
-    var half: u16 = 0xffff;
-    half = (half + 2) as u16;
-    check(half == 1, 16);
-    var widened: u32 = small;
-    check(widened == 4, 17);
-    check(300 as u8 == 44 || true, 18);
+    var small u8 = 250
+    small = (small + 10) as u8
+    check(small == 4, 15)
+    var half u16 = 0xffff
+    half = (half + 2) as u16
+    check(half == 1, 16)
+    var widened u32 = small
+    check(widened == 4, 17)
+    check(300 as u8 == 44 || true, 18)
 
     // Structs and pointers.
-    var p: Point;
-    check(p.x == 0 && p.y == 0, 19);
-    p.x = 3;
-    p.y = 4;
-    bump(&p);
-    check(p.x == 4 && p.y == 6, 20);
-    var q = p;
-    q.x = 100;
-    check(p.x == 4 && q.x == 100, 21);
-    var pp = &p;
-    pp.y = 9;
-    check(p.y == 9, 22);
-    check(size_of(Point) == 8, 23);
-    check(size_of(Shape) == 60, 24);
+    var p Point
+    check(p.x == 0 && p.y == 0, 19)
+    p.x = 3
+    p.y = 4
+    bump(&p)
+    check(p.x == 4 && p.y == 6, 20)
+    var q = p
+    q.x = 100
+    check(p.x == 4 && q.x == 100, 21)
+    var pp = &p
+    pp.y = 9
+    check(p.y == 9, 22)
+    check(size_of(Point) == 8, 23)
+    check(size_of(Shape) == 60, 24)
 
-    shared.kind = Kind.Star;
-    shared.tag = 200;
-    shared.weight = 1000;
-    shared.points[2].y = 77;
-    shared.corner = p;
-    shared.next = &shared;
-    shared.name = "shared";
-    check(shared.next.next.points[2].y == 77, 25);
-    check(shared.corner.y == 9 && shared.tag == 200 && shared.weight == 1000, 26);
-    check(shared.kind == Kind.Star && Kind.Moon as u32 == 11, 27);
-    check(text.equal(shared.next.name, "shared"), 28);
-    check(shared.next != null && shared.points[0].x == 0, 29);
+    shared.kind = Kind.Star
+    shared.tag = 200
+    shared.weight = 1000
+    shared.points[2].y = 77
+    shared.corner = p
+    shared.next = &shared
+    shared.name = "shared"
+    check(shared.next.next.points[2].y == 77, 25)
+    check(shared.corner.y == 9 && shared.tag == 200 && shared.weight == 1000, 26)
+    check(shared.kind == Kind.Star && Kind.Moon as u32 == 11, 27)
+    check(text.equal(shared.next.name, "shared"), 28)
+    check(shared.next != null && shared.points[0].x == 0, 29)
 
     // Arrays and slices.
-    var numbers: [5]u32;
+    var numbers [5]u32
     for i in 0..5 {
-        numbers[i] = i * i;
+        numbers[i] = i * i
     }
-    check(sum(numbers) == 30, 30);
-    check(sum(numbers[1:3]) == 5, 31);
-    check(numbers.len == 5 && numbers[1:].len == 4 && numbers[:2].len == 2, 32);
-    var all = numbers[:];
-    all[0] = 50;
-    check(numbers[0] == 50, 33);
-    check(text.equal(first_word("hello world"), "hello"), 34);
-    var word = "abc";
-    check(word[1] == 'b' && word.len == 3, 35);
+    check(sum(numbers) == 30, 30)
+    check(sum(numbers[1:3]) == 5, 31)
+    check(numbers.len == 5 && numbers[1:].len == 4 && numbers[:2].len == 2, 32)
+    var all = numbers[:]
+    all[0] = 50
+    check(numbers[0] == 50, 33)
+    check(text.equal(first_word("hello world"), "hello"), 34)
+    var word = "abc"
+    check(word[1] == 'b' && word.len == 3, 35)
 
     // Control flow.
-    var count: u32 = 0;
-    var i: u32 = 0;
+    var count u32 = 0
+    var i u32 = 0
     while true {
-        i += 1;
+        i += 1
         if i > 10 {
-            break;
+            break
         }
         if i % 2 == 0 {
-            continue;
+            continue
         }
-        count += i;
+        count += i
     }
-    check(count == 25, 36);
-    check(text.equal(kind_name(Kind.Circle), "round"), 37);
-    check(text.equal(kind_name(Kind.Moon), "other"), 38);
-    check(text.equal(kind_name(Kind.Square), "square"), 39);
-    var hits: u32 = 0;
-    var zero: u32 = 0;
+    check(count == 25, 36)
+    check(text.equal(kind_name(Kind.Circle), "round"), 37)
+    check(text.equal(kind_name(Kind.Moon), "other"), 38)
+    check(text.equal(kind_name(Kind.Square), "square"), 39)
+    var hits u32 = 0
+    var zero u32 = 0
     if zero != 0 && 10 / zero == 1 {
-        hits += 1;
+        hits += 1
     }
     if zero == 0 || 10 / zero == 1 {
-        hits += 2;
+        hits += 2
     }
-    check(hits == 2, 40);
-    var flag = a > 3;
-    check(flag && !(a < 3), 41);
-    var down: i32 = 0;
-    var low: i32 = -3;
+    check(hits == 2, 40)
+    var flag = a > 3
+    check(flag && !(a < 3), 41)
+    var down i32 = 0
+    var low i32 = -3
     for j in low..3 {
-        down += j;
+        down += j
     }
-    check(down == -3, 42);
+    check(down == -3, 42)
 
     // Arenas.
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var shape = new(&arena, Shape);
-    var many = new(&arena, Point, 10);
-    check(shape.tag == 0 && many.len == 10 && many[9].y == 0, 43);
-    many[9].y = 5;
-    check(arena.used == 60 + 80, 44);
-    mem.reset(&arena);
-    check(arena.used == 0 && many[9].y == 0, 45);
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var shape = new(&arena, Shape)
+    var many = new(&arena, Point, 10)
+    check(shape.tag == 0 && many.len == 10 && many[9].y == 0, 43)
+    many[9].y = 5
+    check(arena.used == 60 + 80, 44)
+    mem.reset(&arena)
+    check(arena.used == 0 && many[9].y == 0, 45)
 
     // Output.
-    io.writer_init(&out, io.STDOUT, out_buffer[:]);
+    io.writer_init(&out, io.STDOUT, out_buffer[:])
     if failures == 0 {
-        io.put(&out, "ok\n");
+        io.put(&out, "ok\n")
     } else {
-        io.put(&out, "failed check ");
-        io.put_u32(&out, failures);
-        io.put_byte(&out, '\n');
+        io.put(&out, "failed check ")
+        io.put_u32(&out, failures)
+        io.put_byte(&out, '\n')
     }
-    io.flush(&out);
-    return failures;
+    io.flush(&out)
+    return failures
 }

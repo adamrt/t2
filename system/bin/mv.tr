@@ -4,62 +4,62 @@
 //     mv from to
 //     mv file... directory
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
-    allow = "read write";
+    memory = 64 * KiB
+    stack = 16 * KiB
+    allow = "read write"
 }
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
     if count < 2 {
-        os.complain("mv", "usage: mv from to, or mv file... directory", "");
-        return 2;
+        os.complain("mv", "usage: mv from to, or mv file... directory", "")
+        return 2
     }
-    var target = args[count - 1];
-    var target_info: os.FileInfo;
-    var into = os.info(target, &target_info) != io.FAILED && target_info.kind == 2;
+    var target = args[count - 1]
+    var target_info os.FileInfo
+    var into = os.info(target, &target_info) != io.FAILED && target_info.kind == 2
     if !into && count > 2 {
-        os.complain("mv", "not a directory:", target);
-        return 2;
+        os.complain("mv", "not a directory:", target)
+        return 2
     }
-    var status: u32 = 0;
+    var status u32 = 0
     for i in 0..count - 1 {
-        var to = target;
+        var to = target
         if into {
-            to = join(&arena, target, last_name(args[i]));
+            to = join(&arena, target, last_name(args[i]))
         }
         if os.rename(args[i], to) == io.FAILED {
-            os.complain("mv", "can't move", args[i]);
-            status = 1;
+            os.complain("mv", "can't move", args[i])
+            status = 1
         }
     }
-    return status;
+    return status
 }
 
-fn last_name(path: []u8) -> []u8 {
-    var end = path.len;
+fn last_name(path []u8) []u8 {
+    var end = path.len
     while end > 1 && path[end - 1] == '/' {
-        end -= 1;
+        end -= 1
     }
-    var start = end;
+    var start = end
     while start > 0 && path[start - 1] != '/' {
-        start -= 1;
+        start -= 1
     }
-    return path[start:end];
+    return path[start:end]
 }
 
-fn join(arena: *mem.Arena, dir: []u8, name: []u8) -> []u8 {
-    var path = mem.alloc_bytes(arena, dir.len + 1 + name.len);
-    mem.copy(path, dir);
-    path[dir.len] = '/';
-    mem.copy(path[dir.len + 1:], name);
-    return path;
+fn join(arena *mem.Arena, dir []u8, name []u8) []u8 {
+    var path = mem.alloc_bytes(arena, dir.len + 1 + name.len)
+    mem.copy(path, dir)
+    path[dir.len] = '/'
+    mem.copy(path[dir.len + 1:], name)
+    return path
 }

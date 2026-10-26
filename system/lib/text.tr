@@ -1,122 +1,122 @@
 // Text: comparing it, reading numbers, and stepping through UTF-8.
 
-import io;
+import io
 
-fn equal(a: []u8, b: []u8) -> bool {
+fn equal(a []u8, b []u8) bool {
     if a.len != b.len {
-        return false;
+        return false
     }
     for i in 0..a.len {
         if a[i] != b[i] {
-            return false;
+            return false
         }
     }
-    return true;
+    return true
 }
 
-fn is_digit(c: u8) -> bool {
-    return c >= '0' && c <= '9';
+fn is_digit(c u8) bool {
+    return c >= '0' && c <= '9'
 }
 
-fn is_letter(c: u8) -> bool {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+fn is_letter(c u8) bool {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
 // Text is UTF-8. These count and step over its characters, which take one to
 // four bytes each. A byte that isn't part of a whole character counts as one
 // on its own, the way the GPU draws it: as "?".
 
-fn is_continuation(c: u8) -> bool {
-    return (c & 0xc0) == 0x80;
+fn is_continuation(c u8) bool {
+    return (c & 0xc0) == 0x80
 }
 
 // The bytes in the character that starts at text[at].
-fn char_length(text: []u8, at: u32) -> u32 {
-    var b = text[at];
-    var more: u32 = 0;
+fn char_length(text []u8, at u32) u32 {
+    var b = text[at]
+    var more u32 = 0
     if b >= 0xc2 && b < 0xe0 {
-        more = 1;
+        more = 1
     } else if b >= 0xe0 && b < 0xf0 {
-        more = 2;
+        more = 2
     } else if b >= 0xf0 && b < 0xf5 {
-        more = 3;
+        more = 3
     }
     if more >= text.len - at {
-        return 1;
+        return 1
     }
     for k in 1..more + 1 {
         if !is_continuation(text[at + k]) {
-            return 1;
+            return 1
         }
     }
-    return more + 1;
+    return more + 1
 }
 
-fn char_count(text: []u8) -> u32 {
-    var n: u32 = 0;
-    var i: u32 = 0;
+fn char_count(text []u8) u32 {
+    var n u32 = 0
+    var i u32 = 0
     while i < text.len {
-        i += char_length(text, i);
-        n += 1;
+        i += char_length(text, i)
+        n += 1
     }
-    return n;
+    return n
 }
 
 // Where the character that ends at text[end] starts.
-fn char_start(text: []u8, end: u32) -> u32 {
+fn char_start(text []u8, end u32) u32 {
     for k in 2..5 {
         if end >= k && char_length(text, end - k) == k {
-            return end - k;
+            return end - k
         }
     }
     if end == 0 {
-        return 0;
+        return 0
     }
-    return end - 1;
+    return end - 1
 }
 
 // Writes a character as UTF-8 at the start of out. Returns the bytes it
 // took, or 0 if it didn't fit.
-fn encode_char(c: u32, out: []u8) -> u32 {
-    var n: u32 = 4;
+fn encode_char(c u32, out []u8) u32 {
+    var n u32 = 4
     if c < 0x80 {
-        n = 1;
+        n = 1
     } else if c < 0x800 {
-        n = 2;
+        n = 2
     } else if c < 0x10000 {
-        n = 3;
+        n = 3
     }
     if out.len < n {
-        return 0;
+        return 0
     }
     if n == 1 {
-        out[0] = c as u8;
-        return 1;
+        out[0] = c as u8
+        return 1
     }
     for i in 1..n {
-        out[n - i] = (0x80 | ((c >> (6 * (i - 1))) & 0x3f)) as u8;
+        out[n - i] = (0x80 | ((c >> (6 * (i - 1))) & 0x3f)) as u8
     }
-    var lead: u32 = 0xf0;
+    var lead u32 = 0xf0
     if n == 2 {
-        lead = 0xc0;
+        lead = 0xc0
     } else if n == 3 {
-        lead = 0xe0;
+        lead = 0xe0
     }
-    out[0] = (lead | (c >> (6 * (n - 1)))) as u8;
-    return n;
+    out[0] = (lead | (c >> (6 * (n - 1)))) as u8
+    return n
 }
 
 // Turns decimal text into a number. Returns FAILED if it isn't one.
-fn parse_u32(text: []u8) -> u32 {
+fn parse_u32(text []u8) u32 {
     if text.len == 0 {
-        return io.FAILED;
+        return io.FAILED
     }
-    var value: u32 = 0;
+    var value u32 = 0
     for i in 0..text.len {
         if !is_digit(text[i]) {
-            return io.FAILED;
+            return io.FAILED
         }
-        value = value * 10 + (text[i] - '0');
+        value = value * 10 + (text[i] - '0')
     }
-    return value;
+    return value
 }

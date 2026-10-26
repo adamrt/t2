@@ -1,87 +1,87 @@
 // clock, an analog clock, drawn with fixed-point sines.
 
-import gfx;
-import io;
-import math;
-import os;
+import gfx
+import io
+import math
+import os
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "window";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "window"
 }
 
-const SIZE = 200;
-const CENTER = 100;
+const SIZE = 200
+const CENTER = 100
 
-var canvas: gfx.Canvas;
-var words: [2048]u32;
-var strings: [256]u8;
-var text: [32]u8;
+var canvas gfx.Canvas
+var words [2048]u32
+var strings [256]u8
+var text [32]u8
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Clock", SIZE, SIZE + 20);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Clock", SIZE, SIZE + 20)
     if window == io.FAILED {
-        os.complain("clock", "can't open a window", "");
-        return 1;
+        os.complain("clock", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    var shown: u32 = 0;
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    var shown u32 = 0
     while true {
-        var e: gfx.Event;
+        var e gfx.Event
         if gfx.event_wait(&e, 250) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
-                return 0;
+                return 0
             }
             if e.kind == gfx.EVENT_DRAW {
-                shown = 0;
+                shown = 0
             }
         }
-        var now = os.date();
+        var now = os.date()
         if now != shown {
-            draw(now);
-            shown = now;
+            draw(now)
+            shown = now
         }
     }
-    return 0;
+    return 0
 }
 
 // A hand pointing at a fraction of the way round, from twelve o'clock.
-fn hand(turn: u32, length: fixed, width: i32, color: u32) {
-    var angle = (turn + math.TURN * 3 / 4) % math.TURN;
-    var x = CENTER + (math.cos(angle) * length) as i32;
-    var y = CENTER + (math.sin(angle) * length) as i32;
+fn hand(turn u32, length fixed, width i32, color u32) {
+    var angle = (turn + math.TURN * 3 / 4) % math.TURN
+    var x = CENTER + (math.cos(angle) * length) as i32
+    var y = CENTER + (math.sin(angle) * length) as i32
     for d in 0..width {
-        var o = d as i32 - width / 2;
-        gfx.draw_line(&canvas, CENTER + o, CENTER, x + o, y, color);
-        gfx.draw_line(&canvas, CENTER, CENTER + o, x, y + o, color);
+        var o = d as i32 - width / 2
+        gfx.draw_line(&canvas, CENTER + o, CENTER, x + o, y, color)
+        gfx.draw_line(&canvas, CENTER, CENTER + o, x, y + o, color)
     }
 }
 
-fn draw(now: u32) {
-    gfx.draw_fill(&canvas, 0, 0, SIZE, SIZE + 20, gfx.rgb(242, 239, 230));
+fn draw(now u32) {
+    gfx.draw_fill(&canvas, 0, 0, SIZE, SIZE + 20, gfx.rgb(242, 239, 230))
     // The face: a mark for each hour.
     for h in 0..12 {
-        var angle = h * math.TURN / 12;
-        var outer: fixed = 90;
-        var inner: fixed = 80;
+        var angle = h * math.TURN / 12
+        var outer fixed = 90
+        var inner fixed = 80
         if h % 3 == 0 {
-            inner = 72;
+            inner = 72
         }
-        var c = math.cos(angle);
-        var s = math.sin(angle);
-        gfx.draw_line(&canvas, CENTER + (c * inner) as i32, CENTER + (s * inner) as i32, CENTER + (c * outer) as i32, CENTER + (s * outer) as i32, gfx.rgb(30, 30, 36));
+        var c = math.cos(angle)
+        var s = math.sin(angle)
+        gfx.draw_line(&canvas, CENTER + (c * inner) as i32, CENTER + (s * inner) as i32, CENTER + (c * outer) as i32, CENTER + (s * outer) as i32, gfx.rgb(30, 30, 36))
     }
-    var seconds = now % 86400;
-    var hours = seconds / 3600 % 12;
-    var minutes = seconds / 60 % 60;
-    hand((hours * 60 + minutes) * math.TURN / 720, 48, 3, gfx.rgb(30, 30, 36));
-    hand(seconds % 3600 * math.TURN / 3600, 70, 2, gfx.rgb(30, 30, 36));
-    hand(seconds % 60 * math.TURN / 60, 80, 1, gfx.rgb(200, 70, 60));
-    gfx.draw_fill(&canvas, CENTER - 3, CENTER - 3, 6, 6, gfx.rgb(45, 90, 80));
-    var w: io.Writer;
-    io.writer_init(&w, io.STDOUT, text[:]);
-    os.put_date(&w, now);
-    gfx.draw_text(&canvas, (SIZE - (w.used * 8) as i32) / 2, SIZE, gfx.rgb(30, 30, 36), text[0:w.used]);
-    gfx.present(&canvas);
+    var seconds = now % 86400
+    var hours = seconds / 3600 % 12
+    var minutes = seconds / 60 % 60
+    hand((hours * 60 + minutes) * math.TURN / 720, 48, 3, gfx.rgb(30, 30, 36))
+    hand(seconds % 3600 * math.TURN / 3600, 70, 2, gfx.rgb(30, 30, 36))
+    hand(seconds % 60 * math.TURN / 60, 80, 1, gfx.rgb(200, 70, 60))
+    gfx.draw_fill(&canvas, CENTER - 3, CENTER - 3, 6, 6, gfx.rgb(45, 90, 80))
+    var w io.Writer
+    io.writer_init(&w, io.STDOUT, text[:])
+    os.put_date(&w, now)
+    gfx.draw_text(&canvas, (SIZE - (w.used * 8) as i32) / 2, SIZE, gfx.rgb(30, 30, 36), text[0:w.used])
+    gfx.present(&canvas)
 }

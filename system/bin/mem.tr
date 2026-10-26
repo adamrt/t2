@@ -1,24 +1,24 @@
 // mem shows how much memory programs can use, and how much is free.
 
-import io;
-import os;
+import io
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
-    allow = "recovery";
+    memory = 64 * KiB
+    stack = 16 * KiB
+    allow = "recovery"
 }
 
-fn main(memory: []u8) -> u32 {
-    var free: u32;
-    var total = os.memory_info(&free);
-    var out: io.Writer;
-    var buffer: [256]u8;
-    io.writer_init(&out, io.STDOUT, buffer[:]);
-    io.put_u32(&out, total / KiB);
-    io.put(&out, " KiB for programs, ");
-    io.put_u32(&out, free / KiB);
-    io.put(&out, " KiB free\n");
-    io.flush(&out);
-    return 0;
+fn main(memory []u8) u32 {
+    var free u32
+    var total = os.memory_info(&free)
+    var out io.Writer
+    var buffer [256]u8
+    io.writer_init(&out, io.STDOUT, buffer[:])
+    io.put_u32(&out, total / KiB)
+    io.put(&out, " KiB for programs, ")
+    io.put_u32(&out, free / KiB)
+    io.put(&out, " KiB free\n")
+    io.flush(&out)
+    return 0
 }

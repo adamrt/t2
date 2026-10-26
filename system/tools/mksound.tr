@@ -8,119 +8,119 @@
 // samples a second (on a Mac: afconvert -f WAVE -d LEI16@22050 -c 1 in.m4a
 // out.wav).
 
-import io;
-import mem;
-import os;
-import sound;
-import text;
+import io
+import mem
+import os
+import sound
+import text
 
 manifest {
-    memory = 32 * MiB;
-    stack = 64 * KiB;
-    allow = "read write";
+    memory = 32 * MiB
+    stack = 64 * KiB
+    allow = "read write"
 }
 
-var arena: mem.Arena;
-var writer: sound.Writer;
-var chunk: [sound.BLOCK_SAMPLES]u16;
+var arena mem.Arena
+var writer sound.Writer
+var chunk [sound.BLOCK_SAMPLES]u16
 
-fn main(memory: []u8) -> u32 {
-    mem.arena_init(&arena, memory);
+fn main(memory []u8) u32 {
+    mem.arena_init(&arena, memory)
     if os.arg_count() != 3 {
-        fail("usage: mksound -o sound.tsn recording.wav");
+        fail("usage: mksound -o sound.tsn recording.wav")
     }
-    var output = argument(1);
-    var wav = read_whole(argument(2));
+    var output = argument(1)
+    var wav = read_whole(argument(2))
     if wav.len < 12 || !text.equal(wav[0:4], "RIFF") || !text.equal(wav[8:12], "WAVE") {
-        fail("not a WAV file");
+        fail("not a WAV file")
     }
-    var channels: u32 = 0;
-    var rate: u32 = 0;
-    var data: []u8;
-    var at: u32 = 12;
+    var channels u32 = 0
+    var rate u32 = 0
+    var data []u8
+    var at u32 = 12
     while at + 8 <= wav.len {
-        var size = mem.read_word(wav, at + 4);
+        var size = mem.read_word(wav, at + 4)
         if size > wav.len - at - 8 {
-            size = wav.len - at - 8;
+            size = wav.len - at - 8
         }
-        var body = wav[at + 8:at + 8 + size];
+        var body = wav[at + 8:at + 8 + size]
         if text.equal(wav[at:at + 4], "fmt ") && size >= 16 {
-            var format = body[0] | (body[1] << 8);
-            channels = body[2] | (body[3] << 8);
-            rate = mem.read_word(body, 4);
-            var bits = body[14] | (body[15] << 8);
+            var format = body[0] | (body[1] << 8)
+            channels = body[2] | (body[3] << 8)
+            rate = mem.read_word(body, 4)
+            var bits = body[14] | (body[15] << 8)
             if format != 1 || bits != 16 || channels == 0 || channels > 8 || rate == 0 || rate > sound.MAX_RATE {
-                fail("only 16-bit PCM WAVs work");
+                fail("only 16-bit PCM WAVs work")
             }
         } else if text.equal(wav[at:at + 4], "data") {
-            data = body;
+            data = body
         }
-        at += 8 + size + (size & 1);
+        at += 8 + size + (size & 1)
     }
     if channels == 0 || data.ptr == null {
-        fail("the WAV has no format or no data");
+        fail("the WAV has no format or no data")
     }
-    var frame = 2 * channels;
-    var samples = data.len / frame;
-    var file = io.open(output, 1);
+    var frame = 2 * channels
+    var samples = data.len / frame
+    var file = io.open(output, 1)
     if file == io.FAILED {
-        fail("can't write the sound");
+        fail("can't write the sound")
     }
-    sound.writer_start(&writer, file, rate, samples);
-    var n: u32 = 0;
+    sound.writer_start(&writer, file, rate, samples)
+    var n u32 = 0
     for i in 0..samples {
-        var mix: i32 = 0;
+        var mix i32 = 0
         for c in 0..channels {
-            var p = i * frame + c * 2;
-            mix += sound.from_sample((data[p] | (data[p + 1] << 8)) as u16);
+            var p = i * frame + c * 2
+            mix += sound.from_sample((data[p] | (data[p + 1] << 8)) as u16)
         }
-        chunk[n] = sound.to_sample(mix / channels as i32);
-        n += 1;
+        chunk[n] = sound.to_sample(mix / channels as i32)
+        n += 1
         if n == chunk.len {
-            sound.writer_add(&writer, chunk[:]);
-            n = 0;
+            sound.writer_add(&writer, chunk[:])
+            n = 0
         }
     }
-    sound.writer_add(&writer, chunk[0:n]);
+    sound.writer_add(&writer, chunk[0:n])
     if !sound.writer_finish(&writer) {
-        fail("can't write the sound");
+        fail("can't write the sound")
     }
-    io.close(file);
-    return 0;
+    io.close(file)
+    return 0
 }
 
-fn fail(message: []u8) {
-    io.write_all(io.STDERR, "mksound: ");
-    io.write_all(io.STDERR, message);
-    io.write_all(io.STDERR, "\n");
-    os.exit(1);
+fn fail(message []u8) {
+    io.write_all(io.STDERR, "mksound: ")
+    io.write_all(io.STDERR, message)
+    io.write_all(io.STDERR, "\n")
+    os.exit(1)
 }
 
-fn argument(index: u32) -> []u8 {
-    var buffer = mem.alloc_bytes(&arena, 256);
-    var n = os.arg(index, buffer);
+fn argument(index u32) []u8 {
+    var buffer = mem.alloc_bytes(&arena, 256)
+    var n = os.arg(index, buffer)
     if n > buffer.len {
-        fail("argument is too long");
+        fail("argument is too long")
     }
-    return buffer[0:n];
+    return buffer[0:n]
 }
 
-fn read_whole(path: []u8) -> []u8 {
-    var file = io.open(path, 0);
+fn read_whole(path []u8) []u8 {
+    var file = io.open(path, 0)
     if file == io.FAILED {
-        fail("can't read the recording");
+        fail("can't read the recording")
     }
-    var start = (arena.used + 3) & ~3;
-    var free = arena.memory[start:];
-    var n: u32 = 0;
+    var start = (arena.used + 3) & ~3
+    var free = arena.memory[start:]
+    var n u32 = 0
     while true {
-        var got = io.read(file, free[n:]);
+        var got = io.read(file, free[n:])
         if got == 0 || got == io.FAILED {
-            break;
+            break
         }
-        n += got;
+        n += got
     }
-    io.close(file);
-    arena.used = start + n;
-    return free[0:n];
+    io.close(file)
+    arena.used = start + n
+    return free[0:n]
 }

@@ -1,138 +1,138 @@
 // The file system on the disk, described in spec/filesystem.md.
 
-import mem;
-import text;
+import mem
+import text
 
-const BLOCK: u32 = 4096;
-const END: u32 = 0xffffffff;
-const ENTRY_SIZE: u32 = 64;
-const NAME_SIZE: u32 = 48;
-const KIND_FILE: u32 = 1;
-const KIND_DIR: u32 = 2;
-const ROOT: u32 = 0xffffffff;       // the "parent" of the root directory
+const BLOCK u32 = 4096
+const END u32 = 0xffffffff
+const ENTRY_SIZE u32 = 64
+const NAME_SIZE u32 = 48
+const KIND_FILE u32 = 1
+const KIND_DIR u32 = 2
+const ROOT u32 = 0xffffffff         // the "parent" of the root directory
 
-const PORT_DISK_BLOCK: u32 = 0x30;
-const PORT_DISK_ADDRESS: u32 = 0x31;
-const PORT_DISK_COUNT: u32 = 0x32;
-const PORT_DISK_COMMAND: u32 = 0x33;
-const PORT_DISK_STATUS: u32 = 0x34;
-const PORT_DISK_SIZE: u32 = 0x35;
+const PORT_DISK_BLOCK u32 = 0x30
+const PORT_DISK_ADDRESS u32 = 0x31
+const PORT_DISK_COUNT u32 = 0x32
+const PORT_DISK_COMMAND u32 = 0x33
+const PORT_DISK_STATUS u32 = 0x34
+const PORT_DISK_SIZE u32 = 0x35
 
 // A file or directory, and where its entry is.
 struct FileRef {
-    kind: u32;
-    first: u32;
-    size: u32;
-    time: u32;          // when it last changed, in local seconds since 1970
-    parent: u32;        // the first block of the directory holding the entry
-    index: u32;         // the entry's number in that directory
+    kind u32
+    first u32
+    size u32
+    time u32            // when it last changed, in local seconds since 1970
+    parent u32          // the first block of the directory holding the entry
+    index u32           // the entry's number in that directory
 }
 
 struct Entry {
-    name: [48]u8;
-    name_len: u32;
-    file: FileRef;
+    name [48]u8
+    name_len u32
+    file FileRef
 }
 
-var disk_blocks: u32;
-var table_start: u32;
-var table: []u8;            // the whole table, kept in memory
-var header: []u8;           // block 0
-var meta: []u8;             // a buffer for directory blocks
-var meta_block: u32;        // the block in meta, or 0
-var contents: []u8;         // a buffer for file blocks
-var root: FileRef;
-var free_hint: u32;
+var disk_blocks u32
+var table_start u32
+var table []u8              // the whole table, kept in memory
+var header []u8             // block 0
+var meta []u8               // a buffer for directory blocks
+var meta_block u32          // the block in meta, or 0
+var contents []u8           // a buffer for file blocks
+var root FileRef
+var free_hint u32
 
-fn fs_init() -> bool {
-    header = mem.alloc_bytes(&arena, BLOCK);
-    meta = mem.alloc_bytes(&arena, BLOCK);
-    contents = mem.alloc_bytes(&arena, BLOCK);
-    disk_blocks = io_read(PORT_DISK_SIZE);
+fn fs_init() bool {
+    header = mem.alloc_bytes(&arena, BLOCK)
+    meta = mem.alloc_bytes(&arena, BLOCK)
+    contents = mem.alloc_bytes(&arena, BLOCK)
+    disk_blocks = io_read(PORT_DISK_SIZE)
     if disk_blocks == 0 || !disk_transfer(0, header, 1, 1) || !text.equal(header[0:4], "TFS1") {
-        return false;
+        return false
     }
-    table_start = get_word(header, 12);
-    var table_blocks = get_word(header, 16);
-    table = mem.alloc_bytes(&arena, table_blocks * BLOCK);
+    table_start = get_word(header, 12)
+    var table_blocks = get_word(header, 16)
+    table = mem.alloc_bytes(&arena, table_blocks * BLOCK)
     if !disk_transfer(table_start, table, table_blocks, 1) {
-        return false;
+        return false
     }
-    root.kind = KIND_DIR;
-    root.first = get_word(header, 20);
-    root.size = get_word(header, 24);
-    root.parent = ROOT;
-    free_hint = 1;
-    return true;
+    root.kind = KIND_DIR
+    root.first = get_word(header, 20)
+    root.size = get_word(header, 24)
+    root.parent = ROOT
+    free_hint = 1
+    return true
 }
 
 // The disk reads into and writes from physical memory.
-fn physical(bytes: []u8) -> u32 {
-    return bytes.ptr as u32 - 0x10000;
+fn physical(bytes []u8) u32 {
+    return bytes.ptr as u32 - 0x10000
 }
 
-fn disk_transfer(block: u32, buffer: []u8, count: u32, command: u32) -> bool {
-    io_write(PORT_DISK_BLOCK, block);
-    io_write(PORT_DISK_ADDRESS, physical(buffer));
-    io_write(PORT_DISK_COUNT, count);
-    io_write(PORT_DISK_COMMAND, command);
-    return io_read(PORT_DISK_STATUS) == 0;
+fn disk_transfer(block u32, buffer []u8, count u32, command u32) bool {
+    io_write(PORT_DISK_BLOCK, block)
+    io_write(PORT_DISK_ADDRESS, physical(buffer))
+    io_write(PORT_DISK_COUNT, count)
+    io_write(PORT_DISK_COMMAND, command)
+    return io_read(PORT_DISK_STATUS) == 0
 }
 
-fn read_meta(block: u32) {
+fn read_meta(block u32) {
     if meta_block != block {
-        disk_transfer(block, meta, 1, 1);
-        meta_block = block;
+        disk_transfer(block, meta, 1, 1)
+        meta_block = block
     }
 }
 
-fn write_meta(block: u32) {
-    disk_transfer(block, meta, 1, 2);
-    meta_block = block;
+fn write_meta(block u32) {
+    disk_transfer(block, meta, 1, 2)
+    meta_block = block
 }
 
-fn get_word(bytes: []u8, offset: u32) -> u32 {
-    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+fn get_word(bytes []u8, offset u32) u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
 }
 
-fn set_word(bytes: []u8, offset: u32, value: u32) {
-    bytes[offset] = (value & 255) as u8;
-    bytes[offset + 1] = ((value >> 8) & 255) as u8;
-    bytes[offset + 2] = ((value >> 16) & 255) as u8;
-    bytes[offset + 3] = (value >> 24) as u8;
+fn set_word(bytes []u8, offset u32, value u32) {
+    bytes[offset] = (value & 255) as u8
+    bytes[offset + 1] = ((value >> 8) & 255) as u8
+    bytes[offset + 2] = ((value >> 16) & 255) as u8
+    bytes[offset + 3] = (value >> 24) as u8
 }
 
 // The table ------------------------------------------------------------------
 
-fn next_block(b: u32) -> u32 {
-    return get_word(table, b * 4);
+fn next_block(b u32) u32 {
+    return get_word(table, b * 4)
 }
 
-fn set_next_block(b: u32, value: u32) {
-    set_word(table, b * 4, value);
-    var block = b * 4 / BLOCK;
-    disk_transfer(table_start + block, table[block * BLOCK:], 1, 2);
+fn set_next_block(b u32, value u32) {
+    set_word(table, b * 4, value)
+    var block = b * 4 / BLOCK
+    disk_transfer(table_start + block, table[block * BLOCK:], 1, 2)
 }
 
 // Returns a free block, now marked as the end of a file, or 0 if the disk is full.
-fn allocate_block() -> u32 {
+fn allocate_block() u32 {
     for i in 0..disk_blocks {
-        var b = (free_hint + i) % disk_blocks;
+        var b = (free_hint + i) % disk_blocks
         if next_block(b) == 0 {
-            set_next_block(b, END);
-            free_hint = b + 1;
-            return b;
+            set_next_block(b, END)
+            free_hint = b + 1
+            return b
         }
     }
-    return 0;
+    return 0
 }
 
-fn free_chain(first: u32) {
-    var b = first;
+fn free_chain(first u32) {
+    var b = first
     while b != 0 && b < disk_blocks {
-        var next = next_block(b);
-        set_next_block(b, 0);
-        b = next;
+        var next = next_block(b)
+        set_next_block(b, 0)
+        b = next
     }
 }
 
@@ -140,251 +140,251 @@ fn free_chain(first: u32) {
 
 // Returns the block holding block number index of a file, or 0. With extend,
 // adds blocks to the file until it has one.
-fn file_block(f: *FileRef, index: u32, extend: bool) -> u32 {
+fn file_block(f *FileRef, index u32, extend bool) u32 {
     if f.first == 0 {
         if !extend {
-            return 0;
+            return 0
         }
-        f.first = allocate_block();
+        f.first = allocate_block()
         if f.first == 0 {
-            return 0;
+            return 0
         }
-        update_entry(f);
+        update_entry(f)
     }
-    var b = f.first;
+    var b = f.first
     for i in 0..index {
-        var next = next_block(b);
+        var next = next_block(b)
         if next == END {
             if !extend {
-                return 0;
+                return 0
             }
-            next = allocate_block();
+            next = allocate_block()
             if next == 0 {
-                return 0;
+                return 0
             }
-            set_next_block(b, next);
+            set_next_block(b, next)
         } else if next == 0 || next >= disk_blocks {
             // A broken chain: stop rather than follow it.
-            return 0;
+            return 0
         }
-        b = next;
+        b = next
     }
-    return b;
+    return b
 }
 
-fn min(a: u32, b: u32) -> u32 {
+fn min(a u32, b u32) u32 {
     if a < b {
-        return a;
+        return a
     }
-    return b;
+    return b
 }
 
-fn read_at(f: *FileRef, position: u32, out: []u8) -> u32 {
+fn read_at(f *FileRef, position u32, out []u8) u32 {
     if position >= f.size {
-        return 0;
+        return 0
     }
-    var n = min(out.len, f.size - position);
-    var done: u32 = 0;
+    var n = min(out.len, f.size - position)
+    var done u32 = 0
     while done < n {
-        var at = position + done;
-        var b = file_block(f, at / BLOCK, false);
+        var at = position + done
+        var b = file_block(f, at / BLOCK, false)
         if b == 0 || !disk_transfer(b, contents, 1, 1) {
-            break;
+            break
         }
-        var offset = at % BLOCK;
-        var count = min(BLOCK - offset, n - done);
-        mem.copy(out[done:done + count], contents[offset:offset + count]);
-        done += count;
+        var offset = at % BLOCK
+        var count = min(BLOCK - offset, n - done)
+        mem.copy(out[done:done + count], contents[offset:offset + count])
+        done += count
     }
-    return done;
+    return done
 }
 
 // Writes bytes at position, which can't be past the end. Returns how many
 // were written, fewer when the disk fills up.
-fn write_at(f: *FileRef, position: u32, bytes: []u8) -> u32 {
+fn write_at(f *FileRef, position u32, bytes []u8) u32 {
     if position > f.size {
-        return 0;
+        return 0
     }
-    var done: u32 = 0;
+    var done u32 = 0
     while done < bytes.len {
-        var at = position + done;
-        var b = file_block(f, at / BLOCK, true);
+        var at = position + done
+        var b = file_block(f, at / BLOCK, true)
         if b == 0 {
-            break;
+            break
         }
-        var offset = at % BLOCK;
-        var count = min(BLOCK - offset, bytes.len - done);
+        var offset = at % BLOCK
+        var count = min(BLOCK - offset, bytes.len - done)
         if at - offset < f.size {
-            disk_transfer(b, contents, 1, 1);
+            disk_transfer(b, contents, 1, 1)
         } else {
-            mem.fill(contents.ptr, 0, BLOCK);
+            mem.fill(contents.ptr, 0, BLOCK)
         }
-        mem.copy(contents[offset:], bytes[done:done + count]);
-        disk_transfer(b, contents, 1, 2);
-        done += count;
+        mem.copy(contents[offset:], bytes[done:done + count])
+        disk_transfer(b, contents, 1, 2)
+        done += count
     }
     if position + done > f.size {
-        f.size = position + done;
+        f.size = position + done
     }
     if done > 0 {
-        f.time = date_now();
-        update_entry(f);
+        f.time = date_now()
+        update_entry(f)
     }
-    return done;
+    return done
 }
 
-fn truncate(f: *FileRef) {
-    free_chain(f.first);
-    f.first = 0;
-    f.size = 0;
-    f.time = date_now();
-    update_entry(f);
+fn truncate(f *FileRef) {
+    free_chain(f.first)
+    f.first = 0
+    f.size = 0
+    f.time = date_now()
+    update_entry(f)
 }
 
 // Directories ----------------------------------------------------------------
 
-fn load_entry(dir: *FileRef, index: u32, e: *Entry) -> bool {
-    var b = file_block(dir, index * ENTRY_SIZE / BLOCK, false);
+fn load_entry(dir *FileRef, index u32, e *Entry) bool {
+    var b = file_block(dir, index * ENTRY_SIZE / BLOCK, false)
     if b == 0 {
-        return false;
+        return false
     }
-    read_meta(b);
-    var offset = index * ENTRY_SIZE % BLOCK;
-    var bytes = meta[offset:offset + ENTRY_SIZE];
-    mem.copy(e.name[:], bytes[0:NAME_SIZE]);
-    e.name_len = 0;
+    read_meta(b)
+    var offset = index * ENTRY_SIZE % BLOCK
+    var bytes = meta[offset:offset + ENTRY_SIZE]
+    mem.copy(e.name[:], bytes[0:NAME_SIZE])
+    e.name_len = 0
     while e.name_len < NAME_SIZE && e.name[e.name_len] != 0 {
-        e.name_len += 1;
+        e.name_len += 1
     }
-    e.file.kind = get_word(bytes, 48);
-    e.file.first = get_word(bytes, 52);
-    e.file.size = get_word(bytes, 56);
-    e.file.time = get_word(bytes, 60);
-    e.file.parent = dir.first;
-    e.file.index = index;
-    return true;
+    e.file.kind = get_word(bytes, 48)
+    e.file.first = get_word(bytes, 52)
+    e.file.size = get_word(bytes, 56)
+    e.file.time = get_word(bytes, 60)
+    e.file.parent = dir.first
+    e.file.index = index
+    return true
 }
 
 // Writes a file's kind, first block and size into its entry.
-fn update_entry(f: *FileRef) {
+fn update_entry(f *FileRef) {
     if f.parent == ROOT {
-        set_word(header, 20, f.first);
-        set_word(header, 24, f.size);
-        disk_transfer(0, header, 1, 2);
-        root.first = f.first;
-        root.size = f.size;
-        return;
+        set_word(header, 20, f.first)
+        set_word(header, 24, f.size)
+        disk_transfer(0, header, 1, 2)
+        root.first = f.first
+        root.size = f.size
+        return
     }
-    var b = f.parent;
+    var b = f.parent
     for i in 0..f.index * ENTRY_SIZE / BLOCK {
-        b = next_block(b);
+        b = next_block(b)
         if b == 0 || b >= disk_blocks {
-            return;
+            return
         }
     }
-    read_meta(b);
-    var offset = f.index * ENTRY_SIZE % BLOCK;
-    set_word(meta, offset + 48, f.kind);
-    set_word(meta, offset + 52, f.first);
-    set_word(meta, offset + 56, f.size);
-    set_word(meta, offset + 60, f.time);
-    write_meta(b);
+    read_meta(b)
+    var offset = f.index * ENTRY_SIZE % BLOCK
+    set_word(meta, offset + 48, f.kind)
+    set_word(meta, offset + 52, f.first)
+    set_word(meta, offset + 56, f.size)
+    set_word(meta, offset + 60, f.time)
+    write_meta(b)
 }
 
 // Local time, in seconds since 1970.
-fn date_now() -> u32 {
-    return io_read(0x24);
+fn date_now() u32 {
+    return io_read(0x24)
 }
 
-fn find_entry(dir: *FileRef, name: []u8, e: *Entry) -> bool {
+fn find_entry(dir *FileRef, name []u8, e *Entry) bool {
     for i in 0..dir.size / ENTRY_SIZE {
         if load_entry(dir, i, e) && e.file.kind != 0 && text.equal(e.name[0:e.name_len], name) {
-            return true;
+            return true
         }
     }
-    return false;
+    return false
 }
 
-fn add_entry(dir: *FileRef, name: []u8, kind: u32, out: *FileRef) -> bool {
-    var count = dir.size / ENTRY_SIZE;
-    var index = count;
-    var e: Entry;
+fn add_entry(dir *FileRef, name []u8, kind u32, out *FileRef) bool {
+    var count = dir.size / ENTRY_SIZE
+    var index = count
+    var e Entry
     for i in 0..count {
         if load_entry(dir, i, &e) && e.file.kind == 0 {
-            index = i;
-            break;
+            index = i
+            break
         }
     }
-    var b = file_block(dir, index * ENTRY_SIZE / BLOCK, true);
+    var b = file_block(dir, index * ENTRY_SIZE / BLOCK, true)
     if b == 0 {
-        return false;
+        return false
     }
-    read_meta(b);
-    var offset = index * ENTRY_SIZE % BLOCK;
-    mem.fill(&meta[offset], 0, ENTRY_SIZE);
-    mem.copy(meta[offset:offset + NAME_SIZE], name);
-    set_word(meta, offset + 48, kind);
-    set_word(meta, offset + 60, date_now());
-    write_meta(b);
+    read_meta(b)
+    var offset = index * ENTRY_SIZE % BLOCK
+    mem.fill(&meta[offset], 0, ENTRY_SIZE)
+    mem.copy(meta[offset:offset + NAME_SIZE], name)
+    set_word(meta, offset + 48, kind)
+    set_word(meta, offset + 60, date_now())
+    write_meta(b)
     if index == count {
-        dir.size += ENTRY_SIZE;
-        update_entry(dir);
+        dir.size += ENTRY_SIZE
+        update_entry(dir)
     }
-    out.kind = kind;
-    out.first = 0;
-    out.size = 0;
-    out.time = date_now();
-    out.parent = dir.first;
-    out.index = index;
-    return true;
+    out.kind = kind
+    out.first = 0
+    out.size = 0
+    out.time = date_now()
+    out.parent = dir.first
+    out.index = index
+    return true
 }
 
-fn remove_entry(f: *FileRef) {
-    free_chain(f.first);
-    f.kind = 0;
-    f.first = 0;
-    f.size = 0;
-    update_entry(f);
+fn remove_entry(f *FileRef) {
+    free_chain(f.first)
+    f.kind = 0
+    f.first = 0
+    f.size = 0
+    update_entry(f)
 }
 
 // Paths ----------------------------------------------------------------------
 
 // Finds the file at an absolute path like "/bin/sh".
-fn lookup(path: []u8, f: *FileRef) -> bool {
-    *f = root;
-    var rest = path;
+fn lookup(path []u8, f *FileRef) bool {
+    *f = root
+    var rest = path
     while rest.len > 0 {
         if rest[0] == '/' {
-            rest = rest[1:];
-            continue;
+            rest = rest[1:]
+            continue
         }
-        var end: u32 = 0;
+        var end u32 = 0
         while end < rest.len && rest[end] != '/' {
-            end += 1;
+            end += 1
         }
         if f.kind != KIND_DIR {
-            return false;
+            return false
         }
-        var e: Entry;
+        var e Entry
         if !find_entry(f, rest[0:end], &e) {
-            return false;
+            return false
         }
-        *f = e.file;
-        rest = rest[end:];
+        *f = e.file
+        rest = rest[end:]
     }
-    return true;
+    return true
 }
 
 // Splits an absolute path into its directory, which must exist, and its last name.
-fn lookup_parent(path: []u8, dir: *FileRef) -> []u8 {
-    var slash = path.len;
+fn lookup_parent(path []u8, dir *FileRef) []u8 {
+    var slash = path.len
     while slash > 0 && path[slash - 1] != '/' {
-        slash -= 1;
+        slash -= 1
     }
-    var name = path[slash:];
-    var empty: []u8;
+    var name = path[slash:]
+    var empty []u8
     if name.len == 0 || name.len > NAME_SIZE || !lookup(path[0:slash], dir) || dir.kind != KIND_DIR {
-        return empty;
+        return empty
     }
-    return name;
+    return name
 }

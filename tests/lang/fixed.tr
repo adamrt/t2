@@ -1,52 +1,52 @@
 // Fixed-point arithmetic. Prints "ok", or the number of the first failed check.
 
-import io;
+import io
 
-var failures: u32;
+var failures u32
 
-fn check(ok: bool, number: u32) {
+fn check(ok bool, number u32) {
     if !ok && failures == 0 {
-        failures = number;
+        failures = number
     }
 }
 
-fn half(x: fixed) -> fixed {
-    return x / 2;
+fn half(x fixed) fixed {
+    return x / 2
 }
 
-fn main(memory: []u8) -> u32 {
-    var a: fixed = 1.5;
-    var b: fixed = 2;
-    check(a * b == 3, 1);
-    check(a + b == 3.5, 2);
-    check(b - a == 0.5, 3);
-    check(a / b == 0.75, 4);
-    check(half(5) == 2.5, 5);
-    check(-a < 0 && a > 1 && a >= 1.5 && a <= 1.5, 6);
-    check((a * 4) as i32 == 6, 7);
-    check((-a) as i32 == -2, 8);
-    var n: i32 = 7;
-    check(n as fixed / 2 == 3.5, 9);
-    var c: fixed = 0.1;
-    c *= 10;
-    check(c > 0.99 && c < 1.01, 10);
-    c += 1;
-    c -= 0.5;
-    c /= 2;
-    check(c > 0.74 && c < 0.76, 11);
-    check(3 as fixed == 3.0, 12);
-    var big: fixed = 100.25;
-    check(big * big > 10050 && big * big < 10051, 13);
+fn main(memory []u8) u32 {
+    var a fixed = 1.5
+    var b fixed = 2
+    check(a * b == 3, 1)
+    check(a + b == 3.5, 2)
+    check(b - a == 0.5, 3)
+    check(a / b == 0.75, 4)
+    check(half(5) == 2.5, 5)
+    check(-a < 0 && a > 1 && a >= 1.5 && a <= 1.5, 6)
+    check((a * 4) as i32 == 6, 7)
+    check((-a) as i32 == -2, 8)
+    var n i32 = 7
+    check(n as fixed / 2 == 3.5, 9)
+    var c fixed = 0.1
+    c *= 10
+    check(c > 0.99 && c < 1.01, 10)
+    c += 1
+    c -= 0.5
+    c /= 2
+    check(c > 0.74 && c < 0.76, 11)
+    check(3 as fixed == 3.0, 12)
+    var big fixed = 100.25
+    check(big * big > 10050 && big * big < 10051, 13)
     if failures == 0 {
-        io.print("ok\n");
+        io.print("ok\n")
     } else {
-        var out: io.Writer;
-        var buffer: [32]u8;
-        io.writer_init(&out, io.STDOUT, buffer[:]);
-        io.put(&out, "failed check ");
-        io.put_u32(&out, failures);
-        io.put_byte(&out, '\n');
-        io.flush(&out);
+        var out io.Writer
+        var buffer [32]u8
+        io.writer_init(&out, io.STDOUT, buffer[:])
+        io.put(&out, "failed check ")
+        io.put_u32(&out, failures)
+        io.put_byte(&out, '\n')
+        io.flush(&out)
     }
-    return failures;
+    return failures
 }

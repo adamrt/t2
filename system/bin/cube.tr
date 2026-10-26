@@ -2,196 +2,196 @@
 // textures, no depth buffer, and faces sorted back to front. Drag with the
 // mouse to turn it yourself.
 
-import gfx;
-import io;
-import math;
-import os;
+import gfx
+import io
+import math
+import os
 
 manifest {
-    memory = 256 * KiB;
-    stack = 16 * KiB;
-    allow = "window";
+    memory = 256 * KiB
+    stack = 16 * KiB
+    allow = "window"
 }
 
-const WIDTH = 400;
-const HEIGHT = 320;
-const SIZE = 64;                // texture width and height
+const WIDTH = 400
+const HEIGHT = 320
+const SIZE = 64                 // texture width and height
 
 struct Face {
-    corners: [4]u32;
-    color: u32;
-    depth: fixed;
-    visible: bool;
+    corners [4]u32
+    color u32
+    depth fixed
+    visible bool
 }
 
-var canvas: gfx.Canvas;
-var words: [2048]u32;
-var strings: [256]u8;
-var texture_pixels: [SIZE * SIZE]u32;
-var texture: gfx.Image;
-var corners: [8]math.Vec3;
-var moved: [8]math.Vec3;
-var screen_x: [8]i32;
-var screen_y: [8]i32;
-var faces: [6]Face;
-var order: [6]u32;
-var spin_x: u32;
-var spin_y: u32;
-var dragging: bool;
-var drag_x: i32;
-var drag_y: i32;
+var canvas gfx.Canvas
+var words [2048]u32
+var strings [256]u8
+var texture_pixels [SIZE * SIZE]u32
+var texture gfx.Image
+var corners [8]math.Vec3
+var moved [8]math.Vec3
+var screen_x [8]i32
+var screen_y [8]i32
+var faces [6]Face
+var order [6]u32
+var spin_x u32
+var spin_y u32
+var dragging bool
+var drag_x i32
+var drag_y i32
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Cube", WIDTH, HEIGHT);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Cube", WIDTH, HEIGHT)
     if window == io.FAILED {
-        os.complain("cube", "can't open a window", "");
-        return 1;
+        os.complain("cube", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    make_texture();
-    make_cube();
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    make_texture()
+    make_cube()
     while true {
-        var e: gfx.Event;
+        var e gfx.Event
         while gfx.event_wait(&e, 0) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
-                return 0;
+                return 0
             }
             if e.kind == gfx.EVENT_MOUSE_DOWN {
-                dragging = true;
-                drag_x = e.x;
-                drag_y = e.y;
+                dragging = true
+                drag_x = e.x
+                drag_y = e.y
             } else if e.kind == gfx.EVENT_MOUSE_UP {
-                dragging = false;
+                dragging = false
             } else if e.kind == gfx.EVENT_MOUSE_MOVE && dragging {
-                spin_y += ((e.x - drag_x) * 8) as u32;
-                spin_x += ((e.y - drag_y) * 8) as u32;
-                drag_x = e.x;
-                drag_y = e.y;
+                spin_y += ((e.x - drag_x) * 8) as u32
+                spin_x += ((e.y - drag_y) * 8) as u32
+                drag_x = e.x
+                drag_y = e.y
             }
         }
         if !dragging {
-            spin_y += 12;
-            spin_x += 5;
+            spin_y += 12
+            spin_x += 5
         }
-        draw();
-        os.sleep(16);
+        draw()
+        os.sleep(16)
     }
-    return 0;
+    return 0
 }
 
 fn make_texture() {
     for y in 0..SIZE {
         for x in 0..SIZE {
-            var shade = 60 + (x + y) * 60 / (2 * SIZE);
-            var color = gfx.rgb(30, shade, shade * 3 / 4);
-            var edge = x < 3 || y < 3 || x >= SIZE - 3 || y >= SIZE - 3;
-            var bar = y >= 14 && y < 22 && x >= 14 && x < 50;
-            var stem = x >= 28 && x < 36 && y >= 14 && y < 52;
+            var shade = 60 + (x + y) * 60 / (2 * SIZE)
+            var color = gfx.rgb(30, shade, shade * 3 / 4)
+            var edge = x < 3 || y < 3 || x >= SIZE - 3 || y >= SIZE - 3
+            var bar = y >= 14 && y < 22 && x >= 14 && x < 50
+            var stem = x >= 28 && x < 36 && y >= 14 && y < 52
             if edge || bar || stem {
-                color = gfx.rgb(232, 195, 90);
+                color = gfx.rgb(232, 195, 90)
             }
-            texture_pixels[y * SIZE + x] = color;
+            texture_pixels[y * SIZE + x] = color
         }
     }
-    texture.width = SIZE;
-    texture.height = SIZE;
-    texture.pixels = texture_pixels[:];
+    texture.width = SIZE
+    texture.height = SIZE
+    texture.pixels = texture_pixels[:]
 }
 
 fn make_cube() {
     for i in 0..8 {
-        var x: fixed = -1;
-        var y: fixed = -1;
-        var z: fixed = -1;
+        var x fixed = -1
+        var y fixed = -1
+        var z fixed = -1
         if i & 1 != 0 {
-            x = 1;
+            x = 1
         }
         if i & 2 != 0 {
-            y = 1;
+            y = 1
         }
         if i & 4 != 0 {
-            z = 1;
+            z = 1
         }
-        math.vec3_set(&corners[i], x, y, z);
+        math.vec3_set(&corners[i], x, y, z)
     }
     // Corners go clockwise as seen from outside, with y pointing down.
-    set_face(0, 0, 1, 3, 2);    // front, z = -1
-    set_face(1, 5, 4, 6, 7);    // back
-    set_face(2, 4, 0, 2, 6);    // left
-    set_face(3, 1, 5, 7, 3);    // right
-    set_face(4, 4, 5, 1, 0);    // top
-    set_face(5, 2, 3, 7, 6);    // bottom
+    set_face(0, 0, 1, 3, 2)     // front, z = -1
+    set_face(1, 5, 4, 6, 7)     // back
+    set_face(2, 4, 0, 2, 6)     // left
+    set_face(3, 1, 5, 7, 3)     // right
+    set_face(4, 4, 5, 1, 0)     // top
+    set_face(5, 2, 3, 7, 6)     // bottom
 }
 
-fn set_face(n: u32, a: u32, b: u32, c: u32, d: u32) {
-    faces[n].corners[0] = a;
-    faces[n].corners[1] = b;
-    faces[n].corners[2] = c;
-    faces[n].corners[3] = d;
+fn set_face(n u32, a u32, b u32, c u32, d u32) {
+    faces[n].corners[0] = a
+    faces[n].corners[1] = b
+    faces[n].corners[2] = c
+    faces[n].corners[3] = d
 }
 
 fn draw() {
-    var m: math.Mat4;
-    math.mat4_identity(&m);
-    math.mat4_translate(&m, 0, 0, 4.5);
-    math.mat4_rotate_x(&m, spin_x);
-    math.mat4_rotate_y(&m, spin_y);
-    var focal: fixed = 260;
+    var m math.Mat4
+    math.mat4_identity(&m)
+    math.mat4_translate(&m, 0, 0, 4.5)
+    math.mat4_rotate_x(&m, spin_x)
+    math.mat4_rotate_y(&m, spin_y)
+    var focal fixed = 260
     for i in 0..8 {
-        math.transform(&m, &corners[i], &moved[i]);
-        screen_x[i] = WIDTH / 2 + (moved[i].x * focal / moved[i].z) as i32;
-        screen_y[i] = HEIGHT / 2 + (moved[i].y * focal / moved[i].z) as i32;
+        math.transform(&m, &corners[i], &moved[i])
+        screen_x[i] = WIDTH / 2 + (moved[i].x * focal / moved[i].z) as i32
+        screen_y[i] = HEIGHT / 2 + (moved[i].y * focal / moved[i].z) as i32
     }
     for f in 0..6 {
-        var face = &faces[f];
-        var a = face.corners[0];
-        var b = face.corners[1];
-        var c = face.corners[2];
+        var face = &faces[f]
+        var a = face.corners[0]
+        var b = face.corners[1]
+        var c = face.corners[2]
         // Faces turned away wind the other way on screen.
-        var turn = (screen_x[b] - screen_x[a]) * (screen_y[c] - screen_y[a]) - (screen_y[b] - screen_y[a]) * (screen_x[c] - screen_x[a]);
-        face.visible = turn > 0;
-        face.depth = moved[a].z + moved[b].z + moved[c].z + moved[face.corners[3]].z;
+        var turn = (screen_x[b] - screen_x[a]) * (screen_y[c] - screen_y[a]) - (screen_y[b] - screen_y[a]) * (screen_x[c] - screen_x[a])
+        face.visible = turn > 0
+        face.depth = moved[a].z + moved[b].z + moved[c].z + moved[face.corners[3]].z
         // Light from the viewer: the more a face points at us, the brighter.
-        var edge1: math.Vec3;
-        var edge2: math.Vec3;
-        var normal: math.Vec3;
-        math.vec3_set(&edge1, moved[b].x - moved[a].x, moved[b].y - moved[a].y, moved[b].z - moved[a].z);
-        math.vec3_set(&edge2, moved[c].x - moved[a].x, moved[c].y - moved[a].y, moved[c].z - moved[a].z);
-        math.cross(&edge1, &edge2, &normal);
-        var light = normal.z / 4;
+        var edge1 math.Vec3
+        var edge2 math.Vec3
+        var normal math.Vec3
+        math.vec3_set(&edge1, moved[b].x - moved[a].x, moved[b].y - moved[a].y, moved[b].z - moved[a].z)
+        math.vec3_set(&edge2, moved[c].x - moved[a].x, moved[c].y - moved[a].y, moved[c].z - moved[a].z)
+        math.cross(&edge1, &edge2, &normal)
+        var light = normal.z / 4
         if light < 0 {
-            light = 0;
+            light = 0
         }
-        var level = (0.35 + light * 0.65) * 255;
-        var v = level as u32;
+        var level = (0.35 + light * 0.65) * 255
+        var v = level as u32
         if v > 255 {
-            v = 255;
+            v = 255
         }
-        face.color = gfx.rgb(v, v, v);
-        order[f] = f;
+        face.color = gfx.rgb(v, v, v)
+        order[f] = f
     }
     // Farthest first.
     for i in 1..6 {
-        var j = i;
+        var j = i
         while j > 0 && faces[order[j]].depth > faces[order[j - 1]].depth {
-            var t = order[j];
-            order[j] = order[j - 1];
-            order[j - 1] = t;
-            j -= 1;
+            var t = order[j]
+            order[j] = order[j - 1]
+            order[j - 1] = t
+            j -= 1
         }
     }
 
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36));
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
     for i in 0..6 {
-        var face = &faces[order[i]];
+        var face = &faces[order[i]]
         if !face.visible {
-            continue;
+            continue
         }
-        var p = face.corners[:];
-        var s = SIZE as i32;
-        gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[1]], screen_y[p[1]], s, 0, screen_x[p[2]], screen_y[p[2]], s, s, face.color);
-        gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[2]], screen_y[p[2]], s, s, screen_x[p[3]], screen_y[p[3]], 0, s, face.color);
+        var p = face.corners[:]
+        var s = SIZE as i32
+        gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[1]], screen_y[p[1]], s, 0, screen_x[p[2]], screen_y[p[2]], s, s, face.color)
+        gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[2]], screen_y[p[2]], s, s, screen_x[p[3]], screen_y[p[3]], 0, s, face.color)
     }
-    gfx.draw_text(&canvas, 10, HEIGHT - 24, gfx.rgb(216, 212, 200), "fixed-point 3D, drag to turn");
-    gfx.present(&canvas);
+    gfx.draw_text(&canvas, 10, HEIGHT - 24, gfx.rgb(216, 212, 200), "fixed-point 3D, drag to turn")
+    gfx.present(&canvas)
 }

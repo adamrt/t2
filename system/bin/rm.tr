@@ -1,26 +1,26 @@
 // rm removes files and empty directories.
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
-    allow = "write";
+    memory = 64 * KiB
+    stack = 16 * KiB
+    allow = "write"
 }
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
-    var status: u32 = 0;
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
+    var status u32 = 0
     for i in 0..count {
         if os.remove(args[i]) == io.FAILED {
-            os.complain("rm", "can't remove", args[i]);
-            status = 1;
+            os.complain("rm", "can't remove", args[i])
+            status = 1
         }
     }
-    return status;
+    return status
 }

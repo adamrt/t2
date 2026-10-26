@@ -8,1000 +8,1000 @@
 // call or use of a function as a value puts it in the queue. Likewise only
 // the globals those functions use get space.
 
-import io;
-import text;
+import io
+import text
 
 struct StringData {
-    node: *Node;
-    next: *StringData;
+    node *Node
+    next *StringData
 }
 
-const MAX_LOOPS = 64;
+const MAX_LOOPS = 64
 
-var out: io.Writer;
-var labels: u32;
-var return_label: u32;
-var bounds_label: u32;
-var break_labels: [MAX_LOOPS]u32;
-var continue_labels: [MAX_LOOPS]u32;
-var loop_depth: u32;
-var first_string: *StringData;
-var last_string: *StringData;
-var string_count: u32;
-var immediate: i32;
-var queue: []*Sym;
-var queue_start: u32;
-var queue_end: u32;
+var out io.Writer
+var labels u32
+var return_label u32
+var bounds_label u32
+var break_labels [MAX_LOOPS]u32
+var continue_labels [MAX_LOOPS]u32
+var loop_depth u32
+var first_string *StringData
+var last_string *StringData
+var string_count u32
+var immediate i32
+var queue []*Sym
+var queue_start u32
+var queue_end u32
 
 fn generate() {
-    io.put(&out, ".code\n");
-    var functions: u32 = 0;
-    var s = first_sym;
+    io.put(&out, ".code\n")
+    var functions u32 = 0
+    var s = first_sym
     while s != null {
         if s.kind == SymKind.Fn {
-            functions += 1;
+            functions += 1
         }
-        s = s.after;
+        s = s.after
     }
-    queue = new(&arena, *Sym, functions);
-    use_function(find_sym(0, "main"));
+    queue = new(&arena, *Sym, functions)
+    use_function(find_sym(0, "main"))
     while queue_start < queue_end {
-        var f = queue[queue_start];
-        queue_start += 1;
+        var f = queue[queue_start]
+        queue_start += 1
         if f.node.b != null {
-            gen_function(f);
+            gen_function(f)
         }
     }
 
-    io.put(&out, "\n.data\n");
-    var d = first_string;
+    io.put(&out, "\n.data\n")
+    var d = first_string
     while d != null {
-        io.put_byte(&out, 'S');
-        io.put_u32(&out, d.node.value);
-        io.put(&out, ":\n");
-        var bytes = d.node.name;
+        io.put_byte(&out, 'S')
+        io.put_u32(&out, d.node.value)
+        io.put(&out, ":\n")
+        var bytes = d.node.name
         for i in 0..bytes.len {
             if i % 16 == 0 {
-                io.put(&out, "    .byte ");
+                io.put(&out, "    .byte ")
             } else {
-                io.put(&out, ", ");
+                io.put(&out, ", ")
             }
-            io.put_u32(&out, bytes[i]);
+            io.put_u32(&out, bytes[i])
             if i % 16 == 15 || i == bytes.len - 1 {
-                io.put_byte(&out, '\n');
+                io.put_byte(&out, '\n')
             }
         }
-        d = d.next;
+        d = d.next
     }
 
-    io.put(&out, "\n.bss\n");
-    s = first_sym;
+    io.put(&out, "\n.bss\n")
+    s = first_sym
     while s != null {
         if s.kind == SymKind.Global && s.used {
-            emit(".align 4");
-            put_symbol(s);
-            io.put(&out, ":\n");
-            var size = (s.ty.size + 3) & ~3;
+            emit(".align 4")
+            put_symbol(s)
+            io.put(&out, ":\n")
+            var size = (s.ty.size + 3) & ~3
             if size < 4 {
-                size = 4;
+                size = 4
             }
-            emit_value(".zero ", size);
+            emit_value(".zero ", size)
         }
-        s = s.after;
+        s = s.after
     }
-    io.put_byte(&out, '\n');
+    io.put_byte(&out, '\n')
     if manifest_memory != null {
-        emit_value(".memory ", manifest_memory.value);
+        emit_value(".memory ", manifest_memory.value)
     }
     if manifest_stack != null {
-        emit_value(".stack ", manifest_stack.value);
+        emit_value(".stack ", manifest_stack.value)
     }
     if manifest_allow != null {
-        emit_value(".allow ", manifest_allow.value);
+        emit_value(".allow ", manifest_allow.value)
     }
 }
 
-fn gen_function(s: *Sym) {
-    var n = s.node;
-    return_label = new_label();
-    bounds_label = 0;
-    loop_depth = 0;
-    io.put_byte(&out, '\n');
-    put_symbol(s);
-    io.put(&out, ":\n");
-    emit("push r7");
-    emit("r7 = sp");
+fn gen_function(s *Sym) {
+    var n = s.node
+    return_label = new_label()
+    bounds_label = 0
+    loop_depth = 0
+    io.put_byte(&out, '\n')
+    put_symbol(s)
+    io.put(&out, ":\n")
+    emit("push r7")
+    emit("r7 = sp")
     if n.value > 0 {
         if n.value > 32767 {
-            fail(n, "too many local variables");
+            fail(n, "too many local variables")
         }
-        emit_value("sp -= ", n.value);
+        emit_value("sp -= ", n.value)
     }
-    gen_block(n.b);
-    place(return_label);
-    emit("sp = r7");
-    emit("pop r7");
-    emit("return");
+    gen_block(n.b)
+    place(return_label)
+    emit("sp = r7")
+    emit("pop r7")
+    emit("return")
     if bounds_label != 0 {
-        place(bounds_label);
-        emit("call _bounds_failed");
+        place(bounds_label)
+        emit("call _bounds_failed")
     }
 }
 
 // Writing lines ----------------------------------------------------------------
 
-fn new_label() -> u32 {
-    labels += 1;
-    return labels;
+fn new_label() u32 {
+    labels += 1
+    return labels
 }
 
-fn bounds() -> u32 {
+fn bounds() u32 {
     if bounds_label == 0 {
-        bounds_label = new_label();
+        bounds_label = new_label()
     }
-    return bounds_label;
+    return bounds_label
 }
 
-fn emit(text: []u8) {
-    io.put(&out, "    ");
-    io.put(&out, text);
-    io.put_byte(&out, '\n');
+fn emit(text []u8) {
+    io.put(&out, "    ")
+    io.put(&out, text)
+    io.put_byte(&out, '\n')
 }
 
 fn start_line() {
-    io.put(&out, "    ");
+    io.put(&out, "    ")
 }
 
 fn end_line() {
-    io.put_byte(&out, '\n');
+    io.put_byte(&out, '\n')
 }
 
-fn emit_value(text: []u8, value: u32) {
-    start_line();
-    io.put(&out, text);
-    io.put_u32(&out, value);
-    end_line();
+fn emit_value(text []u8, value u32) {
+    start_line()
+    io.put(&out, text)
+    io.put_u32(&out, value)
+    end_line()
 }
 
-fn place(label: u32) {
-    io.put_byte(&out, 'L');
-    io.put_u32(&out, label);
-    io.put(&out, ":\n");
+fn place(label u32) {
+    io.put_byte(&out, 'L')
+    io.put_u32(&out, label)
+    io.put(&out, ":\n")
 }
 
-fn emit_goto(label: u32) {
-    start_line();
-    io.put(&out, "goto L");
-    io.put_u32(&out, label);
-    end_line();
+fn emit_goto(label u32) {
+    start_line()
+    io.put(&out, "goto L")
+    io.put_u32(&out, label)
+    end_line()
 }
 
-fn put_label(label: u32) {
-    io.put_byte(&out, 'L');
-    io.put_u32(&out, label);
+fn put_label(label u32) {
+    io.put_byte(&out, 'L')
+    io.put_u32(&out, label)
 }
 
-fn size_prefix(t: *Type) -> []u8 {
+fn size_prefix(t *Type) []u8 {
     if t.size == 1 {
-        return "u8 ";
+        return "u8 "
     }
     if t.size == 2 {
-        return "u16 ";
+        return "u16 "
     }
-    return "";
+    return ""
 }
 
 // "[r7 - 12]" or "[r7 + 8]"
-fn put_frame(offset: i32) {
+fn put_frame(offset i32) {
     if offset < 0 {
-        io.put(&out, "[r7 - ");
-        io.put_u32(&out, (0 - offset) as u32);
+        io.put(&out, "[r7 - ")
+        io.put_u32(&out, (0 - offset) as u32)
     } else {
-        io.put(&out, "[r7 + ");
-        io.put_u32(&out, offset as u32);
+        io.put(&out, "[r7 + ")
+        io.put_u32(&out, offset as u32)
     }
-    io.put_byte(&out, ']');
+    io.put_byte(&out, ']')
 }
 
 // "reg = r7 - 12"
-fn emit_frame_address(reg: []u8, offset: i32) {
-    start_line();
-    io.put(&out, reg);
+fn emit_frame_address(reg []u8, offset i32) {
+    start_line()
+    io.put(&out, reg)
     if offset < 0 {
-        io.put(&out, " = r7 - ");
-        io.put_u32(&out, (0 - offset) as u32);
+        io.put(&out, " = r7 - ")
+        io.put_u32(&out, (0 - offset) as u32)
     } else {
-        io.put(&out, " = r7 + ");
-        io.put_u32(&out, offset as u32);
+        io.put(&out, " = r7 + ")
+        io.put_u32(&out, offset as u32)
     }
-    end_line();
+    end_line()
 }
 
 // Statements -----------------------------------------------------------------
 
-fn gen_block(b: *Node) {
-    var st = b.list;
+fn gen_block(b *Node) {
+    var st = b.list
     while st != null {
-        gen_statement(st);
-        st = st.next;
+        gen_statement(st)
+        st = st.next
     }
 }
 
-fn push_loop(break_label: u32, continue_label: u32, n: *Node) {
+fn push_loop(break_label u32, continue_label u32, n *Node) {
     if loop_depth == MAX_LOOPS {
-        fail(n, "loops are nested too deeply");
+        fail(n, "loops are nested too deeply")
     }
-    break_labels[loop_depth] = break_label;
-    continue_labels[loop_depth] = continue_label;
-    loop_depth += 1;
+    break_labels[loop_depth] = break_label
+    continue_labels[loop_depth] = continue_label
+    loop_depth += 1
 }
 
-fn gen_statement(st: *Node) {
+fn gen_statement(st *Node) {
     match st.kind {
         N.Block => {
-            gen_block(st);
+            gen_block(st)
         }
         N.Var => {
             if st.b != null {
-                gen_expr(st.b);
-                store_local(st.local, st.local.ty);
+                gen_expr(st.b)
+                store_local(st.local, st.local.ty)
             } else {
-                zero_local(st.local);
+                zero_local(st.local)
             }
         }
         N.Assign => {
-            gen_assign(st);
+            gen_assign(st)
         }
         N.ExprStmt => {
-            gen_expr(st.a);
+            gen_expr(st.a)
         }
         N.If => {
-            var other = new_label();
-            gen_cond(st.a, other, false);
-            gen_block(st.b);
+            var other = new_label()
+            gen_cond(st.a, other, false)
+            gen_block(st.b)
             if st.c == null {
-                place(other);
+                place(other)
             } else {
-                var end = new_label();
-                emit_goto(end);
-                place(other);
-                gen_statement(st.c);
-                place(end);
+                var end = new_label()
+                emit_goto(end)
+                place(other)
+                gen_statement(st.c)
+                place(end)
             }
         }
         N.While => {
-            var top = new_label();
-            var end = new_label();
-            place(top);
-            gen_cond(st.a, end, false);
-            push_loop(end, top, st);
-            gen_block(st.b);
-            loop_depth -= 1;
-            emit_goto(top);
-            place(end);
+            var top = new_label()
+            var end = new_label()
+            place(top)
+            gen_cond(st.a, end, false)
+            push_loop(end, top, st)
+            gen_block(st.b)
+            loop_depth -= 1
+            emit_goto(top)
+            place(end)
         }
         N.For => {
-            var top = new_label();
-            var step = new_label();
-            var end = new_label();
-            gen_expr(st.a);
-            store_local(st.local, st.local.ty);
-            gen_expr(st.b);
-            store_local(st.local2, st.local2.ty);
-            place(top);
-            load_local(st.local, "r0");
-            load_local(st.local2, "r1");
-            start_line();
+            var top = new_label()
+            var step = new_label()
+            var end = new_label()
+            gen_expr(st.a)
+            store_local(st.local, st.local.ty)
+            gen_expr(st.b)
+            store_local(st.local2, st.local2.ty)
+            place(top)
+            load_local(st.local, "r0")
+            load_local(st.local2, "r1")
+            start_line()
             if st.local.ty.signed {
-                io.put(&out, "if r0 >=s r1 goto ");
+                io.put(&out, "if r0 >=s r1 goto ")
             } else {
-                io.put(&out, "if r0 >= r1 goto ");
+                io.put(&out, "if r0 >= r1 goto ")
             }
-            put_label(end);
-            end_line();
-            push_loop(end, step, st);
-            gen_block(st.c);
-            loop_depth -= 1;
-            place(step);
-            load_local(st.local, "r0");
-            emit("r0 += 1");
-            store_local(st.local, st.local.ty);
-            emit_goto(top);
-            place(end);
+            put_label(end)
+            end_line()
+            push_loop(end, step, st)
+            gen_block(st.c)
+            loop_depth -= 1
+            place(step)
+            load_local(st.local, "r0")
+            emit("r0 += 1")
+            store_local(st.local, st.local.ty)
+            emit_goto(top)
+            place(end)
         }
         N.Match => {
-            var end = new_label();
-            gen_expr(st.a);
-            store_local(st.local, st.local.ty);
-            var arm = st.list;
+            var end = new_label()
+            gen_expr(st.a)
+            store_local(st.local, st.local.ty)
+            var arm = st.list
             while arm != null {
-                var body = new_label();
-                var skip = new_label();
-                var v = arm.list;
+                var body = new_label()
+                var skip = new_label()
+                var v = arm.list
                 while v != null {
-                    load_local(st.local, "r0");
-                    emit_value("r1 = ", v.value);
-                    start_line();
-                    io.put(&out, "if r0 == r1 goto ");
-                    put_label(body);
-                    end_line();
-                    v = v.next;
+                    load_local(st.local, "r0")
+                    emit_value("r1 = ", v.value)
+                    start_line()
+                    io.put(&out, "if r0 == r1 goto ")
+                    put_label(body)
+                    end_line()
+                    v = v.next
                 }
-                emit_goto(skip);
-                place(body);
-                gen_block(arm.a);
-                emit_goto(end);
-                place(skip);
-                arm = arm.next;
+                emit_goto(skip)
+                place(body)
+                gen_block(arm.a)
+                emit_goto(end)
+                place(skip)
+                arm = arm.next
             }
             if st.b != null {
-                gen_block(st.b);
+                gen_block(st.b)
             }
-            place(end);
+            place(end)
         }
         N.Break => {
-            emit_goto(break_labels[loop_depth - 1]);
+            emit_goto(break_labels[loop_depth - 1])
         }
         N.Continue => {
-            emit_goto(continue_labels[loop_depth - 1]);
+            emit_goto(continue_labels[loop_depth - 1])
         }
         N.Return => {
             if st.a != null {
-                gen_expr(st.a);
+                gen_expr(st.a)
             }
-            emit_goto(return_label);
+            emit_goto(return_label)
         }
     }
 }
 
 // The binary operator inside a compound assignment like "+=".
-fn assign_operator(op: Tok) -> Tok {
+fn assign_operator(op Tok) Tok {
     match op {
-        Tok.PlusAssign => { return Tok.Plus; }
-        Tok.MinusAssign => { return Tok.Minus; }
-        Tok.StarAssign => { return Tok.Star; }
-        Tok.SlashAssign => { return Tok.Slash; }
-        Tok.PercentAssign => { return Tok.Percent; }
-        Tok.AmpAssign => { return Tok.Amp; }
-        Tok.PipeAssign => { return Tok.Pipe; }
-        Tok.CaretAssign => { return Tok.Caret; }
-        Tok.ShlAssign => { return Tok.Shl; }
+        Tok.PlusAssign => { return Tok.Plus }
+        Tok.MinusAssign => { return Tok.Minus }
+        Tok.StarAssign => { return Tok.Star }
+        Tok.SlashAssign => { return Tok.Slash }
+        Tok.PercentAssign => { return Tok.Percent }
+        Tok.AmpAssign => { return Tok.Amp }
+        Tok.PipeAssign => { return Tok.Pipe }
+        Tok.CaretAssign => { return Tok.Caret }
+        Tok.ShlAssign => { return Tok.Shl }
     }
-    return Tok.Shr;
+    return Tok.Shr
 }
 
-fn gen_assign(st: *Node) {
-    var t = st.a.ty;
+fn gen_assign(st *Node) {
+    var t = st.a.ty
     if st.op == Tok.Assign {
         if is_aggregate(t) {
-            gen_address(st.a);
-            emit("push r0");
-            gen_expr(st.b);
-            emit("r1 = r0");
-            emit("pop r0");
-            emit_value("r2 = ", t.size);
-            emit("copy r0, r1, r2");
-            return;
+            gen_address(st.a)
+            emit("push r0")
+            gen_expr(st.b)
+            emit("r1 = r0")
+            emit("pop r0")
+            emit_value("r2 = ", t.size)
+            emit("copy r0, r1, r2")
+            return
         }
         if st.a.kind == N.Name && st.a.local != null {
-            gen_expr(st.b);
-            store_local(st.a.local, t);
-            return;
+            gen_expr(st.b)
+            store_local(st.a.local, t)
+            return
         }
-        gen_address(st.a);
-        emit("push r0");
-        gen_expr(st.b);
-        emit("pop r2");
-        store("r2", t);
-        return;
+        gen_address(st.a)
+        emit("push r0")
+        gen_expr(st.b)
+        emit("pop r2")
+        store("r2", t)
+        return
     }
-    gen_address(st.a);
-    emit("push r0");
-    gen_expr(st.b);
-    emit("r1 = r0");
-    emit("r0 = [sp]");
-    load("r0", t);
-    operate(assign_operator(st.op), arith(t), false);
-    emit("pop r2");
-    store("r2", t);
+    gen_address(st.a)
+    emit("push r0")
+    gen_expr(st.b)
+    emit("r1 = r0")
+    emit("r0 = [sp]")
+    load("r0", t)
+    operate(assign_operator(st.op), arith(t), false)
+    emit("pop r2")
+    store("r2", t)
 }
 
 // Loading and storing ----------------------------------------------------------
 
-fn load_local(local: *Local, reg: []u8) {
-    var t = local.ty;
+fn load_local(local *Local, reg []u8) {
+    var t = local.ty
     if is_aggregate(t) {
-        emit_frame_address(reg, local.offset);
+        emit_frame_address(reg, local.offset)
     } else if t.kind == TypeKind.Slice {
-        start_line();
-        io.put(&out, "r1 = ");
-        put_frame(local.offset + 4);
-        end_line();
-        start_line();
-        io.put(&out, "r0 = ");
-        put_frame(local.offset);
-        end_line();
+        start_line()
+        io.put(&out, "r1 = ")
+        put_frame(local.offset + 4)
+        end_line()
+        start_line()
+        io.put(&out, "r0 = ")
+        put_frame(local.offset)
+        end_line()
     } else {
-        start_line();
-        io.put(&out, reg);
-        io.put(&out, " = ");
-        io.put(&out, size_prefix(t));
-        put_frame(local.offset);
-        end_line();
+        start_line()
+        io.put(&out, reg)
+        io.put(&out, " = ")
+        io.put(&out, size_prefix(t))
+        put_frame(local.offset)
+        end_line()
     }
 }
 
-fn store_local(local: *Local, t: *Type) {
+fn store_local(local *Local, t *Type) {
     if is_aggregate(t) {
-        emit("r1 = r0");
-        emit_frame_address("r0", local.offset);
-        emit_value("r2 = ", t.size);
-        emit("copy r0, r1, r2");
+        emit("r1 = r0")
+        emit_frame_address("r0", local.offset)
+        emit_value("r2 = ", t.size)
+        emit("copy r0, r1, r2")
     } else if t.kind == TypeKind.Slice {
-        start_line();
-        put_frame(local.offset);
-        io.put(&out, " = r0");
-        end_line();
-        start_line();
-        put_frame(local.offset + 4);
-        io.put(&out, " = r1");
-        end_line();
+        start_line()
+        put_frame(local.offset)
+        io.put(&out, " = r0")
+        end_line()
+        start_line()
+        put_frame(local.offset + 4)
+        io.put(&out, " = r1")
+        end_line()
     } else {
-        start_line();
-        io.put(&out, size_prefix(t));
-        put_frame(local.offset);
-        io.put(&out, " = r0");
-        end_line();
+        start_line()
+        io.put(&out, size_prefix(t))
+        put_frame(local.offset)
+        io.put(&out, " = r0")
+        end_line()
     }
 }
 
-fn zero_local(local: *Local) {
-    var t = local.ty;
+fn zero_local(local *Local) {
+    var t = local.ty
     if is_aggregate(t) {
-        emit_frame_address("r0", local.offset);
-        emit("r1 = 0");
-        emit_value("r2 = ", (t.size + 3) & ~3);
-        emit("fill r0, r1, r2");
-        return;
+        emit_frame_address("r0", local.offset)
+        emit("r1 = 0")
+        emit_value("r2 = ", (t.size + 3) & ~3)
+        emit("fill r0, r1, r2")
+        return
     }
-    emit("r0 = 0");
+    emit("r0 = 0")
     if t.kind == TypeKind.Slice {
-        emit("r1 = 0");
+        emit("r1 = 0")
     }
-    store_local(local, t);
+    store_local(local, t)
 }
 
 // Loads a value of type t from the address in reg into r0 (and r1).
-fn load(reg: []u8, t: *Type) {
+fn load(reg []u8, t *Type) {
     if is_aggregate(t) {
         if !text.equal(reg, "r0") {
-            start_line();
-            io.put(&out, "r0 = ");
-            io.put(&out, reg);
-            end_line();
+            start_line()
+            io.put(&out, "r0 = ")
+            io.put(&out, reg)
+            end_line()
         }
     } else if t.kind == TypeKind.Slice {
-        start_line();
-        io.put(&out, "r1 = [");
-        io.put(&out, reg);
-        io.put(&out, " + 4]");
-        end_line();
-        start_line();
-        io.put(&out, "r0 = [");
-        io.put(&out, reg);
-        io.put_byte(&out, ']');
-        end_line();
+        start_line()
+        io.put(&out, "r1 = [")
+        io.put(&out, reg)
+        io.put(&out, " + 4]")
+        end_line()
+        start_line()
+        io.put(&out, "r0 = [")
+        io.put(&out, reg)
+        io.put_byte(&out, ']')
+        end_line()
     } else {
-        start_line();
-        io.put(&out, "r0 = ");
-        io.put(&out, size_prefix(t));
-        io.put_byte(&out, '[');
-        io.put(&out, reg);
-        io.put_byte(&out, ']');
-        end_line();
+        start_line()
+        io.put(&out, "r0 = ")
+        io.put(&out, size_prefix(t))
+        io.put_byte(&out, '[')
+        io.put(&out, reg)
+        io.put_byte(&out, ']')
+        end_line()
     }
 }
 
 // Stores r0 (and r1) at the address in reg.
-fn store(reg: []u8, t: *Type) {
+fn store(reg []u8, t *Type) {
     if t.kind == TypeKind.Slice {
-        start_line();
-        io.put_byte(&out, '[');
-        io.put(&out, reg);
-        io.put(&out, "] = r0");
-        end_line();
-        start_line();
-        io.put_byte(&out, '[');
-        io.put(&out, reg);
-        io.put(&out, " + 4] = r1");
-        end_line();
+        start_line()
+        io.put_byte(&out, '[')
+        io.put(&out, reg)
+        io.put(&out, "] = r0")
+        end_line()
+        start_line()
+        io.put_byte(&out, '[')
+        io.put(&out, reg)
+        io.put(&out, " + 4] = r1")
+        end_line()
     } else {
-        start_line();
-        io.put(&out, size_prefix(t));
-        io.put_byte(&out, '[');
-        io.put(&out, reg);
-        io.put(&out, "] = r0");
-        end_line();
+        start_line()
+        io.put(&out, size_prefix(t))
+        io.put_byte(&out, '[')
+        io.put(&out, reg)
+        io.put(&out, "] = r0")
+        end_line()
     }
 }
 
 // Expressions ----------------------------------------------------------------
 
-fn is_constant(e: *Node) -> bool {
-    var k = e.ty.kind;
-    return e.flags & IS_CONST != 0 && (k == TypeKind.Int || k == TypeKind.Fixed || k == TypeKind.Enum || k == TypeKind.Untyped);
+fn is_constant(e *Node) bool {
+    var k = e.ty.kind
+    return e.flags & IS_CONST != 0 && (k == TypeKind.Int || k == TypeKind.Fixed || k == TypeKind.Enum || k == TypeKind.Untyped)
 }
 
-fn gen_expr(e: *Node) {
+fn gen_expr(e *Node) {
     if is_constant(e) {
-        emit_value("r0 = ", e.value);
+        emit_value("r0 = ", e.value)
     } else {
-        gen_value(e);
+        gen_value(e)
     }
     if e.flags & TO_SLICE != 0 {
-        emit_value("r1 = ", e.ty.length);
+        emit_value("r1 = ", e.ty.length)
     }
 }
 
-fn gen_value(e: *Node) {
-    var t = e.ty;
+fn gen_value(e *Node) {
+    var t = e.ty
     match e.kind {
         N.Bool => {
-            emit_value("r0 = ", e.value);
+            emit_value("r0 = ", e.value)
         }
         N.Null => {
-            emit("r0 = 0");
+            emit("r0 = 0")
         }
         N.Str => {
-            string_count += 1;
-            e.value = string_count;
-            var d = new(&arena, StringData);
-            d.node = e;
+            string_count += 1
+            e.value = string_count
+            var d = new(&arena, StringData)
+            d.node = e
             if last_string == null {
-                first_string = d;
+                first_string = d
             } else {
-                last_string.next = d;
+                last_string.next = d
             }
-            last_string = d;
-            emit_value("r0 = S", e.value);
-            emit_value("r1 = ", e.name.len);
+            last_string = d
+            emit_value("r0 = S", e.value)
+            emit_value("r1 = ", e.name.len)
         }
         N.Name => {
             if e.local != null {
-                load_local(e.local, "r0");
+                load_local(e.local, "r0")
             } else {
-                emit_symbol(e.sym);
+                emit_symbol(e.sym)
                 if e.sym.kind != SymKind.Fn {
-                    load("r0", t);
+                    load("r0", t)
                 }
             }
         }
         N.Member => {
             if e.a.ty.kind == TypeKind.Slice {
-                gen_expr(e.a);
+                gen_expr(e.a)
                 if text.equal(e.name, "len") {
-                    emit("r0 = r1");
+                    emit("r0 = r1")
                 }
             } else {
-                gen_address(e);
-                load("r0", t);
+                gen_address(e)
+                load("r0", t)
             }
         }
         N.Index => {
-            gen_address(e);
-            load("r0", t);
+            gen_address(e)
+            load("r0", t)
         }
         N.Slice => {
-            gen_slice(e);
+            gen_slice(e)
         }
         N.Call => {
-            gen_call(e);
+            gen_call(e)
         }
         N.Unary => {
             if e.op == Tok.Amp {
-                gen_address(e.a);
+                gen_address(e.a)
             } else if e.op == Tok.Star {
-                gen_expr(e.a);
-                load("r0", t);
+                gen_expr(e.a)
+                load("r0", t)
             } else {
-                gen_expr(e.a);
+                gen_expr(e.a)
                 if e.op == Tok.Minus {
-                    emit("r0 ^= -1");
-                    emit("r0 += 1");
+                    emit("r0 ^= -1")
+                    emit("r0 += 1")
                 } else if e.op == Tok.Tilde {
-                    emit("r0 ^= -1");
+                    emit("r0 ^= -1")
                 } else {
-                    emit("r0 ^= 1");
+                    emit("r0 ^= 1")
                 }
             }
         }
         N.Binary => {
-            gen_binary(e);
+            gen_binary(e)
         }
         N.Cast => {
-            gen_expr(e.a);
-            var from = e.a.ty;
+            gen_expr(e.a)
+            var from = e.a.ty
             if is_fixed(t) && is_int(from) {
-                emit("r0 <<= 16");
+                emit("r0 <<= 16")
             } else if is_fixed(from) && is_int(t) {
-                emit("r0 >>s= 16");
+                emit("r0 >>s= 16")
             }
             if is_int(t) && t.size < 4 && !(is_int(from) && from.size <= t.size) {
                 if t.size == 2 {
-                    emit("r0 <<= 16");
-                    emit("r0 >>= 16");
+                    emit("r0 <<= 16")
+                    emit("r0 >>= 16")
                 } else {
-                    emit("r0 &= 255");
+                    emit("r0 &= 255")
                 }
             }
         }
         N.New => {
-            var elem = resolve(e.b);
+            var elem = resolve(e.b)
             if e.c == null {
-                emit_value("r0 = ", elem.size);
-                emit("push r0");
-                gen_expr(e.a);
-                emit("push r0");
-                emit_call(e.sym);
-                emit("sp += 8");
+                emit_value("r0 = ", elem.size)
+                emit("push r0")
+                gen_expr(e.a)
+                emit("push r0")
+                emit_call(e.sym)
+                emit("sp += 8")
             } else {
-                gen_expr(e.c);
-                emit("push r0");
-                scale("r0", elem.size);
-                emit("push r0");
-                gen_expr(e.a);
-                emit("push r0");
-                emit_call(e.sym);
-                emit("sp += 8");
-                emit("pop r1");
+                gen_expr(e.c)
+                emit("push r0")
+                scale("r0", elem.size)
+                emit("push r0")
+                gen_expr(e.a)
+                emit("push r0")
+                emit_call(e.sym)
+                emit("sp += 8")
+                emit("pop r1")
             }
         }
         else => {
-            fail(e, "can't generate this expression");
+            fail(e, "can't generate this expression")
         }
     }
 }
 
-fn use_function(s: *Sym) {
+fn use_function(s *Sym) {
     if !s.used {
-        s.used = true;
-        queue[queue_end] = s;
-        queue_end += 1;
+        s.used = true
+        queue[queue_end] = s
+        queue_end += 1
     }
 }
 
 // A name's label: write is _write, and write in the module io is _io.write.
-fn put_symbol(s: *Sym) {
-    io.put_byte(&out, '_');
+fn put_symbol(s *Sym) {
+    io.put_byte(&out, '_')
     if s.module != 0 {
-        io.put(&out, modules[s.module]);
-        io.put_byte(&out, '.');
+        io.put(&out, modules[s.module])
+        io.put_byte(&out, '.')
     }
-    io.put(&out, s.name);
+    io.put(&out, s.name)
 }
 
 // Puts the address of a global or function in r0, and marks it used.
-fn emit_symbol(s: *Sym) {
+fn emit_symbol(s *Sym) {
     if s.kind == SymKind.Fn {
-        use_function(s);
+        use_function(s)
     } else {
-        s.used = true;
+        s.used = true
     }
-    start_line();
-    io.put(&out, "r0 = ");
-    put_symbol(s);
-    end_line();
+    start_line()
+    io.put(&out, "r0 = ")
+    put_symbol(s)
+    end_line()
 }
 
-fn emit_call(s: *Sym) {
-    use_function(s);
-    start_line();
-    io.put(&out, "call ");
-    put_symbol(s);
-    end_line();
+fn emit_call(s *Sym) {
+    use_function(s)
+    start_line()
+    io.put(&out, "call ")
+    put_symbol(s)
+    end_line()
 }
 
 // Multiplies reg by size, which is a constant.
-fn scale(reg: []u8, size: u32) {
+fn scale(reg []u8, size u32) {
     if size == 1 {
-        return;
+        return
     }
-    start_line();
-    io.put(&out, reg);
+    start_line()
+    io.put(&out, reg)
     if size == 0 {
-        io.put(&out, " = 0");
+        io.put(&out, " = 0")
     } else if size & (size - 1) == 0 {
-        io.put(&out, " <<= ");
-        var shift: u32 = 0;
-        var bit: u32 = 1;
+        io.put(&out, " <<= ")
+        var shift u32 = 0
+        var bit u32 = 1
         while bit != size {
-            bit <<= 1;
-            shift += 1;
+            bit <<= 1
+            shift += 1
         }
-        io.put_u32(&out, shift);
+        io.put_u32(&out, shift)
     } else {
-        io.put(&out, " *= ");
-        io.put_u32(&out, size);
+        io.put(&out, " *= ")
+        io.put_u32(&out, size)
     }
-    end_line();
+    end_line()
 }
 
 // Pushes the arguments from last to first. Returns the bytes they take.
-fn push_args(a: *Node, p: *Node) -> u32 {
+fn push_args(a *Node, p *Node) u32 {
     if a == null {
-        return 0;
+        return 0
     }
-    var size = push_args(a.next, p.next);
-    gen_expr(a);
+    var size = push_args(a.next, p.next)
+    gen_expr(a)
     if p.ty.kind == TypeKind.Slice {
-        emit("push r1");
-        size += 4;
+        emit("push r1")
+        size += 4
     }
-    emit("push r0");
-    return size + 4;
+    emit("push r0")
+    return size + 4
 }
 
-fn gen_call(e: *Node) {
-    var size: u32;
+fn gen_call(e *Node) {
+    var size u32
     if e.sym != null {
-        size = push_args(e.list, e.sym.node.list);
-        emit_call(e.sym);
+        size = push_args(e.list, e.sym.node.list)
+        emit_call(e.sym)
     } else {
-        size = push_args(e.list, e.a.ty.params);
-        gen_expr(e.a);
-        emit("call r0");
+        size = push_args(e.list, e.a.ty.params)
+        gen_expr(e.a)
+        emit("call r0")
     }
     if size > 0 {
-        emit_value("sp += ", size);
+        emit_value("sp += ", size)
     }
 }
 
 // Leaves the address of e in r0.
-fn gen_address(e: *Node) {
+fn gen_address(e *Node) {
     match e.kind {
         N.Name => {
             if e.local != null {
-                emit_frame_address("r0", e.local.offset);
+                emit_frame_address("r0", e.local.offset)
             } else {
-                emit_symbol(e.sym);
+                emit_symbol(e.sym)
             }
         }
         N.Member => {
             if e.a.ty.kind == TypeKind.Ptr {
-                gen_expr(e.a);
+                gen_expr(e.a)
             } else {
-                gen_address(e.a);
+                gen_address(e.a)
             }
             if e.value != 0 {
-                emit_value("r0 += ", e.value);
+                emit_value("r0 += ", e.value)
             }
         }
         N.Index => {
-            var elem = e.ty;
-            var base = e.a.ty;
+            var elem = e.ty
+            var base = e.a.ty
             if base.kind == TypeKind.Array {
-                gen_address(e.a);
+                gen_address(e.a)
                 if e.b.flags & IS_CONST != 0 {
                     if e.b.value >= base.length {
-                        fail(e, "index is past the end of the array");
+                        fail(e, "index is past the end of the array")
                     }
                     if e.b.value != 0 {
-                        emit_value("r0 += ", e.b.value * elem.size);
+                        emit_value("r0 += ", e.b.value * elem.size)
                     }
-                    return;
+                    return
                 }
-                emit("push r0");
-                gen_expr(e.b);
-                emit("r1 = r0");
-                emit("pop r0");
-                emit_value("r2 = ", base.length);
+                emit("push r0")
+                gen_expr(e.b)
+                emit("r1 = r0")
+                emit("pop r0")
+                emit_value("r2 = ", base.length)
             } else {
-                gen_expr(e.a);
-                emit("push r1");
-                emit("push r0");
-                gen_expr(e.b);
-                emit("r1 = r0");
-                emit("pop r0");
-                emit("pop r2");
+                gen_expr(e.a)
+                emit("push r1")
+                emit("push r0")
+                gen_expr(e.b)
+                emit("r1 = r0")
+                emit("pop r0")
+                emit("pop r2")
             }
-            start_line();
-            io.put(&out, "if r1 >= r2 goto ");
-            put_label(bounds());
-            end_line();
-            scale("r1", elem.size);
-            emit("r0 += r1");
+            start_line()
+            io.put(&out, "if r1 >= r2 goto ")
+            put_label(bounds())
+            end_line()
+            scale("r1", elem.size)
+            emit("r0 += r1")
         }
         N.Unary => {
-            gen_expr(e.a);
+            gen_expr(e.a)
         }
         else => {
-            fail(e, "can't take the address of this");
+            fail(e, "can't take the address of this")
         }
     }
 }
 
-fn gen_slice(e: *Node) {
-    var base = e.a.ty;
+fn gen_slice(e *Node) {
+    var base = e.a.ty
     if base.kind == TypeKind.Array {
-        gen_address(e.a);
-        emit("push r0");
-        emit_value("r0 = ", base.length);
-        emit("push r0");
+        gen_address(e.a)
+        emit("push r0")
+        emit_value("r0 = ", base.length)
+        emit("push r0")
     } else if base.kind == TypeKind.Slice {
-        gen_expr(e.a);
-        emit("push r0");
-        emit("push r1");
+        gen_expr(e.a)
+        emit("push r0")
+        emit("push r1")
     } else {
-        gen_expr(e.a);
-        emit("push r0");
+        gen_expr(e.a)
+        emit("push r0")
     }
     if e.b != null {
-        gen_expr(e.b);
+        gen_expr(e.b)
     } else {
-        emit("r0 = 0");
+        emit("r0 = 0")
     }
-    emit("push r0");
+    emit("push r0")
     if e.c != null {
-        gen_expr(e.c);
+        gen_expr(e.c)
     } else {
-        emit("r0 = [sp + 4]");
+        emit("r0 = [sp + 4]")
     }
-    emit("r1 = r0");
-    emit("pop r2");
+    emit("r1 = r0")
+    emit("pop r2")
     if base.kind != TypeKind.Ptr {
-        emit("pop r3");
-        start_line();
-        io.put(&out, "if r1 > r3 goto ");
-        put_label(bounds());
-        end_line();
+        emit("pop r3")
+        start_line()
+        io.put(&out, "if r1 > r3 goto ")
+        put_label(bounds())
+        end_line()
     }
-    emit("pop r0");
-    start_line();
-    io.put(&out, "if r2 > r1 goto ");
-    put_label(bounds());
-    end_line();
-    emit("r1 -= r2");
-    scale("r2", base.elem.size);
-    emit("r0 += r2");
+    emit("pop r0")
+    start_line()
+    io.put(&out, "if r2 > r1 goto ")
+    put_label(bounds())
+    end_line()
+    emit("r1 -= r2")
+    scale("r2", base.elem.size)
+    emit("r0 += r2")
 }
 
 // Leaves the left operand in r0 and the right in r1. When allowed, a small
 // constant right operand goes in `immediate` instead, and this returns true.
-fn gen_operands(e: *Node, allow_immediate: bool) -> bool {
-    var right = e.b;
+fn gen_operands(e *Node, allow_immediate bool) bool {
+    var right = e.b
     if right.flags & IS_CONST != 0 && (right.ty.kind == TypeKind.Int || right.ty.kind == TypeKind.Fixed || right.ty.kind == TypeKind.Enum) {
-        gen_expr(e.a);
-        var v = right.value as i32;
+        gen_expr(e.a)
+        var v = right.value as i32
         if allow_immediate && v >= -32768 && v <= 32767 {
-            immediate = v;
-            return true;
+            immediate = v
+            return true
         }
-        emit_value("r1 = ", right.value);
-        return false;
+        emit_value("r1 = ", right.value)
+        return false
     }
     // A plain local on the right can be loaded straight into r1.
     if right.kind == N.Name && right.local != null && is_scalar(right.ty) && right.flags & TO_SLICE == 0 {
-        gen_expr(e.a);
-        load_local(right.local, "r1");
-        return false;
+        gen_expr(e.a)
+        load_local(right.local, "r1")
+        return false
     }
-    gen_expr(e.a);
-    emit("push r0");
-    gen_expr(right);
-    emit("r1 = r0");
-    emit("pop r0");
-    return false;
+    gen_expr(e.a)
+    emit("push r0")
+    gen_expr(right)
+    emit("r1 = r0")
+    emit("pop r0")
+    return false
 }
 
 // Emits r0 = r0 op r1, or with the immediate when use_immediate.
-fn operate(op: Tok, ty: *Type, use_immediate: bool) {
-    var signed = ty.signed;
-    var fixed = is_fixed(ty);
-    start_line();
-    io.put(&out, "r0 = r0 ");
+fn operate(op Tok, ty *Type, use_immediate bool) {
+    var signed = ty.signed
+    var fixed = is_fixed(ty)
+    start_line()
+    io.put(&out, "r0 = r0 ")
     match op {
-        Tok.Plus => { io.put(&out, "+"); }
-        Tok.Minus => { io.put(&out, "-"); }
-        Tok.Star => { if fixed { io.put(&out, "*f"); } else { io.put(&out, "*"); } }
-        Tok.Amp => { io.put(&out, "&"); }
-        Tok.Pipe => { io.put(&out, "|"); }
-        Tok.Caret => { io.put(&out, "^"); }
-        Tok.Shl => { io.put(&out, "<<"); }
-        Tok.Slash => { if fixed { io.put(&out, "/f"); } else if signed { io.put(&out, "/s"); } else { io.put(&out, "/"); } }
-        Tok.Percent => { if signed { io.put(&out, "%s"); } else { io.put(&out, "%"); } }
-        Tok.Shr => { if signed { io.put(&out, ">>s"); } else { io.put(&out, ">>"); } }
+        Tok.Plus => { io.put(&out, "+") }
+        Tok.Minus => { io.put(&out, "-") }
+        Tok.Star => { if fixed { io.put(&out, "*f") } else { io.put(&out, "*") } }
+        Tok.Amp => { io.put(&out, "&") }
+        Tok.Pipe => { io.put(&out, "|") }
+        Tok.Caret => { io.put(&out, "^") }
+        Tok.Shl => { io.put(&out, "<<") }
+        Tok.Slash => { if fixed { io.put(&out, "/f") } else if signed { io.put(&out, "/s") } else { io.put(&out, "/") } }
+        Tok.Percent => { if signed { io.put(&out, "%s") } else { io.put(&out, "%") } }
+        Tok.Shr => { if signed { io.put(&out, ">>s") } else { io.put(&out, ">>") } }
     }
     if use_immediate {
-        io.put_byte(&out, ' ');
-        io.put_i32(&out, immediate);
+        io.put_byte(&out, ' ')
+        io.put_i32(&out, immediate)
     } else {
-        io.put(&out, " r1");
+        io.put(&out, " r1")
     }
-    end_line();
+    end_line()
 }
 
-fn gen_binary(e: *Node) {
-    var op = e.op;
+fn gen_binary(e *Node) {
+    var op = e.op
     if op == Tok.AndAnd || op == Tok.OrOr || is_comparison(op) {
-        var false_label = new_label();
-        var end = new_label();
-        gen_cond(e, false_label, false);
-        emit("r0 = 1");
-        emit_goto(end);
-        place(false_label);
-        emit("r0 = 0");
-        place(end);
-        return;
+        var false_label = new_label()
+        var end = new_label()
+        gen_cond(e, false_label, false)
+        emit("r0 = 1")
+        emit_goto(end)
+        place(false_label)
+        emit("r0 = 0")
+        place(end)
+        return
     }
-    var use_immediate = gen_operands(e, true);
-    operate(op, e.ty, use_immediate);
+    var use_immediate = gen_operands(e, true)
+    operate(op, e.ty, use_immediate)
 }
 
-fn negate(op: Tok) -> Tok {
+fn negate(op Tok) Tok {
     match op {
-        Tok.Equal => { return Tok.NotEqual; }
-        Tok.NotEqual => { return Tok.Equal; }
-        Tok.Less => { return Tok.GreaterEqual; }
-        Tok.LessEqual => { return Tok.Greater; }
-        Tok.Greater => { return Tok.LessEqual; }
+        Tok.Equal => { return Tok.NotEqual }
+        Tok.NotEqual => { return Tok.Equal }
+        Tok.Less => { return Tok.GreaterEqual }
+        Tok.LessEqual => { return Tok.Greater }
+        Tok.Greater => { return Tok.LessEqual }
     }
-    return Tok.Less;
+    return Tok.Less
 }
 
-fn compare_text(op: Tok, signed: bool) -> []u8 {
+fn compare_text(op Tok, signed bool) []u8 {
     match op {
-        Tok.Equal => { return "=="; }
-        Tok.NotEqual => { return "!="; }
-        Tok.Less => { if signed { return "<s"; } return "<"; }
-        Tok.LessEqual => { if signed { return "<=s"; } return "<="; }
-        Tok.Greater => { if signed { return ">s"; } return ">"; }
+        Tok.Equal => { return "==" }
+        Tok.NotEqual => { return "!=" }
+        Tok.Less => { if signed { return "<s" } return "<" }
+        Tok.LessEqual => { if signed { return "<=s" } return "<=" }
+        Tok.Greater => { if signed { return ">s" } return ">" }
     }
     if signed {
-        return ">=s";
+        return ">=s"
     }
-    return ">=";
+    return ">="
 }
 
 // Jumps to label when e is `when`.
-fn gen_cond(e: *Node, label: u32, when: bool) {
+fn gen_cond(e *Node, label u32, when bool) {
     if e.kind == N.Binary && (e.op == Tok.AndAnd || e.op == Tok.OrOr) {
         if (e.op == Tok.AndAnd) != when {
-            gen_cond(e.a, label, when);
-            gen_cond(e.b, label, when);
+            gen_cond(e.a, label, when)
+            gen_cond(e.b, label, when)
         } else {
-            var skip = new_label();
-            gen_cond(e.a, skip, !when);
-            gen_cond(e.b, label, when);
-            place(skip);
+            var skip = new_label()
+            gen_cond(e.a, skip, !when)
+            gen_cond(e.b, label, when)
+            place(skip)
         }
-        return;
+        return
     }
     if e.kind == N.Unary && e.op == Tok.Bang {
-        gen_cond(e.a, label, !when);
-        return;
+        gen_cond(e.a, label, !when)
+        return
     }
     if e.kind == N.Binary && is_comparison(e.op) {
-        var op = e.op;
+        var op = e.op
         if !when {
-            op = negate(op);
+            op = negate(op)
         }
-        var signed = e.operand.signed;
-        gen_operands(e, false);
-        start_line();
-        io.put(&out, "if r0 ");
-        io.put(&out, compare_text(op, signed));
-        io.put(&out, " r1 goto ");
-        put_label(label);
-        end_line();
-        return;
+        var signed = e.operand.signed
+        gen_operands(e, false)
+        start_line()
+        io.put(&out, "if r0 ")
+        io.put(&out, compare_text(op, signed))
+        io.put(&out, " r1 goto ")
+        put_label(label)
+        end_line()
+        return
     }
-    gen_expr(e);
-    start_line();
+    gen_expr(e)
+    start_line()
     if when {
-        io.put(&out, "if r0 != 0 goto ");
+        io.put(&out, "if r0 != 0 goto ")
     } else {
-        io.put(&out, "if r0 == 0 goto ");
+        io.put(&out, "if r0 == 0 goto ")
     }
-    put_label(label);
-    end_line();
+    put_label(label)
+    end_line()
 }

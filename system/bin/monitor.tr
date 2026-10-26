@@ -3,190 +3,190 @@
 // Stop ends a process, for when one misbehaves. Dragging the strip under the
 // window resizes it.
 
-import gfx;
-import io;
-import os;
-import ui;
+import gfx
+import io
+import os
+import ui
 
 manifest {
-    memory = 256 * KiB;
-    stack = 32 * KiB;
-    allow = "window processes recovery";
+    memory = 256 * KiB
+    stack = 32 * KiB
+    allow = "window processes recovery"
 }
 
-const WIDTH = 520;
-const HEIGHT = 330;
-const HISTORY = 100;
-const MAX = 32;
+const WIDTH = 520
+const HEIGHT = 330
+const HISTORY = 100
+const MAX = 32
 
-var canvas: gfx.Canvas;
-var words: [4096]u32;
-var strings: [4096]u8;
-var panel: ui.Panel;
-var records: [MAX]os.ProcessInfo;
-var count: u32;
-var last_cycles: [MAX]u32;
-var last_ids: [MAX]u32;
-var rates: [MAX]u32;
-var history: [HISTORY]u32;
-var history_at: u32;
-var last_time: u32;
-var line_text: [96]u8;
-var width: i32;
-var height: i32;
+var canvas gfx.Canvas
+var words [4096]u32
+var strings [4096]u8
+var panel ui.Panel
+var records [MAX]os.ProcessInfo
+var count u32
+var last_cycles [MAX]u32
+var last_ids [MAX]u32
+var rates [MAX]u32
+var history [HISTORY]u32
+var history_at u32
+var last_time u32
+var line_text [96]u8
+var width i32
+var height i32
 
-fn main(memory: []u8) -> u32 {
-    width = WIDTH;
-    height = HEIGHT;
-    var window = gfx.window_open("Monitor", WIDTH, HEIGHT);
+fn main(memory []u8) u32 {
+    width = WIDTH
+    height = HEIGHT
+    var window = gfx.window_open("Monitor", WIDTH, HEIGHT)
     if window == io.FAILED {
-        os.complain("monitor", "can't open a window", "");
-        return 1;
+        os.complain("monitor", "can't open a window", "")
+        return 1
     }
-    gfx.window_resizable(window, 440, 240);
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    ui.init(&panel, &canvas);
-    last_time = os.time();
-    sample();
+    gfx.window_resizable(window, 440, 240)
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    ui.init(&panel, &canvas)
+    last_time = os.time()
+    sample()
     while true {
-        var e: gfx.Event;
+        var e gfx.Event
         if gfx.event_wait(&e, 500) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
-                return 0;
+                return 0
             }
             if e.kind == gfx.EVENT_MOUSE_MOVE && panel.active == 0 {
-                continue;
+                continue
             }
             if e.kind == gfx.EVENT_RESIZE {
-                width = e.x;
-                height = e.y;
+                width = e.x
+                height = e.y
             }
-            ui.event(&panel, &e);
+            ui.event(&panel, &e)
         } else {
-            e.kind = 0;
-            ui.event(&panel, &e);
-            sample();
+            e.kind = 0
+            ui.event(&panel, &e)
+            sample()
         }
-        draw();
-        ui.end(&panel);
+        draw()
+        ui.end(&panel)
     }
-    return 0;
+    return 0
 }
 
 // Reads the process list and works out instructions per second.
 fn sample() {
-    var now = os.time();
-    var elapsed = now - last_time;
+    var now = os.time()
+    var elapsed = now - last_time
     if elapsed == 0 {
-        elapsed = 1;
+        elapsed = 1
     }
-    last_time = now;
-    var bytes = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * MAX]);
-    count = bytes / size_of(os.ProcessInfo);
-    var total: u32 = 0;
+    last_time = now
+    var bytes = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * MAX])
+    count = bytes / size_of(os.ProcessInfo)
+    var total u32 = 0
     for i in 0..count {
-        var p = &records[i];
-        rates[i] = 0;
+        var p = &records[i]
+        rates[i] = 0
         for j in 0..MAX {
             if last_ids[j] == p.id && p.cycles >= last_cycles[j] {
-                rates[i] = (p.cycles - last_cycles[j]) / elapsed * 1000;
+                rates[i] = (p.cycles - last_cycles[j]) / elapsed * 1000
             }
         }
-        total += rates[i];
+        total += rates[i]
     }
     for i in 0..MAX {
-        last_ids[i] = 0;
+        last_ids[i] = 0
     }
     for i in 0..count {
-        last_ids[i] = records[i].id;
-        last_cycles[i] = records[i].cycles;
+        last_ids[i] = records[i].id
+        last_cycles[i] = records[i].cycles
     }
-    history[history_at] = total;
-    history_at = (history_at + 1) % HISTORY;
+    history[history_at] = total
+    history_at = (history_at + 1) % HISTORY
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230));
-    var free: u32;
-    var total = os.memory_info(&free);
-    var used = total - free;
-    var w: io.Writer;
+    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230))
+    var free u32
+    var total = os.memory_info(&free)
+    var used = total - free
+    var w io.Writer
 
-    io.writer_init(&w, io.STDOUT, line_text[:]);
-    io.put(&w, "Memory: ");
-    io.put_u32(&w, used / KiB);
-    io.put(&w, " of ");
-    io.put_u32(&w, total / KiB);
-    io.put(&w, " KiB reserved");
-    gfx.draw_text(&canvas, 10, 8, gfx.rgb(30, 30, 36), line_text[0:w.used]);
-    gfx.draw_fill(&canvas, 10, 28, width - 20, 14, gfx.rgb(210, 205, 192));
-    var bar = ((width - 20) as u32 * (used / KiB) / (total / KiB)) as i32;
-    gfx.draw_fill(&canvas, 10, 28, bar, 14, gfx.rgb(45, 90, 80));
+    io.writer_init(&w, io.STDOUT, line_text[:])
+    io.put(&w, "Memory: ")
+    io.put_u32(&w, used / KiB)
+    io.put(&w, " of ")
+    io.put_u32(&w, total / KiB)
+    io.put(&w, " KiB reserved")
+    gfx.draw_text(&canvas, 10, 8, gfx.rgb(30, 30, 36), line_text[0:w.used])
+    gfx.draw_fill(&canvas, 10, 28, width - 20, 14, gfx.rgb(210, 205, 192))
+    var bar = ((width - 20) as u32 * (used / KiB) / (total / KiB)) as i32
+    gfx.draw_fill(&canvas, 10, 28, bar, 14, gfx.rgb(45, 90, 80))
 
-    gfx.draw_text(&canvas, 10, 52, gfx.rgb(120, 116, 106), "  id  name            memory   stack instructions/s");
+    gfx.draw_text(&canvas, 10, 52, gfx.rgb(120, 116, 106), "  id  name            memory   stack instructions/s")
     // Instructions per second over the last minute or so, at the bottom.
-    var graph_h: i32 = 96;
-    var graph_y = height - graph_h - 14;
+    var graph_h i32 = 96
+    var graph_y = height - graph_h - 14
     for i in 0..count {
-        var p = &records[i];
-        var y = 72 + (i as i32) * 16;
+        var p = &records[i]
+        var y = 72 + (i as i32) * 16
         if y > graph_y - 20 {
-            break;
+            break
         }
-        io.writer_init(&w, io.STDOUT, line_text[:]);
-        pad(&w, p.id, 4);
-        io.put(&w, "  ");
-        var name = os.process_name(p);
-        io.put(&w, name[0:min(name.len, 14)]);
+        io.writer_init(&w, io.STDOUT, line_text[:])
+        pad(&w, p.id, 4)
+        io.put(&w, "  ")
+        var name = os.process_name(p)
+        io.put(&w, name[0:min(name.len, 14)])
         for k in name.len..14 {
-            io.put_byte(&w, ' ');
+            io.put_byte(&w, ' ')
         }
-        pad(&w, p.memory / KiB, 7);
-        io.put(&w, "K");
-        pad(&w, p.stack, 8);
-        pad(&w, rates[i], 15);
-        gfx.draw_text(&canvas, 10, y, gfx.rgb(30, 30, 36), line_text[0:w.used]);
+        pad(&w, p.memory / KiB, 7)
+        io.put(&w, "K")
+        pad(&w, p.stack, 8)
+        pad(&w, rates[i], 15)
+        gfx.draw_text(&canvas, 10, y, gfx.rgb(30, 30, 36), line_text[0:w.used])
         if p.id > 1 && ui.button(&panel, p.id, width - 52, y - 1, 44, 17, "Stop") {
-            os.kill(p.id);
-            sample();
+            os.kill(p.id)
+            sample()
         }
     }
 
-    gfx.draw_fill(&canvas, 10, graph_y, width - 20, graph_h, gfx.rgb(30, 30, 36));
-    var peak: u32 = 1;
+    gfx.draw_fill(&canvas, 10, graph_y, width - 20, graph_h, gfx.rgb(30, 30, 36))
+    var peak u32 = 1
     for i in 0..HISTORY {
         if history[i] > peak {
-            peak = history[i];
+            peak = history[i]
         }
     }
-    var bar_w: i32 = (width - 20) / HISTORY;
+    var bar_w i32 = (width - 20) / HISTORY
     for i in 0..HISTORY {
-        var v = history[(history_at + i) % HISTORY];
-        var h = ((v / 1000) * (graph_h as u32 - 4) / (peak / 1000 + 1)) as i32;
-        gfx.draw_fill(&canvas, 10 + (i as i32) * bar_w, graph_y + graph_h - 2 - h, bar_w - 1, h, gfx.rgb(232, 195, 90));
+        var v = history[(history_at + i) % HISTORY]
+        var h = ((v / 1000) * (graph_h as u32 - 4) / (peak / 1000 + 1)) as i32
+        gfx.draw_fill(&canvas, 10 + (i as i32) * bar_w, graph_y + graph_h - 2 - h, bar_w - 1, h, gfx.rgb(232, 195, 90))
     }
-    io.writer_init(&w, io.STDOUT, line_text[:]);
-    io.put(&w, "peak ");
-    io.put_u32(&w, peak / 1000);
-    io.put(&w, "K instructions/s");
-    gfx.draw_text(&canvas, 14, graph_y + 4, gfx.rgb(216, 212, 200), line_text[0:w.used]);
-    gfx.present(&canvas);
+    io.writer_init(&w, io.STDOUT, line_text[:])
+    io.put(&w, "peak ")
+    io.put_u32(&w, peak / 1000)
+    io.put(&w, "K instructions/s")
+    gfx.draw_text(&canvas, 14, graph_y + 4, gfx.rgb(216, 212, 200), line_text[0:w.used])
+    gfx.present(&canvas)
 }
 
-fn pad(w: *io.Writer, value: u32, width: u32) {
-    var digits: [12]u8;
-    var d: io.Writer;
-    io.writer_init(&d, io.STDOUT, digits[:]);
-    io.put_u32(&d, value);
+fn pad(w *io.Writer, value u32, width u32) {
+    var digits [12]u8
+    var d io.Writer
+    io.writer_init(&d, io.STDOUT, digits[:])
+    io.put_u32(&d, value)
     for i in d.used..width {
-        io.put_byte(w, ' ');
+        io.put_byte(w, ' ')
     }
-    io.put(w, digits[0:d.used]);
+    io.put(w, digits[0:d.used])
 }
 
-fn min(a: u32, b: u32) -> u32 {
+fn min(a u32, b u32) u32 {
     if a < b {
-        return a;
+        return a
     }
-    return b;
+    return b
 }

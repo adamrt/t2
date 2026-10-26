@@ -1,234 +1,234 @@
 // TSN1 sounds (spec/formats.md): 16-bit samples squeezed to 4 bits each with
 // IMA ADPCM, in blocks that each decode on their own.
 
-import io;
-import mem;
-import text;
+import io
+import mem
+import text
 
-const HEADER: u32 = 16;
-const BLOCK: u32 = 256;          // the bytes in a full block
-const BLOCK_SAMPLES: u32 = 505;        // the samples in a full block
-const STEPS: u32 = 89;
-const MAX_RATE: u32 = 192000;
+const HEADER u32 = 16
+const BLOCK u32 = 256            // the bytes in a full block
+const BLOCK_SAMPLES u32 = 505          // the samples in a full block
+const STEPS u32 = 89
+const MAX_RATE u32 = 192000
 
 struct Header {
-    rate: u32;
-    samples: u32;
+    rate u32
+    samples u32
 }
 
 // Where decoding has got to: the last sample, and which step size is next.
 struct Adpcm {
-    predictor: i32;
-    index: u32;
+    predictor i32
+    index u32
 }
 
 // Collects samples and writes them to a file as blocks.
 struct Writer {
-    file: u32;
-    rate: u32;
-    total: u32;
-    state: Adpcm;
-    pending: [BLOCK_SAMPLES]u16;
-    count: u32;
-    block: [BLOCK]u8;
-    failed: bool;
+    file u32
+    rate u32
+    total u32
+    state Adpcm
+    pending [BLOCK_SAMPLES]u16
+    count u32
+    block [BLOCK]u8
+    failed bool
 }
 
-var steps: [STEPS]u32;
+var steps [STEPS]u32
 
 // Queues signed 16-bit mono samples to play. Fails if more than two
 // seconds would be waiting.
-fn play(samples: []u8) -> u32;
+fn play(samples []u8) u32
 // Bytes of sound waiting to be played; the samples per second go in rate.
-fn status(rate: *u32) -> u32;
+fn status(rate *u32) u32
 
 // Each step is the last one times 1.1, but at least one more.
 fn make_steps() {
     if steps[0] != 0 {
-        return;
+        return
     }
-    var step: u32 = 7;
+    var step u32 = 7
     for i in 0..STEPS {
-        steps[i] = step;
-        var next = step * 11 / 10;
+        steps[i] = step
+        var next = step * 11 / 10
         if next <= step {
-            next = step + 1;
+            next = step + 1
         }
         if next > 32767 {
-            next = 32767;
+            next = 32767
         }
-        step = next;
+        step = next
     }
 }
 
-fn read_header(bytes: []u8, h: *Header) -> bool {
+fn read_header(bytes []u8, h *Header) bool {
     if bytes.len < HEADER || !text.equal(bytes[0:4], "TSN1") || mem.read_word(bytes, 12) != BLOCK {
-        return false;
+        return false
     }
-    h.rate = mem.read_word(bytes, 4);
-    h.samples = mem.read_word(bytes, 8);
-    return h.rate > 0 && h.rate <= MAX_RATE;
+    h.rate = mem.read_word(bytes, 4)
+    h.samples = mem.read_word(bytes, 8)
+    return h.rate > 0 && h.rate <= MAX_RATE
 }
 
-fn write_header(bytes: []u8, rate: u32, samples: u32) {
-    mem.copy(bytes, "TSN1");
-    mem.write_word(bytes, 4, rate);
-    mem.write_word(bytes, 8, samples);
-    mem.write_word(bytes, 12, BLOCK);
+fn write_header(bytes []u8, rate u32, samples u32) {
+    mem.copy(bytes, "TSN1")
+    mem.write_word(bytes, 4, rate)
+    mem.write_word(bytes, 8, samples)
+    mem.write_word(bytes, 12, BLOCK)
 }
 
 // Applies one 4-bit code to the state, giving the next sample.
-fn adpcm_next(s: *Adpcm, code: u32) -> i32 {
-    var step = steps[s.index] as i32;
-    var diff = step >> 3;
+fn adpcm_next(s *Adpcm, code u32) i32 {
+    var step = steps[s.index] as i32
+    var diff = step >> 3
     if code & 1 != 0 {
-        diff += step >> 2;
+        diff += step >> 2
     }
     if code & 2 != 0 {
-        diff += step >> 1;
+        diff += step >> 1
     }
     if code & 4 != 0 {
-        diff += step;
+        diff += step
     }
     if code & 8 != 0 {
-        s.predictor -= diff;
+        s.predictor -= diff
     } else {
-        s.predictor += diff;
+        s.predictor += diff
     }
     if s.predictor > 32767 {
-        s.predictor = 32767;
+        s.predictor = 32767
     } else if s.predictor < -32768 {
-        s.predictor = -32768;
+        s.predictor = -32768
     }
-    var size = code & 7;
+    var size = code & 7
     if size < 4 {
         if s.index > 0 {
-            s.index -= 1;
+            s.index -= 1
         }
     } else {
-        s.index += 2 * (size - 3);
+        s.index += 2 * (size - 3)
         if s.index > STEPS - 1 {
-            s.index = STEPS - 1;
+            s.index = STEPS - 1
         }
     }
-    return s.predictor;
+    return s.predictor
 }
 
-fn to_sample(value: i32) -> u16 {
-    return (value as u32 & 0xffff) as u16;
+fn to_sample(value i32) u16 {
+    return (value as u32 & 0xffff) as u16
 }
 
-fn from_sample(sample: u16) -> i32 {
+fn from_sample(sample u16) i32 {
     if sample >= 32768 {
-        return sample as i32 - 65536;
+        return sample as i32 - 65536
     }
-    return sample as i32;
+    return sample as i32
 }
 
 // Decodes a block into out, up to out's length. Returns the samples made.
-fn decode_block(block: []u8, out: []u16) -> u32 {
-    make_steps();
+fn decode_block(block []u8, out []u16) u32 {
+    make_steps()
     if block.len < 4 || out.len == 0 {
-        return 0;
+        return 0
     }
-    var s: Adpcm;
-    s.predictor = from_sample((block[0] as u32 | (block[1] as u32 << 8)) as u16);
-    s.index = block[2] as u32;
+    var s Adpcm
+    s.predictor = from_sample((block[0] as u32 | (block[1] as u32 << 8)) as u16)
+    s.index = block[2] as u32
     if s.index >= STEPS {
-        s.index = STEPS - 1;
+        s.index = STEPS - 1
     }
-    out[0] = to_sample(s.predictor);
-    var n: u32 = 1;
+    out[0] = to_sample(s.predictor)
+    var n u32 = 1
     for i in 4..block.len {
-        var codes = block[i] as u32;
+        var codes = block[i] as u32
         for half in 0..2 {
             if n == out.len {
-                return n;
+                return n
             }
-            out[n] = to_sample(adpcm_next(&s, (codes >> (4 * half)) & 15));
-            n += 1;
+            out[n] = to_sample(adpcm_next(&s, (codes >> (4 * half)) & 15))
+            n += 1
         }
     }
-    return n;
+    return n
 }
 
 // Encodes up to BLOCK_SAMPLES samples into out, which must hold BLOCK
 // bytes. The state's step index carries on from the block before. Returns
 // the bytes used.
-fn encode_block(samples: []u16, s: *Adpcm, out: []u8) -> u32 {
-    make_steps();
-    s.predictor = from_sample(samples[0]);
-    out[0] = (samples[0] & 255) as u8;
-    out[1] = (samples[0] >> 8) as u8;
-    out[2] = s.index as u8;
-    out[3] = 0;
-    var used: u32 = 4;
+fn encode_block(samples []u16, s *Adpcm, out []u8) u32 {
+    make_steps()
+    s.predictor = from_sample(samples[0])
+    out[0] = (samples[0] & 255) as u8
+    out[1] = (samples[0] >> 8) as u8
+    out[2] = s.index as u8
+    out[3] = 0
+    var used u32 = 4
     for i in 1..samples.len {
-        var delta = from_sample(samples[i]) - s.predictor;
-        var code: u32 = 0;
+        var delta = from_sample(samples[i]) - s.predictor
+        var code u32 = 0
         if delta < 0 {
-            code = 8;
-            delta = 0 - delta;
+            code = 8
+            delta = 0 - delta
         }
-        var step = steps[s.index] as i32;
+        var step = steps[s.index] as i32
         if delta >= step {
-            code |= 4;
-            delta -= step;
+            code |= 4
+            delta -= step
         }
         if delta >= step >> 1 {
-            code |= 2;
-            delta -= step >> 1;
+            code |= 2
+            delta -= step >> 1
         }
         if delta >= step >> 2 {
-            code |= 1;
+            code |= 1
         }
-        adpcm_next(s, code);
+        adpcm_next(s, code)
         if i % 2 == 1 {
-            out[used] = code as u8;
-            used += 1;
+            out[used] = code as u8
+            used += 1
         } else {
-            out[used - 1] |= (code << 4) as u8;
+            out[used - 1] |= (code << 4) as u8
         }
     }
-    return used;
+    return used
 }
 
 // Starts a sound file. If the number of samples isn't known yet, give 0
 // and write the header again at the end.
-fn writer_start(w: *Writer, file: u32, rate: u32, samples: u32) {
-    w.file = file;
-    w.rate = rate;
-    w.total = 0;
-    w.count = 0;
-    w.state.index = 0;
-    write_header(w.block[:], rate, samples);
-    w.failed = !io.write_all(file, w.block[0:HEADER]);
+fn writer_start(w *Writer, file u32, rate u32, samples u32) {
+    w.file = file
+    w.rate = rate
+    w.total = 0
+    w.count = 0
+    w.state.index = 0
+    write_header(w.block[:], rate, samples)
+    w.failed = !io.write_all(file, w.block[0:HEADER])
 }
 
-fn writer_flush(w: *Writer) {
+fn writer_flush(w *Writer) {
     if w.count == 0 {
-        return;
+        return
     }
-    var n = encode_block(w.pending[0:w.count], &w.state, w.block[:]);
+    var n = encode_block(w.pending[0:w.count], &w.state, w.block[:])
     if !io.write_all(w.file, w.block[0:n]) {
-        w.failed = true;
+        w.failed = true
     }
-    w.total += w.count;
-    w.count = 0;
+    w.total += w.count
+    w.count = 0
 }
 
-fn writer_add(w: *Writer, samples: []u16) {
+fn writer_add(w *Writer, samples []u16) {
     for i in 0..samples.len {
-        w.pending[w.count] = samples[i];
-        w.count += 1;
+        w.pending[w.count] = samples[i]
+        w.count += 1
         if w.count == BLOCK_SAMPLES {
-            writer_flush(w);
+            writer_flush(w)
         }
     }
 }
 
 // Writes the last block. Returns false if any write failed.
-fn writer_finish(w: *Writer) -> bool {
-    writer_flush(w);
-    return !w.failed;
+fn writer_finish(w *Writer) bool {
+    writer_flush(w)
+    return !w.failed
 }

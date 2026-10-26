@@ -1,59 +1,59 @@
 // Memory: arenas, which hand out pieces of one block and free them all at
 // once, and copying and filling bytes.
 
-import os;
+import os
 
 // Copies count bytes, even when the two places overlap.
-fn move(to: *u8, from: *u8, count: u32);
-fn fill(to: *u8, value: u32, count: u32);
+fn move(to *u8, from *u8, count u32)
+fn fill(to *u8, value u32, count u32)
 
 // An arena hands out memory from one block and frees it all at once.
 struct Arena {
-    memory: []u8;
-    used: u32;
+    memory []u8
+    used u32
 }
 
-fn arena_init(a: *Arena, memory: []u8) {
-    a.memory = memory;
-    a.used = 0;
+fn arena_init(a *Arena, memory []u8) {
+    a.memory = memory
+    a.used = 0
 }
 
 // Returns size bytes aligned to 4. The memory is zero, because a program's
 // memory starts zeroed and reset() zeroes what it gives back.
-fn alloc(a: *Arena, size: u32) -> *u8 {
-    var start = (a.used + 3) & ~3;
+fn alloc(a *Arena, size u32) *u8 {
+    var start = (a.used + 3) & ~3
     if size > a.memory.len || start > a.memory.len - size {
-        os.panic("out of memory");
+        os.panic("out of memory")
     }
-    a.used = start + size;
-    return (a.memory.ptr as u32 + start) as *u8;
+    a.used = start + size
+    return (a.memory.ptr as u32 + start) as *u8
 }
 
 // Takes a block of size bytes, for example to give to another arena.
-fn alloc_bytes(a: *Arena, size: u32) -> []u8 {
-    return alloc(a, size)[0:size];
+fn alloc_bytes(a *Arena, size u32) []u8 {
+    return alloc(a, size)[0:size]
 }
 
-fn reset(a: *Arena) {
-    fill(a.memory.ptr, 0, a.used);
-    a.used = 0;
+fn reset(a *Arena) {
+    fill(a.memory.ptr, 0, a.used)
+    a.used = 0
 }
 
-fn copy(to: []u8, from: []u8) {
+fn copy(to []u8, from []u8) {
     if to.len < from.len {
-        os.panic("copy doesn't fit");
+        os.panic("copy doesn't fit")
     }
-    move(to.ptr, from.ptr, from.len);
+    move(to.ptr, from.ptr, from.len)
 }
 
 // Little-endian words, as Terrarium's formats store them.
-fn read_word(bytes: []u8, offset: u32) -> u32 {
-    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+fn read_word(bytes []u8, offset u32) u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
 }
 
-fn write_word(bytes: []u8, offset: u32, value: u32) {
-    bytes[offset] = (value & 255) as u8;
-    bytes[offset + 1] = ((value >> 8) & 255) as u8;
-    bytes[offset + 2] = ((value >> 16) & 255) as u8;
-    bytes[offset + 3] = (value >> 24) as u8;
+fn write_word(bytes []u8, offset u32, value u32) {
+    bytes[offset] = (value & 255) as u8
+    bytes[offset + 1] = ((value >> 8) & 255) as u8
+    bytes[offset + 2] = ((value >> 16) & 255) as u8
+    bytes[offset + 3] = (value >> 24) as u8
 }

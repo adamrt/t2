@@ -2,8 +2,8 @@
 // a file, with io.read and io.write.
 
 // Opens a connection to a host and port.
-fn connect(host: []u8, port: u32) -> u32;
+fn connect(host []u8, port u32) u32
 // Listens for connections on the host's own address.
-fn listen(port: u32) -> u32;
+fn listen(port u32) u32
 // Waits for the next connection to a listening handle.
-fn accept(listener: u32) -> u32;
+fn accept(listener u32) u32

@@ -2,8 +2,8 @@ Terrarium: 49152 KiB for programs
 
 Welcome to Terrarium. Type 'help' for help.
 
-/> /tmp/tc.asm and /tmp/tc-again.asm are the same, 309482 bytes
-/tmp/tc and /bin/tc are the same, 81631 bytes
+/> /tmp/tc.asm and /tmp/tc-again.asm are the same, 309649 bytes
+/tmp/tc and /bin/tc are the same, 81703 bytes
 /> /tmp/asm and /tmp/asm-again are the same, 10316 bytes
 /tmp/asm and /bin/asm are the same, 10316 bytes
 /> Terrarium: every process has ended

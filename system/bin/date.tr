@@ -1,22 +1,22 @@
 // date prints the local date and time.
 
-import io;
-import os;
+import io
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
+    memory = 64 * KiB
+    stack = 16 * KiB
 }
 
-fn main(memory: []u8) -> u32 {
-    var out: io.Writer;
-    var text: [64]u8;
-    io.writer_init(&out, io.STDOUT, text[:]);
-    var now = os.date();
-    os.put_date(&out, now);
-    io.put_byte(&out, ':');
-    os.put_two(&out, now % 60);
-    io.put_byte(&out, '\n');
-    io.flush(&out);
-    return 0;
+fn main(memory []u8) u32 {
+    var out io.Writer
+    var text [64]u8
+    io.writer_init(&out, io.STDOUT, text[:])
+    var now = os.date()
+    os.put_date(&out, now)
+    io.put_byte(&out, ':')
+    os.put_two(&out, now % 60)
+    io.put_byte(&out, '\n')
+    io.flush(&out)
+    return 0
 }

@@ -1,852 +1,852 @@
 // Checking function bodies: every expression gets a type, every name finds
 // what it refers to, and every local gets a place in the stack frame.
 
-import io;
-import text;
+import io
+import text
 
 struct Local {
-    name: []u8;         // empty for hidden locals
-    ty: *Type;
-    offset: i32;        // from r7: parameters above, locals below
-    next: *Local;
+    name []u8           // empty for hidden locals
+    ty *Type
+    offset i32          // from r7: parameters above, locals below
+    next *Local
 }
 
-var scope: *Local;          // the innermost local first
-var block_start: *Local;    // the first local outside the current block
-var frame: u32;
-var loops: u32;
-var current: *Sym;
+var scope *Local            // the innermost local first
+var block_start *Local      // the first local outside the current block
+var frame u32
+var loops u32
+var current *Sym
 
-fn check_function(s: *Sym) {
-    current = s;
-    scope = null;
-    block_start = null;
-    frame = 0;
-    loops = 0;
-    var offset: i32 = 8;
-    var p = s.node.list;
+fn check_function(s *Sym) {
+    current = s
+    scope = null
+    block_start = null
+    frame = 0
+    loops = 0
+    var offset i32 = 8
+    var p = s.node.list
     while p != null {
-        add_local(p, p.name, p.ty, offset);
+        add_local(p, p.name, p.ty, offset)
         if p.ty.kind == TypeKind.Slice {
-            offset += 8;
+            offset += 8
         } else {
-            offset += 4;
+            offset += 4
         }
-        p = p.next;
+        p = p.next
     }
-    check_block(s.node.b);
-    s.node.value = frame;
+    check_block(s.node.b)
+    s.node.value = frame
 }
 
-fn add_local(n: *Node, name: []u8, ty: *Type, offset: i32) -> *Local {
+fn add_local(n *Node, name []u8, ty *Type, offset i32) *Local {
     if name.len > 0 {
-        var other = scope;
+        var other = scope
         while other != block_start {
             if text.equal(other.name, name) {
-                fail_name(n, "already defined:", name);
+                fail_name(n, "already defined:", name)
             }
-            other = other.next;
+            other = other.next
         }
     }
-    var local = new(&arena, Local);
-    local.name = name;
-    local.ty = ty;
-    local.offset = offset;
-    local.next = scope;
-    scope = local;
-    return local;
+    var local = new(&arena, Local)
+    local.name = name
+    local.ty = ty
+    local.offset = offset
+    local.next = scope
+    scope = local
+    return local
 }
 
-fn new_local(n: *Node, name: []u8, ty: *Type) -> *Local {
-    frame += (ty.size + 3) & ~3;
-    return add_local(n, name, ty, 0 - frame as i32);
+fn new_local(n *Node, name []u8, ty *Type) *Local {
+    frame += (ty.size + 3) & ~3
+    return add_local(n, name, ty, 0 - frame as i32)
 }
 
 // Statements -----------------------------------------------------------------
 
-fn check_block(b: *Node) {
-    var saved_scope = scope;
-    var saved_start = block_start;
-    block_start = scope;
-    var st = b.list;
+fn check_block(b *Node) {
+    var saved_scope = scope
+    var saved_start = block_start
+    block_start = scope
+    var st = b.list
     while st != null {
-        check_statement(st);
-        st = st.next;
+        check_statement(st)
+        st = st.next
     }
-    scope = saved_scope;
-    block_start = saved_start;
+    scope = saved_scope
+    block_start = saved_start
 }
 
-fn check_statement(st: *Node) {
+fn check_statement(st *Node) {
     match st.kind {
         N.Block => {
-            check_block(st);
+            check_block(st)
         }
         N.Var => {
-            var ty: *Type;
+            var ty *Type
             if st.a != null {
-                ty = resolve(st.a);
+                ty = resolve(st.a)
                 if st.b != null {
-                    coerce(st.b, check(st.b, ty), ty);
+                    coerce(st.b, check(st.b, ty), ty)
                 }
             } else {
-                ty = check(st.b, null);
+                ty = check(st.b, null)
                 if ty == t_untyped {
-                    fail(st, "give the variable a type");
+                    fail(st, "give the variable a type")
                 }
                 if ty == t_null || ty == t_void {
-                    fail(st, "this value has no type");
+                    fail(st, "this value has no type")
                 }
             }
             if ty == t_void {
-                fail(st, "a variable can't have no type");
+                fail(st, "a variable can't have no type")
             }
-            st.local = new_local(st, st.name, ty);
+            st.local = new_local(st, st.name, ty)
         }
         N.Assign => {
-            var target = check(st.a, null);
+            var target = check(st.a, null)
             if !is_place(st.a) {
-                fail(st, "can't assign to this");
+                fail(st, "can't assign to this")
             }
             if st.op == Tok.Assign {
-                coerce(st.b, check(st.b, target), target);
+                coerce(st.b, check(st.b, target), target)
             } else {
-                var fixed_ok = st.op == Tok.PlusAssign || st.op == Tok.MinusAssign || st.op == Tok.StarAssign || st.op == Tok.SlashAssign;
+                var fixed_ok = st.op == Tok.PlusAssign || st.op == Tok.MinusAssign || st.op == Tok.StarAssign || st.op == Tok.SlashAssign
                 if !is_int(target) && !(is_fixed(target) && fixed_ok) {
-                    fail(st, "this assignment needs an integer");
+                    fail(st, "this assignment needs an integer")
                 }
-                var operand = arith(target);
-                var vt = check(st.b, operand);
+                var operand = arith(target)
+                var vt = check(st.b, operand)
                 if st.op == Tok.ShlAssign || st.op == Tok.ShrAssign {
                     if vt == t_untyped {
-                        coerce(st.b, vt, t_u32);
+                        coerce(st.b, vt, t_u32)
                     } else if !is_int(vt) {
-                        fail(st, "shift by an integer");
+                        fail(st, "shift by an integer")
                     }
                 } else {
-                    coerce(st.b, vt, operand);
+                    coerce(st.b, vt, operand)
                 }
             }
         }
         N.ExprStmt => {
             if st.a.kind != N.Call {
-                fail(st, "only calls can be statements");
+                fail(st, "only calls can be statements")
             }
-            check(st.a, null);
+            check(st.a, null)
         }
         N.If => {
-            check_condition(st.a);
-            check_block(st.b);
+            check_condition(st.a)
+            check_block(st.b)
             if st.c != null {
-                check_statement(st.c);
+                check_statement(st.c)
             }
         }
         N.While => {
-            check_condition(st.a);
-            loops += 1;
-            check_block(st.b);
-            loops -= 1;
+            check_condition(st.a)
+            loops += 1
+            check_block(st.b)
+            loops -= 1
         }
         N.For => {
-            var from = check(st.a, null);
-            var to = check(st.b, null);
-            var ty = t_u32;
+            var from = check(st.a, null)
+            var to = check(st.b, null)
+            var ty = t_u32
             if from != t_untyped {
-                ty = arith(from);
+                ty = arith(from)
             } else if to != t_untyped {
-                ty = arith(to);
+                ty = arith(to)
             }
             if !is_int(ty) {
-                fail(st, "a range needs integers");
+                fail(st, "a range needs integers")
             }
-            coerce(st.a, from, ty);
-            coerce(st.b, to, ty);
-            var saved_scope = scope;
-            var saved_start = block_start;
-            block_start = scope;
-            st.local = new_local(st, st.name, ty);
-            st.local2 = new_local(st, "", ty);
-            loops += 1;
-            check_block(st.c);
-            loops -= 1;
-            scope = saved_scope;
-            block_start = saved_start;
+            coerce(st.a, from, ty)
+            coerce(st.b, to, ty)
+            var saved_scope = scope
+            var saved_start = block_start
+            block_start = scope
+            st.local = new_local(st, st.name, ty)
+            st.local2 = new_local(st, "", ty)
+            loops += 1
+            check_block(st.c)
+            loops -= 1
+            scope = saved_scope
+            block_start = saved_start
         }
         N.Match => {
-            var ty = check(st.a, null);
+            var ty = check(st.a, null)
             if ty == t_untyped || (!is_int(ty) && ty.kind != TypeKind.Enum) {
-                fail(st, "match needs an integer or enum");
+                fail(st, "match needs an integer or enum")
             }
-            ty = arith(ty);
-            st.local = new_local(st, "", ty);
-            var arm = st.list;
+            ty = arith(ty)
+            st.local = new_local(st, "", ty)
+            var arm = st.list
             while arm != null {
-                var v = arm.list;
+                var v = arm.list
                 while v != null {
-                    const_value(v, ty);
-                    v = v.next;
+                    const_value(v, ty)
+                    v = v.next
                 }
-                check_block(arm.a);
-                arm = arm.next;
+                check_block(arm.a)
+                arm = arm.next
             }
             if st.b != null {
-                check_block(st.b);
+                check_block(st.b)
             }
         }
         N.Break, N.Continue => {
             if loops == 0 {
-                fail(st, "'break' and 'continue' only work in a loop");
+                fail(st, "'break' and 'continue' only work in a loop")
             }
         }
         N.Return => {
-            var result = current.ty;
+            var result = current.ty
             if st.a == null {
                 if result != t_void {
-                    fail(st, "return needs a value");
+                    fail(st, "return needs a value")
                 }
             } else {
                 if result == t_void {
-                    fail(st, "this function returns nothing");
+                    fail(st, "this function returns nothing")
                 }
-                coerce(st.a, check(st.a, result), result);
+                coerce(st.a, check(st.a, result), result)
             }
         }
     }
 }
 
-fn check_condition(e: *Node) {
+fn check_condition(e *Node) {
     if check(e, null) != t_bool {
-        fail(e, "a condition must be a bool");
+        fail(e, "a condition must be a bool")
     }
 }
 
 // Whether e names a place in memory that can be assigned to.
-fn is_place(e: *Node) -> bool {
+fn is_place(e *Node) bool {
     match e.kind {
         N.Name => {
-            return e.local != null || (e.sym != null && e.sym.kind == SymKind.Global);
+            return e.local != null || (e.sym != null && e.sym.kind == SymKind.Global)
         }
         N.Member => {
-            return e.a.ty.kind == TypeKind.Ptr || is_place(e.a);
+            return e.a.ty.kind == TypeKind.Ptr || is_place(e.a)
         }
         N.Index => {
-            return e.a.ty.kind == TypeKind.Slice || is_place(e.a);
+            return e.a.ty.kind == TypeKind.Slice || is_place(e.a)
         }
         N.Unary => {
-            return e.op == Tok.Star;
+            return e.op == Tok.Star
         }
     }
-    return false;
+    return false
 }
 
 // Converts expression e of type t to type want, or fails.
-fn coerce(e: *Node, t: *Type, want: *Type) {
+fn coerce(e *Node, t *Type, want *Type) {
     if t == want {
-        return;
+        return
     }
     if t == t_untyped {
         if is_fixed(want) {
-            e.value = e.value << 16;
-            e.ty = want;
-            return;
+            e.value = e.value << 16
+            e.ty = want
+            return
         }
         if !is_int(want) {
-            error_start(e.file, e.line);
-            io.put(&errors, "a number can't be a ");
-            put_type(&errors, want);
-            error_end();
+            error_start(e.file, e.line)
+            io.put(&errors, "a number can't be a ")
+            put_type(&errors, want)
+            error_end()
         }
         if (want.size == 1 && e.value > 255) || (want.size == 2 && e.value > 65535) {
-            error_start(e.file, e.line);
-            io.put_u32(&errors, e.value);
-            io.put(&errors, " doesn't fit in ");
-            put_type(&errors, want);
-            error_end();
+            error_start(e.file, e.line)
+            io.put_u32(&errors, e.value)
+            io.put(&errors, " doesn't fit in ")
+            put_type(&errors, want)
+            error_end()
         }
-        e.ty = want;
-        return;
+        e.ty = want
+        return
     }
     if t == t_null && (want.kind == TypeKind.Ptr || want.kind == TypeKind.Func) {
-        e.ty = want;
-        return;
+        e.ty = want
+        return
     }
     if is_int(t) && is_int(want) && t.size < want.size && !t.signed {
-        return;
+        return
     }
     if t.kind == TypeKind.Array && want.kind == TypeKind.Slice && t.elem == want.elem && is_place(e) {
-        e.flags |= TO_SLICE;
-        return;
+        e.flags |= TO_SLICE
+        return
     }
-    fail_types(e, want, t);
+    fail_types(e, want, t)
 }
 
 // Expressions ----------------------------------------------------------------
 
-fn set_const(e: *Node, value: u32) {
-    e.flags |= IS_CONST;
-    e.value = value;
+fn set_const(e *Node, value u32) {
+    e.flags |= IS_CONST
+    e.value = value
 }
 
-fn check(e: *Node, want: *Type) -> *Type {
-    var t = check_expr(e, want);
-    e.ty = t;
-    return t;
+fn check(e *Node, want *Type) *Type {
+    var t = check_expr(e, want)
+    e.ty = t
+    return t
 }
 
-fn lookup(e: *Node) -> *Type {
-    var local = scope;
+fn lookup(e *Node) *Type {
+    var local = scope
     while local != null {
         if text.equal(local.name, e.name) {
-            e.local = local;
-            return local.ty;
+            e.local = local
+            return local.ty
         }
-        local = local.next;
+        local = local.next
     }
     if e.module == 0 && text.equal(e.name, "KiB") {
-        set_const(e, 1024);
-        return t_untyped;
+        set_const(e, 1024)
+        return t_untyped
     }
     if e.module == 0 && text.equal(e.name, "MiB") {
-        set_const(e, 1048576);
-        return t_untyped;
+        set_const(e, 1048576)
+        return t_untyped
     }
-    var s = find_sym(module_of(e), e.name);
+    var s = find_sym(module_of(e), e.name)
     if s == null {
-        unknown_name(e, "unknown name");
+        unknown_name(e, "unknown name")
     }
-    declare(s);
-    e.sym = s;
+    declare(s)
+    e.sym = s
     match s.kind {
         SymKind.Global => {
-            return s.ty;
+            return s.ty
         }
         SymKind.Const => {
-            set_const(e, s.value);
-            return s.ty;
+            set_const(e, s.value)
+            return s.ty
         }
         SymKind.Fn => {
-            return func_type(s.node.list, s.ty);
+            return func_type(s.node.list, s.ty)
         }
     }
-    fail_name(e, "this is a type:", e.name);
-    return null;
+    fail_name(e, "this is a type:", e.name)
+    return null
 }
 
 // Fails for a name that isn't defined. If one of the modules the file
 // imports has it, the message says so.
-fn unknown_name(e: *Node, message: []u8) {
-    error_start(e.file, e.line);
+fn unknown_name(e *Node, message []u8) {
+    error_start(e.file, e.line)
     if e.module != 0 {
-        io.put(&errors, "no '");
-        io.put(&errors, e.name);
-        io.put(&errors, "' in module ");
-        io.put(&errors, modules[e.module]);
-        error_end();
+        io.put(&errors, "no '")
+        io.put(&errors, e.name)
+        io.put(&errors, "' in module ")
+        io.put(&errors, modules[e.module])
+        error_end()
     }
-    io.put(&errors, message);
-    io.put(&errors, " '");
-    io.put(&errors, e.name);
-    io.put(&errors, "'");
-    var f = &files[e.file];
+    io.put(&errors, message)
+    io.put(&errors, " '")
+    io.put(&errors, e.name)
+    io.put(&errors, "'")
+    var f = &files[e.file]
     for i in 0..f.import_count {
-        var m = f.imports[i];
+        var m = f.imports[i]
         if find_sym(m, e.name) != null {
-            io.put(&errors, "; did you mean '");
-            io.put(&errors, modules[m]);
-            io.put_byte(&errors, '.');
-            io.put(&errors, e.name);
-            io.put(&errors, "'?");
-            break;
+            io.put(&errors, "; did you mean '")
+            io.put(&errors, modules[m])
+            io.put_byte(&errors, '.')
+            io.put(&errors, e.name)
+            io.put(&errors, "'?")
+            break
         }
     }
-    error_end();
+    error_end()
 }
 
 // Turns io.write, where io is a module the file imports, into the name
 // write found in io. A local or a name of the file's own module hides the
 // module.
-fn qualify(e: *Node) {
+fn qualify(e *Node) {
     if e.kind != N.Member || e.a.kind != N.Name || e.a.module != 0 {
-        return;
+        return
     }
-    var name = e.a.name;
+    var name = e.a.name
     if is_local(name) || find_sym(files[e.a.file].module, name) != null {
-        return;
+        return
     }
-    var m = imported(e.a.file, name);
+    var m = imported(e.a.file, name)
     if m == 0 {
-        return;
+        return
     }
-    e.kind = N.Name;
-    e.module = m;
-    e.a = null;
+    e.kind = N.Name
+    e.module = m
+    e.a = null
 }
 
 // Whether the name refers to a value rather than an enum.
-fn is_value_name(e: *Node) -> bool {
+fn is_value_name(e *Node) bool {
     if e.module == 0 && is_local(e.name) {
-        return true;
+        return true
     }
-    var s = find_sym(module_of(e), e.name);
-    return s == null || s.kind != SymKind.Enum;
+    var s = find_sym(module_of(e), e.name)
+    return s == null || s.kind != SymKind.Enum
 }
 
-fn check_index(e: *Node) {
-    var t = check(e, null);
+fn check_index(e *Node) {
+    var t = check(e, null)
     if t == t_untyped {
-        coerce(e, t, t_u32);
+        coerce(e, t, t_u32)
     } else if !is_int(t) {
-        fail(e, "an index must be an integer");
+        fail(e, "an index must be an integer")
     }
 }
 
-fn check_expr(e: *Node, want: *Type) -> *Type {
-    var t: *Type;
+fn check_expr(e *Node, want *Type) *Type {
+    var t *Type
     match e.kind {
         N.Int => {
-            set_const(e, e.value);
-            return t_untyped;
+            set_const(e, e.value)
+            return t_untyped
         }
         N.Fixed => {
-            set_const(e, e.value);
-            return t_fixed;
+            set_const(e, e.value)
+            return t_fixed
         }
         N.Bool => {
-            return t_bool;
+            return t_bool
         }
         N.Null => {
-            return t_null;
+            return t_null
         }
         N.Str => {
-            return slice_of(t_u8);
+            return slice_of(t_u8)
         }
         N.SizeOf => {
-            set_const(e, resolve(e.a).size);
-            return t_untyped;
+            set_const(e, resolve(e.a).size)
+            return t_untyped
         }
         N.Name => {
-            return lookup(e);
+            return lookup(e)
         }
         N.Member => {
-            qualify(e);
+            qualify(e)
             if e.kind == N.Name {
-                return lookup(e);
+                return lookup(e)
             }
-            return check_member(e);
+            return check_member(e)
         }
         N.Index => {
-            t = check(e.a, null);
+            t = check(e.a, null)
             if t.kind != TypeKind.Slice && t.kind != TypeKind.Array {
-                fail(e, "only arrays and slices can be indexed");
+                fail(e, "only arrays and slices can be indexed")
             }
             if e.b == null {
-                fail(e, "expected an index");
+                fail(e, "expected an index")
             }
-            check_index(e.b);
-            return t.elem;
+            check_index(e.b)
+            return t.elem
         }
         N.Slice => {
-            t = check(e.a, null);
+            t = check(e.a, null)
             if t.kind != TypeKind.Slice && t.kind != TypeKind.Array && t.kind != TypeKind.Ptr {
-                fail(e, "only arrays, slices and pointers can be sliced");
+                fail(e, "only arrays, slices and pointers can be sliced")
             }
             if t.kind == TypeKind.Array && !is_place(e.a) {
-                fail(e, "can only slice an array in a variable");
+                fail(e, "can only slice an array in a variable")
             }
             if t.kind == TypeKind.Ptr && e.c == null {
-                fail(e, "slicing a pointer needs an end");
+                fail(e, "slicing a pointer needs an end")
             }
             if e.b != null {
-                check_index(e.b);
+                check_index(e.b)
             }
             if e.c != null {
-                check_index(e.c);
+                check_index(e.c)
             }
-            return slice_of(t.elem);
+            return slice_of(t.elem)
         }
         N.Call => {
-            return check_call(e);
+            return check_call(e)
         }
         N.Unary => {
-            return check_unary(e, want);
+            return check_unary(e, want)
         }
         N.Binary => {
-            return check_binary(e);
+            return check_binary(e)
         }
         N.Cast => {
-            return check_cast(e);
+            return check_cast(e)
         }
         N.New => {
-            var arena_type = check(e.a, null);
-            var mem_module = module_named("mem");
-            var alloc = find_sym(mem_module, "alloc");
+            var arena_type = check(e.a, null)
+            var mem_module = module_named("mem")
+            var alloc = find_sym(mem_module, "alloc")
             if mem_module == 0 || alloc == null || alloc.kind != SymKind.Fn {
-                fail(e, "'new' needs mem.alloc, from the module mem");
+                fail(e, "'new' needs mem.alloc, from the module mem")
             }
-            declare(alloc);
-            var p = alloc.node.list;
+            declare(alloc)
+            var p = alloc.node.list
             if p == null || p.next == null || p.next.next != null || p.next.ty != t_u32 || alloc.ty != ptr_to(t_u8) {
-                fail(e, "'alloc' must be 'fn alloc(arena: *Arena, size: u32) -> *u8'");
+                fail(e, "'alloc' must be 'fn alloc(arena *Arena, size u32) *u8'")
             }
-            coerce(e.a, arena_type, p.ty);
-            e.sym = alloc;
-            t = resolve(e.b);
+            coerce(e.a, arena_type, p.ty)
+            e.sym = alloc
+            t = resolve(e.b)
             if e.c == null {
-                return ptr_to(t);
+                return ptr_to(t)
             }
-            coerce(e.c, check(e.c, t_u32), t_u32);
-            return slice_of(t);
+            coerce(e.c, check(e.c, t_u32), t_u32)
+            return slice_of(t)
         }
     }
-    fail(e, "unknown expression");
-    return null;
+    fail(e, "unknown expression")
+    return null
 }
 
-fn check_member(e: *Node) -> *Type {
-    qualify(e.a);
+fn check_member(e *Node) *Type {
+    qualify(e.a)
     if e.a.kind == N.Name && !is_value_name(e.a) {
-        var s = find_sym(module_of(e.a), e.a.name);
-        declare(s);
-        var item = s.node.list;
+        var s = find_sym(module_of(e.a), e.a.name)
+        declare(s)
+        var item = s.node.list
         while item != null {
             if text.equal(item.name, e.name) {
-                set_const(e, item.value);
-                return s.ty;
+                set_const(e, item.value)
+                return s.ty
             }
-            item = item.next;
+            item = item.next
         }
-        fail_name(e, "not in the enum:", e.name);
+        fail_name(e, "not in the enum:", e.name)
     }
-    var t = check(e.a, null);
+    var t = check(e.a, null)
     if (t.kind == TypeKind.Slice || t.kind == TypeKind.Array) && text.equal(e.name, "len") {
         if t.kind == TypeKind.Array {
-            set_const(e, t.length);
+            set_const(e, t.length)
         }
-        return t_u32;
+        return t_u32
     }
     if t.kind == TypeKind.Slice && text.equal(e.name, "ptr") {
-        return ptr_to(t.elem);
+        return ptr_to(t.elem)
     }
-    var st = t;
+    var st = t
     if t.kind == TypeKind.Ptr {
-        st = t.elem;
+        st = t.elem
     }
     if st.kind != TypeKind.Struct {
         if e.a.kind == N.Name && e.a.module == 0 && imported(e.a.file, e.a.name) != 0 {
-            fail_name(e.a, "this variable hides the module", e.a.name);
+            fail_name(e.a, "this variable hides the module", e.a.name)
         }
-        fail_name(e, "no such field:", e.name);
+        fail_name(e, "no such field:", e.name)
     }
-    complete(st);
-    var f = st.fields;
+    complete(st)
+    var f = st.fields
     while f != null {
         if text.equal(f.name, e.name) {
-            e.value = f.offset;
-            return f.ty;
+            e.value = f.offset
+            return f.ty
         }
-        f = f.next;
+        f = f.next
     }
-    fail_name(e, "no such field:", e.name);
-    return null;
+    fail_name(e, "no such field:", e.name)
+    return null
 }
 
 // A call to a function by its name is direct. Anything else, like a
 // variable or field holding a function, is called through its value.
-fn check_call(e: *Node) -> *Type {
-    var params: *Node;
-    var result: *Type;
-    var s: *Sym = null;
-    qualify(e.a);
+fn check_call(e *Node) *Type {
+    var params *Node
+    var result *Type
+    var s *Sym = null
+    qualify(e.a)
     if e.a.kind == N.Name && (e.a.module != 0 || !is_local(e.a.name)) {
-        s = find_sym(module_of(e.a), e.a.name);
+        s = find_sym(module_of(e.a), e.a.name)
     }
     if s != null && s.kind == SymKind.Fn {
-        declare(s);
-        e.sym = s;
-        params = s.node.list;
-        result = s.ty;
+        declare(s)
+        e.sym = s
+        params = s.node.list
+        result = s.ty
     } else {
-        var t = check(e.a, null);
+        var t = check(e.a, null)
         if t.kind != TypeKind.Func {
-            fail(e, "only functions can be called");
+            fail(e, "only functions can be called")
         }
-        params = t.params;
-        result = t.elem;
+        params = t.params
+        result = t.elem
     }
-    var p = params;
-    var a = e.list;
+    var p = params
+    var a = e.list
     while p != null && a != null {
-        coerce(a, check(a, p.ty), p.ty);
-        p = p.next;
-        a = a.next;
+        coerce(a, check(a, p.ty), p.ty)
+        p = p.next
+        a = a.next
     }
     if p != null || a != null {
         if s != null && s.kind == SymKind.Fn {
-            fail_name(e, "wrong number of arguments for", s.name);
+            fail_name(e, "wrong number of arguments for", s.name)
         }
-        fail(e, "wrong number of arguments");
+        fail(e, "wrong number of arguments")
     }
-    return result;
+    return result
 }
 
-fn is_local(name: []u8) -> bool {
-    var local = scope;
+fn is_local(name []u8) bool {
+    var local = scope
     while local != null {
         if text.equal(local.name, name) {
-            return true;
+            return true
         }
-        local = local.next;
+        local = local.next
     }
-    return false;
+    return false
 }
 
-fn check_unary(e: *Node, want: *Type) -> *Type {
-    var t: *Type;
+fn check_unary(e *Node, want *Type) *Type {
+    var t *Type
     if e.op == Tok.Amp {
-        t = check(e.a, null);
+        t = check(e.a, null)
         if !is_place(e.a) {
-            fail(e, "can't take the address of this");
+            fail(e, "can't take the address of this")
         }
-        return ptr_to(t);
+        return ptr_to(t)
     }
     if e.op == Tok.Star {
-        t = check(e.a, null);
+        t = check(e.a, null)
         if t.kind != TypeKind.Ptr {
-            fail(e, "only pointers can be followed");
+            fail(e, "only pointers can be followed")
         }
-        complete(t.elem);
-        return t.elem;
+        complete(t.elem)
+        return t.elem
     }
-    t = check(e.a, want);
+    t = check(e.a, want)
     if e.op == Tok.Bang {
         if t != t_bool {
-            fail(e, "'!' needs a bool");
+            fail(e, "'!' needs a bool")
         }
-        return t_bool;
+        return t_bool
     }
     if t == t_untyped {
         if e.op == Tok.Minus {
-            set_const(e, 0 - e.a.value);
+            set_const(e, 0 - e.a.value)
         } else {
-            set_const(e, ~e.a.value);
+            set_const(e, ~e.a.value)
         }
-        return t_untyped;
+        return t_untyped
     }
     if is_fixed(t) && e.op == Tok.Minus {
         if e.a.flags & IS_CONST != 0 {
-            set_const(e, 0 - e.a.value);
+            set_const(e, 0 - e.a.value)
         }
-        return t;
+        return t
     }
     if !is_int(t) {
-        fail(e, "this operator needs an integer");
+        fail(e, "this operator needs an integer")
     }
     if e.a.flags & IS_CONST != 0 {
         if e.op == Tok.Minus {
-            set_const(e, 0 - e.a.value);
+            set_const(e, 0 - e.a.value)
         } else {
-            set_const(e, ~e.a.value);
+            set_const(e, ~e.a.value)
         }
     }
-    return arith(t);
+    return arith(t)
 }
 
-fn is_comparison(op: Tok) -> bool {
-    return op == Tok.Equal || op == Tok.NotEqual || op == Tok.Less || op == Tok.LessEqual || op == Tok.Greater || op == Tok.GreaterEqual;
+fn is_comparison(op Tok) bool {
+    return op == Tok.Equal || op == Tok.NotEqual || op == Tok.Less || op == Tok.LessEqual || op == Tok.Greater || op == Tok.GreaterEqual
 }
 
-fn check_binary(e: *Node) -> *Type {
-    var op = e.op;
+fn check_binary(e *Node) *Type {
+    var op = e.op
     if op == Tok.AndAnd || op == Tok.OrOr {
         if check(e.a, null) != t_bool {
-            fail(e.a, "'&&' and '||' need bools");
+            fail(e.a, "'&&' and '||' need bools")
         }
         if check(e.b, null) != t_bool {
-            fail(e.b, "'&&' and '||' need bools");
+            fail(e.b, "'&&' and '||' need bools")
         }
-        return t_bool;
+        return t_bool
     }
-    var lt = check(e.a, null);
-    var rt = check(e.b, null);
-    var comparison = is_comparison(op);
+    var lt = check(e.a, null)
+    var rt = check(e.b, null)
+    var comparison = is_comparison(op)
     if lt == t_untyped && rt == t_untyped {
         if comparison {
-            coerce(e.a, lt, t_u32);
-            coerce(e.b, rt, t_u32);
-            e.operand = t_u32;
-            return t_bool;
+            coerce(e.a, lt, t_u32)
+            coerce(e.b, rt, t_u32)
+            e.operand = t_u32
+            return t_bool
         }
-        set_const(e, fold(e, op, e.a.value, e.b.value));
-        return t_untyped;
+        set_const(e, fold(e, op, e.a.value, e.b.value))
+        return t_untyped
     }
     if op == Tok.Shl || op == Tok.Shr {
         if lt == t_untyped {
-            coerce(e.a, lt, t_u32);
-            lt = t_u32;
+            coerce(e.a, lt, t_u32)
+            lt = t_u32
         }
         if !is_int(lt) {
-            fail(e, "only integers can be shifted");
+            fail(e, "only integers can be shifted")
         }
         if rt == t_untyped {
-            coerce(e.b, rt, t_u32);
+            coerce(e.b, rt, t_u32)
         } else if !is_int(rt) {
-            fail(e, "shift by an integer");
+            fail(e, "shift by an integer")
         }
-        fold_typed(e, arith(lt));
-        return arith(lt);
+        fold_typed(e, arith(lt))
+        return arith(lt)
     }
-    var ty: *Type;
+    var ty *Type
     if lt == t_untyped {
-        ty = arith(rt);
+        ty = arith(rt)
     } else if rt == t_untyped {
-        ty = arith(lt);
+        ty = arith(lt)
     } else {
-        ty = arith(lt);
+        ty = arith(lt)
         if arith(rt) != ty {
             if (lt.kind == TypeKind.Ptr || lt.kind == TypeKind.Func) && rt == t_null {
-                ty = lt;
+                ty = lt
             } else if lt == t_null && (rt.kind == TypeKind.Ptr || rt.kind == TypeKind.Func) {
-                ty = rt;
+                ty = rt
             } else {
-                error_start(e.file, e.line);
-                io.put(&errors, "can't combine ");
-                put_type(&errors, lt);
-                io.put(&errors, " and ");
-                put_type(&errors, rt);
-                error_end();
+                error_start(e.file, e.line)
+                io.put(&errors, "can't combine ")
+                put_type(&errors, lt)
+                io.put(&errors, " and ")
+                put_type(&errors, rt)
+                error_end()
             }
         }
     }
     if lt == t_null && rt == t_null {
-        fail(e, "comparing null with null");
+        fail(e, "comparing null with null")
     }
     if lt != ty && !(is_int(lt) && arith(lt) == ty) {
-        coerce(e.a, lt, ty);
+        coerce(e.a, lt, ty)
     }
     if rt != ty && !(is_int(rt) && arith(rt) == ty) {
-        coerce(e.b, rt, ty);
+        coerce(e.b, rt, ty)
     }
-    e.operand = ty;
+    e.operand = ty
     if comparison {
         if (ty.kind == TypeKind.Ptr || ty.kind == TypeKind.Bool || ty.kind == TypeKind.Func) && op != Tok.Equal && op != Tok.NotEqual {
-            fail(e, "pointers, functions and bools can only be compared with == and !=");
+            fail(e, "pointers, functions and bools can only be compared with == and !=")
         }
         if ty.kind != TypeKind.Int && ty.kind != TypeKind.Fixed && ty.kind != TypeKind.Enum && ty.kind != TypeKind.Ptr && ty.kind != TypeKind.Bool && ty.kind != TypeKind.Func {
-            fail(e, "these values can't be compared");
+            fail(e, "these values can't be compared")
         }
-        return t_bool;
+        return t_bool
     }
     if is_fixed(ty) && (op == Tok.Plus || op == Tok.Minus || op == Tok.Star || op == Tok.Slash) {
-        return ty;
+        return ty
     }
     if !is_int(ty) {
-        fail(e, "this operator needs integers");
+        fail(e, "this operator needs integers")
     }
-    fold_typed(e, ty);
-    return ty;
+    fold_typed(e, ty)
+    return ty
 }
 
 // Works out an operation on two typed integer constants.
-fn fold_typed(e: *Node, ty: *Type) {
+fn fold_typed(e *Node, ty *Type) {
     if e.a.flags & IS_CONST == 0 || e.b.flags & IS_CONST == 0 {
-        return;
+        return
     }
-    var a = e.a.value;
-    var b = e.b.value;
+    var a = e.a.value
+    var b = e.b.value
     if ty.signed && (e.op == Tok.Slash || e.op == Tok.Percent || e.op == Tok.Shr) {
         if e.op != Tok.Shr && b == 0 {
-            fail(e, "division by zero");
+            fail(e, "division by zero")
         }
-        var sa = a as i32;
-        var sb = b as i32;
+        var sa = a as i32
+        var sb = b as i32
         if e.op == Tok.Slash {
-            set_const(e, (sa / sb) as u32);
+            set_const(e, (sa / sb) as u32)
         } else if e.op == Tok.Percent {
-            set_const(e, (sa % sb) as u32);
+            set_const(e, (sa % sb) as u32)
         } else {
-            set_const(e, (sa >> b) as u32);
+            set_const(e, (sa >> b) as u32)
         }
-        return;
+        return
     }
-    set_const(e, fold(e, e.op, a, b));
+    set_const(e, fold(e, e.op, a, b))
 }
 
-fn fold(e: *Node, op: Tok, a: u32, b: u32) -> u32 {
+fn fold(e *Node, op Tok, a u32, b u32) u32 {
     if (op == Tok.Slash || op == Tok.Percent) && b == 0 {
-        fail(e, "division by zero");
+        fail(e, "division by zero")
     }
     match op {
-        Tok.Plus => { return a + b; }
-        Tok.Minus => { return a - b; }
-        Tok.Star => { return a * b; }
-        Tok.Slash => { return a / b; }
-        Tok.Percent => { return a % b; }
-        Tok.Amp => { return a & b; }
-        Tok.Pipe => { return a | b; }
-        Tok.Caret => { return a ^ b; }
-        Tok.Shl => { return a << b; }
-        Tok.Shr => { return a >> b; }
+        Tok.Plus => { return a + b }
+        Tok.Minus => { return a - b }
+        Tok.Star => { return a * b }
+        Tok.Slash => { return a / b }
+        Tok.Percent => { return a % b }
+        Tok.Amp => { return a & b }
+        Tok.Pipe => { return a | b }
+        Tok.Caret => { return a ^ b }
+        Tok.Shl => { return a << b }
+        Tok.Shr => { return a >> b }
     }
-    fail(e, "this operator needs integers");
-    return 0;
+    fail(e, "this operator needs integers")
+    return 0
 }
 
-fn check_cast(e: *Node) -> *Type {
-    var target = resolve(e.b);
-    var want: *Type = null;
+fn check_cast(e *Node) *Type {
+    var target = resolve(e.b)
+    var want *Type = null
     if is_int(target) {
-        want = target;
+        want = target
     }
-    var t = check(e.a, want);
+    var t = check(e.a, want)
     if t == t_untyped {
         if is_int(target) {
-            e.a.ty = t_u32;
-            var value = e.a.value;
+            e.a.ty = t_u32
+            var value = e.a.value
             if target.size == 1 {
-                value &= 255;
+                value &= 255
             } else if target.size == 2 {
-                value &= 0xffff;
+                value &= 0xffff
             }
-            set_const(e, value);
-            return target;
+            set_const(e, value)
+            return target
         }
         if target.kind == TypeKind.Enum {
-            set_const(e, e.a.value);
-            return target;
+            set_const(e, e.a.value)
+            return target
         }
         if is_fixed(target) {
-            e.a.ty = t_u32;
-            set_const(e, e.a.value << 16);
-            return target;
+            e.a.ty = t_u32
+            set_const(e, e.a.value << 16)
+            return target
         }
-        error_start(e.file, e.line);
-        io.put(&errors, "can't convert a number to ");
-        put_type(&errors, target);
-        error_end();
+        error_start(e.file, e.line)
+        io.put(&errors, "can't convert a number to ")
+        put_type(&errors, target)
+        error_end()
     }
-    var ok = t == target;
+    var ok = t == target
     if is_int(t) && (is_int(target) || target.kind == TypeKind.Enum || target.kind == TypeKind.Ptr) {
-        ok = true;
+        ok = true
     }
     if t.kind == TypeKind.Enum && is_int(target) {
-        ok = true;
+        ok = true
     }
     if t.kind == TypeKind.Ptr && (target.kind == TypeKind.Ptr || target == t_u32) {
-        ok = true;
+        ok = true
     }
     if t == t_bool && is_int(target) {
-        ok = true;
+        ok = true
     }
     if (is_int(t) && is_fixed(target)) || (is_fixed(t) && is_int(target)) {
-        ok = true;
+        ok = true
     }
     if !ok {
-        error_start(e.file, e.line);
-        io.put(&errors, "can't convert ");
-        put_type(&errors, t);
-        io.put(&errors, " to ");
-        put_type(&errors, target);
-        error_end();
+        error_start(e.file, e.line)
+        io.put(&errors, "can't convert ")
+        put_type(&errors, t)
+        io.put(&errors, " to ")
+        put_type(&errors, target)
+        error_end()
     }
-    return target;
+    return target
 }

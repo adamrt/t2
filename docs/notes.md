@@ -117,3 +117,5 @@ accents added.
 - Translating hot code to native ARM64.
 - UDP, and a networked game.
 - A file dialog, and resizing for paint.
+- A `time` module: UTC seconds since 2000, apart from a monotonic clock. See
+  [time.md](time.md).

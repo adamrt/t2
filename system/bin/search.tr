@@ -3,83 +3,83 @@
 //
 //     search alloc /src/tc/*.tr
 
-import io;
-import mem;
-import os;
-import text;
+import io
+import mem
+import os
+import text
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-var line: [1024]u8;
-var read_buffer: [8192]u8;
-var out: io.Writer;
-var out_buffer: [4096]u8;
+var line [1024]u8
+var read_buffer [8192]u8
+var out io.Writer
+var out_buffer [4096]u8
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
     if os.arg_count() < 2 {
-        os.complain("search", "usage: search text file...", "");
-        return 2;
+        os.complain("search", "usage: search text file...", "")
+        return 2
     }
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
-    io.writer_init(&out, io.STDOUT, out_buffer[:]);
-    var found: u32 = 0;
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
+    io.writer_init(&out, io.STDOUT, out_buffer[:])
+    var found u32 = 0
     for i in 1..count {
-        found += search_file(args[0], args[i]);
+        found += search_file(args[0], args[i])
     }
-    io.flush(&out);
+    io.flush(&out)
     if found == 0 {
-        return 1;
+        return 1
     }
-    return 0;
+    return 0
 }
 
-fn contains(whole: []u8, part: []u8) -> bool {
+fn contains(whole []u8, part []u8) bool {
     if part.len > whole.len {
-        return false;
+        return false
     }
     for start in 0..whole.len - part.len + 1 {
         if text.equal(whole[start:start + part.len], part) {
-            return true;
+            return true
         }
     }
-    return false;
+    return false
 }
 
 // Returns how many lines matched.
-fn search_file(text: []u8, name: []u8) -> u32 {
-    var file = io.open(name, io.MODE_READ);
+fn search_file(text []u8, name []u8) u32 {
+    var file = io.open(name, io.MODE_READ)
     if file == io.FAILED {
-        io.flush(&out);
-        os.complain("search", "can't read", name);
-        return 0;
+        io.flush(&out)
+        os.complain("search", "can't read", name)
+        return 0
     }
-    var reader: io.Reader;
-    io.reader_init(&reader, file, read_buffer[:]);
-    var number: u32 = 0;
-    var found: u32 = 0;
+    var reader io.Reader
+    io.reader_init(&reader, file, read_buffer[:])
+    var number u32 = 0
+    var found u32 = 0
     while true {
-        var n = io.read_line(&reader, line[:]);
+        var n = io.read_line(&reader, line[:])
         if n == io.FAILED {
-            break;
+            break
         }
-        number += 1;
+        number += 1
         if contains(line[0:n], text) {
-            io.put(&out, name);
-            io.put_byte(&out, ':');
-            io.put_u32(&out, number);
-            io.put(&out, ": ");
-            io.put(&out, line[0:n]);
-            io.put_byte(&out, '\n');
-            found += 1;
+            io.put(&out, name)
+            io.put_byte(&out, ':')
+            io.put_u32(&out, number)
+            io.put(&out, ": ")
+            io.put(&out, line[0:n])
+            io.put_byte(&out, '\n')
+            found += 1
         }
     }
-    io.close(file);
-    return found;
+    io.close(file)
+    return found
 }

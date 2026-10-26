@@ -1,4 +1,4 @@
-echo 'import io; fn main(memory: []u8) -> u32 { io.print("hi\n"); return 0; }' > hw.tr
+echo 'import io; fn main(memory []u8) u32 { io.print("hi\n"); return 0 }' > hw.tr
 tc -o hw hw.tr
 hw
 hellow-w
@@ -8,7 +8,7 @@ mv hw hw.asm
 asm -o hw hw.asm
 asm -o hw /lib/rt.asm hw.asm
 ./hw
-echo 'manifest { memory = 50 * MiB; } fn main(memory: []u8) -> u32 { return 0; }' > big.tr
+echo 'manifest { memory = 50 * MiB } fn main(memory []u8) u32 { return 0 }' > big.tr
 tc -o big.asm big.tr
 asm -o big /lib/rt.asm big.asm
 ./big

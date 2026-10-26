@@ -9,145 +9,145 @@
 //
 // Each widget needs an id of its own, any number but 0.
 
-import gfx;
-import mem;
-import text;
+import gfx
+import mem
+import text
 
-const FACE: u32 = 0xffe0dbce;
-const PRESSED: u32 = 0xffe8c35a;
-const EDGE: u32 = 0xff1e1e24;
-const TEXT: u32 = 0xff1e1e24;
-const BACKGROUND: u32 = 0xfff2efe6;
-const FIELD: u32 = 0xffffffff;
+const FACE u32 = 0xffe0dbce
+const PRESSED u32 = 0xffe8c35a
+const EDGE u32 = 0xff1e1e24
+const TEXT u32 = 0xff1e1e24
+const BACKGROUND u32 = 0xfff2efe6
+const FIELD u32 = 0xffffffff
 
 struct Panel {
-    canvas: *gfx.Canvas;
-    mouse_x: i32;
-    mouse_y: i32;
-    pressed: bool;          // a press happened in this event
-    released: bool;         // a release happened in this event
-    active: u32;            // the widget the mouse went down on
-    typed: u32;             // a character typed in this event, or 0
-    key: u32;               // a key pressed in this event, or 0
-    focus: u32;             // the text field that takes typing
+    canvas *gfx.Canvas
+    mouse_x i32
+    mouse_y i32
+    pressed bool            // a press happened in this event
+    released bool           // a release happened in this event
+    active u32              // the widget the mouse went down on
+    typed u32               // a character typed in this event, or 0
+    key u32                 // a key pressed in this event, or 0
+    focus u32               // the text field that takes typing
 }
 
-fn init(panel: *Panel, canvas: *gfx.Canvas) {
-    mem.fill(panel as *u8, 0, size_of(Panel));
-    panel.canvas = canvas;
+fn init(panel *Panel, canvas *gfx.Canvas) {
+    mem.fill(panel as *u8, 0, size_of(Panel))
+    panel.canvas = canvas
 }
 
 // Takes in one event, before the widgets are drawn for it.
-fn event(panel: *Panel, e: *gfx.Event) {
-    panel.pressed = false;
-    panel.released = false;
-    panel.typed = 0;
-    panel.key = 0;
+fn event(panel *Panel, e *gfx.Event) {
+    panel.pressed = false
+    panel.released = false
+    panel.typed = 0
+    panel.key = 0
     if e.kind == gfx.EVENT_MOUSE_MOVE || e.kind == gfx.EVENT_MOUSE_DOWN || e.kind == gfx.EVENT_MOUSE_UP {
-        panel.mouse_x = e.x;
-        panel.mouse_y = e.y;
+        panel.mouse_x = e.x
+        panel.mouse_y = e.y
     }
     if e.kind == gfx.EVENT_MOUSE_DOWN {
-        panel.pressed = true;
-        panel.active = 0;
+        panel.pressed = true
+        panel.active = 0
     } else if e.kind == gfx.EVENT_MOUSE_UP {
-        panel.released = true;
+        panel.released = true
     } else if e.kind == gfx.EVENT_TEXT {
-        panel.typed = e.key;
+        panel.typed = e.key
     } else if e.kind == gfx.EVENT_KEY_DOWN {
-        panel.key = e.key;
+        panel.key = e.key
     }
 }
 
 // Ends an event: a release lets go of the widget that was pressed.
-fn end(panel: *Panel) {
+fn end(panel *Panel) {
     if panel.released {
-        panel.active = 0;
+        panel.active = 0
     }
 }
 
-fn inside(panel: *Panel, x: i32, y: i32, w: i32, h: i32) -> bool {
-    return panel.mouse_x >= x && panel.mouse_x < x + w && panel.mouse_y >= y && panel.mouse_y < y + h;
+fn inside(panel *Panel, x i32, y i32, w i32, h i32) bool {
+    return panel.mouse_x >= x && panel.mouse_x < x + w && panel.mouse_y >= y && panel.mouse_y < y + h
 }
 
-fn label(panel: *Panel, x: i32, y: i32, text: []u8) {
-    gfx.draw_text(panel.canvas, x, y, TEXT, text);
+fn label(panel *Panel, x i32, y i32, text []u8) {
+    gfx.draw_text(panel.canvas, x, y, TEXT, text)
 }
 
 // A raised box with a dark edge.
-fn box(panel: *Panel, x: i32, y: i32, w: i32, h: i32, face: u32) {
-    gfx.draw_fill(panel.canvas, x, y, w, h, EDGE);
-    gfx.draw_fill(panel.canvas, x + 1, y + 1, w - 2, h - 2, face);
+fn box(panel *Panel, x i32, y i32, w i32, h i32, face u32) {
+    gfx.draw_fill(panel.canvas, x, y, w, h, EDGE)
+    gfx.draw_fill(panel.canvas, x + 1, y + 1, w - 2, h - 2, face)
 }
 
 // Returns true when the button is clicked.
-fn button(panel: *Panel, id: u32, x: i32, y: i32, w: i32, h: i32, label: []u8) -> bool {
-    var over = inside(panel, x, y, w, h);
+fn button(panel *Panel, id u32, x i32, y i32, w i32, h i32, label []u8) bool {
+    var over = inside(panel, x, y, w, h)
     if panel.pressed && over {
-        panel.active = id;
+        panel.active = id
     }
-    var clicked = panel.released && over && panel.active == id;
-    var face = FACE;
+    var clicked = panel.released && over && panel.active == id
+    var face = FACE
     if panel.active == id && over && !panel.released {
-        face = PRESSED;
+        face = PRESSED
     }
-    box(panel, x, y, w, h, face);
-    var text_x = x + (w - (text.char_count(label) * 8) as i32) / 2;
-    gfx.draw_text(panel.canvas, text_x, y + (h - 16) / 2, TEXT, label);
-    return clicked;
+    box(panel, x, y, w, h, face)
+    var text_x = x + (w - (text.char_count(label) * 8) as i32) / 2
+    gfx.draw_text(panel.canvas, text_x, y + (h - 16) / 2, TEXT, label)
+    return clicked
 }
 
 // A box that can be ticked. Returns true when it changes.
-fn checkbox(panel: *Panel, id: u32, x: i32, y: i32, label: []u8, value: *bool) -> bool {
-    var w = 18 + (text.char_count(label) * 8) as i32;
-    var over = inside(panel, x, y, w, 16);
+fn checkbox(panel *Panel, id u32, x i32, y i32, label []u8, value *bool) bool {
+    var w = 18 + (text.char_count(label) * 8) as i32
+    var over = inside(panel, x, y, w, 16)
     if panel.pressed && over {
-        panel.active = id;
+        panel.active = id
     }
-    var changed = panel.released && over && panel.active == id;
+    var changed = panel.released && over && panel.active == id
     if changed {
-        *value = !*value;
+        *value = !*value
     }
-    box(panel, x, y + 2, 12, 12, FIELD);
+    box(panel, x, y + 2, 12, 12, FIELD)
     if *value {
-        gfx.draw_fill(panel.canvas, x + 3, y + 5, 6, 6, EDGE);
+        gfx.draw_fill(panel.canvas, x + 3, y + 5, 6, 6, EDGE)
     }
-    gfx.draw_text(panel.canvas, x + 18, y, TEXT, label);
-    return changed;
+    gfx.draw_text(panel.canvas, x + 18, y, TEXT, label)
+    return changed
 }
 
 // A one-line text field editing text[0:*length]. Clicking it gives it the
 // typing. Returns true when Enter is pressed in it.
-fn field(panel: *Panel, id: u32, x: i32, y: i32, w: i32, buffer: []u8, length: *u32) -> bool {
+fn field(panel *Panel, id u32, x i32, y i32, w i32, buffer []u8, length *u32) bool {
     if panel.pressed {
         if inside(panel, x, y, w, 22) {
-            panel.focus = id;
+            panel.focus = id
         } else if panel.focus == id {
-            panel.focus = 0;
+            panel.focus = 0
         }
     }
-    var entered = false;
+    var entered = false
     if panel.focus == id {
         if panel.typed != 0 {
-            *length += text.encode_char(panel.typed, buffer[*length:]);
+            *length += text.encode_char(panel.typed, buffer[*length:])
         } else if panel.key == gfx.KEY_BACKSPACE && *length > 0 {
-            *length = text.char_start(buffer, *length);
+            *length = text.char_start(buffer, *length)
         } else if panel.key == gfx.KEY_ENTER {
-            entered = true;
+            entered = true
         }
     }
-    box(panel, x, y, w, 22, FIELD);
+    box(panel, x, y, w, 22, FIELD)
     // Shows the end of the text, as much as fits.
-    var start = *length;
-    var shown: u32 = 0;
-    var room = ((w - 10) / 8) as u32;
+    var start = *length
+    var shown u32 = 0
+    var room = ((w - 10) / 8) as u32
     while start > 0 && shown < room {
-        start = text.char_start(buffer, start);
-        shown += 1;
+        start = text.char_start(buffer, start)
+        shown += 1
     }
-    gfx.draw_text(panel.canvas, x + 5, y + 3, TEXT, buffer[start:*length]);
+    gfx.draw_text(panel.canvas, x + 5, y + 3, TEXT, buffer[start:*length])
     if panel.focus == id {
-        gfx.draw_fill(panel.canvas, x + 5 + (shown * 8) as i32, y + 3, 2, 16, EDGE);
+        gfx.draw_fill(panel.canvas, x + 5 + (shown * 8) as i32, y + 3, 2, 16, EDGE)
     }
-    return entered;
+    return entered
 }

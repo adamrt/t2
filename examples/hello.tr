@@ -1,6 +1,6 @@
-import io;
+import io
 
-fn main(memory: []u8) -> u32 {
-    io.print("Hello from the Terrarium language!\n");
-    return 0;
+fn main(memory []u8) u32 {
+    io.print("Hello from the Terrarium language!\n")
+    return 0
 }

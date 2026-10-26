@@ -2,175 +2,175 @@
 // other programs, directories, processes and the time. The system calls are
 // in spec/system.md.
 
-import io;
-import mem;
+import io
+import mem
 
-const KIND_FILE: u32 = 1;
-const KIND_DIR: u32 = 2;
+const KIND_FILE u32 = 1
+const KIND_DIR u32 = 2
 
 struct FileInfo {
-    kind: u32;
-    size: u32;
-    time: u32;          // when it last changed, as from date()
+    kind u32
+    size u32
+    time u32            // when it last changed, as from date()
 }
 
-fn exit(status: u32);
-fn arg_count() -> u32;
-fn arg(index: u32, buffer: []u8) -> u32;
+fn exit(status u32)
+fn arg_count() u32
+fn arg(index u32, buffer []u8) u32
 // Stops the program with a fault, so the machine shows where it was.
-fn stop();
+fn stop()
 
-fn panic(message: []u8) {
-    io.write(io.STDERR, "panic: ");
-    io.write(io.STDERR, message);
-    io.write(io.STDERR, "\n");
-    stop();
+fn panic(message []u8) {
+    io.write(io.STDERR, "panic: ")
+    io.write(io.STDERR, message)
+    io.write(io.STDERR, "\n")
+    stop()
 }
 
-fn spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
-fn wait(process: u32) -> u32;
-fn open_pipe(write_end: *u32) -> u32;
-fn info(path: []u8, info: *FileInfo) -> u32;
-fn list(path: []u8, buffer: []u8) -> u32;
-fn remove(path: []u8) -> u32;
-fn rename(from: []u8, to: []u8) -> u32;
-fn make_dir(path: []u8) -> u32;
-fn set_dir(path: []u8) -> u32;
-fn get_dir(buffer: []u8) -> u32;
-fn time() -> u32;
-fn sleep(milliseconds: u32);
-fn processes(buffer: []u8) -> u32;
-fn kill(process: u32) -> u32;
-fn memory_info(free: *u32) -> u32;
-fn trace_spawns(handle: u32) -> u32;
+fn spawn(path []u8, args []u8, input u32, output u32, errors u32) u32
+fn wait(process u32) u32
+fn open_pipe(write_end *u32) u32
+fn info(path []u8, info *FileInfo) u32
+fn list(path []u8, buffer []u8) u32
+fn remove(path []u8) u32
+fn rename(from []u8, to []u8) u32
+fn make_dir(path []u8) u32
+fn set_dir(path []u8) u32
+fn get_dir(buffer []u8) u32
+fn time() u32
+fn sleep(milliseconds u32)
+fn processes(buffer []u8) u32
+fn kill(process u32) u32
+fn memory_info(free *u32) u32
+fn trace_spawns(handle u32) u32
 // The local time, in seconds since the start of 1970.
-fn date() -> u32;
+fn date() u32
 
 // A directory listing record, as list() returns them.
 struct ListEntry {
-    name: [48]u8;
-    kind: u32;
-    size: u32;
-    time: u32;
-    reserved: u32;
+    name [48]u8
+    kind u32
+    size u32
+    time u32
+    reserved u32
 }
 
-fn entry_name(e: *ListEntry) -> []u8 {
-    var n: u32 = 0;
+fn entry_name(e *ListEntry) []u8 {
+    var n u32 = 0
     while n < 48 && e.name[n] != 0 {
-        n += 1;
+        n += 1
     }
-    return e.name[0:n];
+    return e.name[0:n]
 }
 
 // A record from processes().
 struct ProcessInfo {
-    id: u32;
-    parent: u32;
-    state: u32;         // 1 ready, 2 waiting, 3 ended
-    memory: u32;        // bytes reserved
-    cycles: u32;        // instructions run
-    stack: u32;         // the most stack it has used, in bytes
-    read: u32;          // bytes read from files, pipes and the like
-    written: u32;
-    name: [32]u8;
+    id u32
+    parent u32
+    state u32           // 1 ready, 2 waiting, 3 ended
+    memory u32          // bytes reserved
+    cycles u32          // instructions run
+    stack u32           // the most stack it has used, in bytes
+    read u32            // bytes read from files, pipes and the like
+    written u32
+    name [32]u8
 }
 
-fn process_name(p: *ProcessInfo) -> []u8 {
-    var n: u32 = 0;
+fn process_name(p *ProcessInfo) []u8 {
+    var n u32 = 0
     while n < 32 && p.name[n] != 0 {
-        n += 1;
+        n += 1
     }
-    return p.name[0:n];
+    return p.name[0:n]
 }
 
 struct DateTime {
-    year: u32;
-    month: u32;         // 1 to 12
-    day: u32;           // 1 to 31
-    hour: u32;
-    minute: u32;
-    second: u32;
+    year u32
+    month u32           // 1 to 12
+    day u32             // 1 to 31
+    hour u32
+    minute u32
+    second u32
 }
 
 // Splits seconds since 1970 into a calendar date and time of day.
-fn date_parts(seconds: u32, out: *DateTime) {
-    var days = seconds / 86400;
-    var rest = seconds % 86400;
-    out.hour = rest / 3600;
-    out.minute = rest % 3600 / 60;
-    out.second = rest % 60;
+fn date_parts(seconds u32, out *DateTime) {
+    var days = seconds / 86400
+    var rest = seconds % 86400
+    out.hour = rest / 3600
+    out.minute = rest % 3600 / 60
+    out.second = rest % 60
     // Count from March 1st of year 0, in 400-year eras, so leap days fall at
     // the end of each year.
-    var z = days + 719468;
-    var era = z / 146097;
-    var day_of_era = z - era * 146097;
-    var year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
-    var day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    var month = (5 * day_of_year + 2) / 153;
-    out.day = day_of_year - (153 * month + 2) / 5 + 1;
+    var z = days + 719468
+    var era = z / 146097
+    var day_of_era = z - era * 146097
+    var year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365
+    var day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100)
+    var month = (5 * day_of_year + 2) / 153
+    out.day = day_of_year - (153 * month + 2) / 5 + 1
     if month < 10 {
-        out.month = month + 3;
+        out.month = month + 3
     } else {
-        out.month = month - 9;
+        out.month = month - 9
     }
-    out.year = year_of_era + era * 400;
+    out.year = year_of_era + era * 400
     if out.month <= 2 {
-        out.year += 1;
+        out.year += 1
     }
 }
 
-fn put_two(w: *io.Writer, n: u32) {
-    io.put_byte(w, (n / 10 % 10 + '0') as u8);
-    io.put_byte(w, (n % 10 + '0') as u8);
+fn put_two(w *io.Writer, n u32) {
+    io.put_byte(w, (n / 10 % 10 + '0') as u8)
+    io.put_byte(w, (n % 10 + '0') as u8)
 }
 
 // Writes a time like "2026-10-26 14:05".
-fn put_date(w: *io.Writer, seconds: u32) {
-    var d: DateTime;
-    date_parts(seconds, &d);
-    io.put_u32(w, d.year);
-    io.put_byte(w, '-');
-    put_two(w, d.month);
-    io.put_byte(w, '-');
-    put_two(w, d.day);
-    io.put_byte(w, ' ');
-    put_two(w, d.hour);
-    io.put_byte(w, ':');
-    put_two(w, d.minute);
+fn put_date(w *io.Writer, seconds u32) {
+    var d DateTime
+    date_parts(seconds, &d)
+    io.put_u32(w, d.year)
+    io.put_byte(w, '-')
+    put_two(w, d.month)
+    io.put_byte(w, '-')
+    put_two(w, d.day)
+    io.put_byte(w, ' ')
+    put_two(w, d.hour)
+    io.put_byte(w, ':')
+    put_two(w, d.minute)
 }
 
 // Fills args with the program's arguments and returns how many there are. A
 // program given more than args can hold stops, rather than miss some.
-fn get_args(arena: *mem.Arena, args: [][]u8) -> u32 {
-    var count = arg_count();
+fn get_args(arena *mem.Arena, args [][]u8) u32 {
+    var count = arg_count()
     if count > args.len {
-        io.write_all(io.STDERR, "too many arguments\n");
-        exit(2);
+        io.write_all(io.STDERR, "too many arguments\n")
+        exit(2)
     }
     for i in 0..count {
-        var buffer = mem.alloc_bytes(arena, 256);
-        var n = arg(i, buffer);
+        var buffer = mem.alloc_bytes(arena, 256)
+        var n = arg(i, buffer)
         if n > 256 {
-            n = 256;
+            n = 256
         }
-        args[i] = buffer[0:n];
+        args[i] = buffer[0:n]
     }
-    return count;
+    return count
 }
 
 // Prints "program: message detail" to standard error, in one piece.
-fn complain(program: []u8, message: []u8, detail: []u8) {
-    var text: [512]u8;
-    var w: io.Writer;
-    io.writer_init(&w, io.STDERR, text[:]);
-    io.put(&w, program);
-    io.put(&w, ": ");
-    io.put(&w, message);
+fn complain(program []u8, message []u8, detail []u8) {
+    var text [512]u8
+    var w io.Writer
+    io.writer_init(&w, io.STDERR, text[:])
+    io.put(&w, program)
+    io.put(&w, ": ")
+    io.put(&w, message)
     if detail.len > 0 {
-        io.put(&w, " ");
-        io.put(&w, detail);
+        io.put(&w, " ")
+        io.put(&w, detail)
     }
-    io.put(&w, "\n");
-    io.flush(&w);
+    io.put(&w, "\n")
+    io.flush(&w)
 }

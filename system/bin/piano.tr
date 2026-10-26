@@ -3,266 +3,266 @@
 // triangle wave that fades out, and up to eight sound at once. R starts and
 // stops recording to piano.tsn in the current directory.
 
-import gfx;
-import io;
-import os;
-import sound;
+import gfx
+import io
+import os
+import sound
 
 manifest {
-    memory = 256 * KiB;
-    stack = 32 * KiB;
-    allow = "write window audio";
+    memory = 256 * KiB
+    stack = 32 * KiB
+    allow = "write window audio"
 }
 
-const WHITE_KEYS = 10;
-const KEY_W = 36;
-const KEY_H = 120;
-const WIDTH = WHITE_KEYS * KEY_W;
-const HEIGHT = KEY_H + 30;
-const CHUNK = 512;              // samples made at a time
-const AHEAD: u32 = 3 * CHUNK * 2;   // bytes to keep queued
-const VOICES = 8;
+const WHITE_KEYS = 10
+const KEY_W = 36
+const KEY_H = 120
+const WIDTH = WHITE_KEYS * KEY_W
+const HEIGHT = KEY_H + 30
+const CHUNK = 512               // samples made at a time
+const AHEAD u32 = 3 * CHUNK * 2     // bytes to keep queued
+const VOICES = 8
 
 struct Voice {
-    step: u32;                  // phase added each sample
-    phase: u32;
-    level: u32;                 // loudness, from 4096 down to 0
-    note: u32;
+    step u32                    // phase added each sample
+    phase u32
+    level u32                   // loudness, from 4096 down to 0
+    note u32
 }
 
-var canvas: gfx.Canvas;
-var words: [2048]u32;
-var strings: [256]u8;
-var voices: [VOICES]Voice;
-var samples: [CHUNK]u16;
-var rate: u32;
-var lit: [17]u32;               // frames each key stays highlighted
-var recorder: sound.Writer;
-var recording: bool;
+var canvas gfx.Canvas
+var words [2048]u32
+var strings [256]u8
+var voices [VOICES]Voice
+var samples [CHUNK]u16
+var rate u32
+var lit [17]u32                 // frames each key stays highlighted
+var recorder sound.Writer
+var recording bool
 
 // Notes from middle C up, in semitones.
-fn white_note(i: u32) -> u32 {
+fn white_note(i u32) u32 {
     match i {
-        0 => { return 0; }
-        1 => { return 2; }
-        2 => { return 4; }
-        3 => { return 5; }
-        4 => { return 7; }
-        5 => { return 9; }
-        6 => { return 11; }
-        7 => { return 12; }
-        8 => { return 14; }
+        0 => { return 0 }
+        1 => { return 2 }
+        2 => { return 4 }
+        3 => { return 5 }
+        4 => { return 7 }
+        5 => { return 9 }
+        6 => { return 11 }
+        7 => { return 12 }
+        8 => { return 14 }
     }
-    return 16;
+    return 16
 }
 
 // The black key after white key i, or 99 if there isn't one.
-fn black_note(i: u32) -> u32 {
+fn black_note(i u32) u32 {
     match i {
-        0 => { return 1; }
-        1 => { return 3; }
-        3 => { return 6; }
-        4 => { return 8; }
-        5 => { return 10; }
-        7 => { return 13; }
-        8 => { return 15; }
+        0 => { return 1 }
+        1 => { return 3 }
+        3 => { return 6 }
+        4 => { return 8 }
+        5 => { return 10 }
+        7 => { return 13 }
+        8 => { return 15 }
     }
-    return 99;
+    return 99
 }
 
 // The frequency of a note, in hertz, as a fixed-point number.
-fn frequency(note: u32) -> fixed {
+fn frequency(note u32) fixed {
     // Each semitone is 2^(1/12) times the last.
-    var f: fixed = 261.63;
+    var f fixed = 261.63
     for i in 0..note {
-        f = f * 1.05946;
+        f = f * 1.05946
     }
-    return f;
+    return f
 }
 
-fn play(note: u32) {
+fn play(note u32) {
     if note > 16 {
-        return;
+        return
     }
-    var slot: u32 = 0;
+    var slot u32 = 0
     for i in 0..VOICES {
         if voices[i].level < voices[slot].level {
-            slot = i;
+            slot = i
         }
     }
-    var v = &voices[slot];
+    var v = &voices[slot]
     // A full cycle is 2^32 of phase.
-    var per_sample = frequency(note) / rate as fixed;
-    v.step = (per_sample * 65536) as u32 * 65536;
-    v.level = 4096;
-    v.note = note;
-    lit[note] = 8;
+    var per_sample = frequency(note) / rate as fixed
+    v.step = (per_sample * 65536) as u32 * 65536
+    v.level = 4096
+    v.note = note
+    lit[note] = 8
 }
 
 fn fill_sound() {
-    var queued = sound.status(&rate);
+    var queued = sound.status(&rate)
     while queued < AHEAD {
         for s in 0..CHUNK {
-            var mix: i32 = 0;
+            var mix i32 = 0
             for i in 0..VOICES {
-                var v = &voices[i];
+                var v = &voices[i]
                 if v.level == 0 {
-                    continue;
+                    continue
                 }
-                v.phase += v.step;
-                var p = (v.phase >> 16) as i32;
-                var wave = p * 2;
+                v.phase += v.step
+                var p = (v.phase >> 16) as i32
+                var wave = p * 2
                 if p >= 32768 {
-                    wave = (65535 - p) * 2;
+                    wave = (65535 - p) * 2
                 }
-                mix += (wave - 65536) * v.level as i32 / 4096 / 8;
+                mix += (wave - 65536) * v.level as i32 / 4096 / 8
             }
             if mix > 32767 {
-                mix = 32767;
+                mix = 32767
             } else if mix < -32768 {
-                mix = -32768;
+                mix = -32768
             }
-            samples[s] = (mix as u32 & 0xffff) as u16;
+            samples[s] = (mix as u32 & 0xffff) as u16
         }
         for i in 0..VOICES {
-            voices[i].level = voices[i].level * 15 / 16;
+            voices[i].level = voices[i].level * 15 / 16
         }
         if sound.play((&samples[0] as *u8)[0:CHUNK * 2]) == io.FAILED {
-            return;
+            return
         }
         if recording {
-            sound.writer_add(&recorder, samples[:]);
+            sound.writer_add(&recorder, samples[:])
         }
-        queued += CHUNK * 2;
+        queued += CHUNK * 2
     }
 }
 
-fn key_note(c: u32) -> u32 {
-    var whites = "asdfghjkl;";
+fn key_note(c u32) u32 {
+    var whites = "asdfghjkl;"
     for i in 0..whites.len {
         if whites[i] == c {
-            return white_note(i);
+            return white_note(i)
         }
     }
-    var blacks = "we tyu op";
+    var blacks = "we tyu op"
     for i in 0..blacks.len {
         if blacks[i] == c && c != ' ' {
-            return black_note(i);
+            return black_note(i)
         }
     }
-    return 99;
+    return 99
 }
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Piano", WIDTH, HEIGHT);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Piano", WIDTH, HEIGHT)
     if window == io.FAILED {
-        os.complain("piano", "can't open a window", "");
-        return 1;
+        os.complain("piano", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    sound.status(&rate);
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    sound.status(&rate)
     if rate == 0 {
-        rate = 22050;
+        rate = 22050
     }
     while true {
-        var e: gfx.Event;
-        var redraw = false;
+        var e gfx.Event
+        var redraw = false
         while gfx.event_wait(&e, 15) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
                 if recording {
-                    record();
+                    record()
                 }
-                return 0;
+                return 0
             }
             if e.kind == gfx.EVENT_TEXT && (e.key == 'r' || e.key == 'R') {
-                record();
+                record()
             } else if e.kind == gfx.EVENT_TEXT {
-                play(key_note(e.key));
+                play(key_note(e.key))
             } else if e.kind == gfx.EVENT_MOUSE_DOWN {
-                play(note_at(e.x, e.y));
+                play(note_at(e.x, e.y))
             }
-            redraw = true;
+            redraw = true
         }
-        fill_sound();
+        fill_sound()
         for i in 0..17 {
             if lit[i] > 0 {
-                lit[i] -= 1;
-                redraw = true;
+                lit[i] -= 1
+                redraw = true
             }
         }
         if redraw {
-            draw();
+            draw()
         }
     }
-    return 0;
+    return 0
 }
 
 // Starts recording, or stops and finishes the file.
 fn record() {
     if !recording {
-        var file = io.open("piano.tsn", io.MODE_WRITE);
+        var file = io.open("piano.tsn", io.MODE_WRITE)
         if file == io.FAILED {
-            os.complain("piano", "can't write piano.tsn", "");
-            return;
+            os.complain("piano", "can't write piano.tsn", "")
+            return
         }
-        sound.writer_start(&recorder, file, rate, 0);
-        recording = true;
-        return;
+        sound.writer_start(&recorder, file, rate, 0)
+        recording = true
+        return
     }
-    recording = false;
+    recording = false
     // Only now is the length known, so the header is written again.
-    var header: [sound.HEADER]u8;
-    sound.write_header(header[:], rate, recorder.total + recorder.count);
-    var ok = sound.writer_finish(&recorder) && io.seek(recorder.file, 0) == 0 && io.write_all(recorder.file, header[:]);
-    io.close(recorder.file);
+    var header [sound.HEADER]u8
+    sound.write_header(header[:], rate, recorder.total + recorder.count)
+    var ok = sound.writer_finish(&recorder) && io.seek(recorder.file, 0) == 0 && io.write_all(recorder.file, header[:])
+    io.close(recorder.file)
     if !ok {
-        os.complain("piano", "can't write piano.tsn", "");
+        os.complain("piano", "can't write piano.tsn", "")
     }
 }
 
-fn note_at(x: i32, y: i32) -> u32 {
+fn note_at(x i32, y i32) u32 {
     if x < 0 || y < 0 || x >= WIDTH || y >= KEY_H {
-        return 99;
+        return 99
     }
-    var i = (x / KEY_W) as u32;
+    var i = (x / KEY_W) as u32
     if y < KEY_H * 6 / 10 {
         // The black key to the right of this white key, or to the left.
-        var within = x % KEY_W;
+        var within = x % KEY_W
         if within > KEY_W * 2 / 3 && black_note(i) != 99 {
-            return black_note(i);
+            return black_note(i)
         }
         if within < KEY_W / 3 && i > 0 && black_note(i - 1) != 99 {
-            return black_note(i - 1);
+            return black_note(i - 1)
         }
     }
-    return white_note(i);
+    return white_note(i)
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36));
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
     for i in 0..WHITE_KEYS {
-        var face = gfx.rgb(242, 239, 230);
+        var face = gfx.rgb(242, 239, 230)
         if lit[white_note(i)] > 0 {
-            face = gfx.rgb(232, 195, 90);
+            face = gfx.rgb(232, 195, 90)
         }
-        gfx.draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face);
+        gfx.draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face)
     }
     for i in 0..WHITE_KEYS {
-        var note = black_note(i);
+        var note = black_note(i)
         if note == 99 {
-            continue;
+            continue
         }
-        var face = gfx.rgb(30, 30, 36);
+        var face = gfx.rgb(30, 30, 36)
         if lit[note] > 0 {
-            face = gfx.rgb(232, 195, 90);
+            face = gfx.rgb(232, 195, 90)
         }
-        gfx.draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face);
+        gfx.draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face)
     }
     if recording {
-        gfx.draw_fill(&canvas, 8, KEY_H + 11, 8, 8, gfx.rgb(220, 70, 60));
-        gfx.draw_text(&canvas, 22, KEY_H + 7, gfx.rgb(216, 212, 200), "recording: R stops");
+        gfx.draw_fill(&canvas, 8, KEY_H + 11, 8, 8, gfx.rgb(220, 70, 60))
+        gfx.draw_text(&canvas, 22, KEY_H + 7, gfx.rgb(216, 212, 200), "recording: R stops")
     } else {
-        gfx.draw_text(&canvas, 8, KEY_H + 7, gfx.rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record");
+        gfx.draw_text(&canvas, 8, KEY_H + 7, gfx.rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record")
     }
-    gfx.present(&canvas);
+    gfx.present(&canvas)
 }

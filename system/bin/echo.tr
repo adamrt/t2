@@ -1,28 +1,28 @@
 // echo prints its arguments, separated by spaces.
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
+    memory = 64 * KiB
+    stack = 16 * KiB
 }
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
-    var out: io.Writer;
-    io.writer_init(&out, io.STDOUT, mem.alloc_bytes(&arena, 1024));
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
+    var out io.Writer
+    io.writer_init(&out, io.STDOUT, mem.alloc_bytes(&arena, 1024))
     for i in 0..count {
         if i > 0 {
-            io.put_byte(&out, ' ');
+            io.put_byte(&out, ' ')
         }
-        io.put(&out, args[i]);
+        io.put(&out, args[i])
     }
-    io.put_byte(&out, '\n');
-    io.flush(&out);
-    return 0;
+    io.put_byte(&out, '\n')
+    io.flush(&out)
+    return 0
 }

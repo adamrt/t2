@@ -5,114 +5,114 @@
 // With -l it also shows each file's size and when it last changed.
 // Directories end with "/".
 
-import io;
-import mem;
-import os;
-import text;
+import io
+import mem
+import os
+import text
 
 manifest {
-    memory = 256 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 256 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-var arena: mem.Arena;
-var out: io.Writer;
-var out_buffer: [1024]u8;
-var listing: [64 * KiB]u8;
-var long: bool;
+var arena mem.Arena
+var out io.Writer
+var out_buffer [1024]u8
+var listing [64 * KiB]u8
+var long bool
 
-fn main(memory: []u8) -> u32 {
-    mem.arena_init(&arena, memory);
-    io.writer_init(&out, io.STDOUT, out_buffer[:]);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
-    var paths: u32 = 0;
-    var status: u32 = 0;
+fn main(memory []u8) u32 {
+    mem.arena_init(&arena, memory)
+    io.writer_init(&out, io.STDOUT, out_buffer[:])
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
+    var paths u32 = 0
+    var status u32 = 0
     for i in 0..count {
         if text.equal(args[i], "-l") {
-            long = true;
+            long = true
         }
     }
     for i in 0..count {
         if !text.equal(args[i], "-l") {
             if !show(args[i]) {
-                status = 1;
+                status = 1
             }
-            paths += 1;
+            paths += 1
         }
     }
     if paths == 0 && !show(".") {
-        status = 1;
+        status = 1
     }
-    io.flush(&out);
-    return status;
+    io.flush(&out)
+    return status
 }
 
-fn show(path: []u8) -> bool {
-    var f: os.FileInfo;
+fn show(path []u8) bool {
+    var f os.FileInfo
     if os.info(path, &f) == io.FAILED {
-        io.flush(&out);
-        os.complain("ls", "not found:", path);
-        return false;
+        io.flush(&out)
+        os.complain("ls", "not found:", path)
+        return false
     }
     if f.kind != os.KIND_DIR {
-        line(path, f.kind, f.size, f.time);
-        return true;
+        line(path, f.kind, f.size, f.time)
+        return true
     }
-    var n = os.list(path, listing[:]);
-    var count = n / 64;
-    var entries = (&listing[0] as *os.ListEntry)[0:count];
+    var n = os.list(path, listing[:])
+    var count = n / 64
+    var entries = (&listing[0] as *os.ListEntry)[0:count]
     // Insertion sort by name.
     for i in 1..count {
-        var j = i;
+        var j = i
         while j > 0 && before(&entries[j], &entries[j - 1]) {
-            var swap = entries[j];
-            entries[j] = entries[j - 1];
-            entries[j - 1] = swap;
-            j -= 1;
+            var swap = entries[j]
+            entries[j] = entries[j - 1]
+            entries[j - 1] = swap
+            j -= 1
         }
     }
     for i in 0..count {
-        line(os.entry_name(&entries[i]), entries[i].kind, entries[i].size, entries[i].time);
+        line(os.entry_name(&entries[i]), entries[i].kind, entries[i].size, entries[i].time)
     }
-    return true;
+    return true
 }
 
-fn before(a: *os.ListEntry, b: *os.ListEntry) -> bool {
-    var x = os.entry_name(a);
-    var y = os.entry_name(b);
+fn before(a *os.ListEntry, b *os.ListEntry) bool {
+    var x = os.entry_name(a)
+    var y = os.entry_name(b)
     for i in 0..x.len {
         if i == y.len {
-            return false;
+            return false
         }
         if x[i] != y[i] {
-            return x[i] < y[i];
+            return x[i] < y[i]
         }
     }
-    return x.len < y.len;
+    return x.len < y.len
 }
 
-fn line(name: []u8, kind: u32, size: u32, time: u32) {
+fn line(name []u8, kind u32, size u32, time u32) {
     if long {
         if time == 0 {
-            io.put(&out, "                ");
+            io.put(&out, "                ")
         } else {
-            os.put_date(&out, time);
+            os.put_date(&out, time)
         }
-        var digits: [12]u8;
-        var w: io.Writer;
-        io.writer_init(&w, io.STDOUT, digits[:]);
-        io.put_u32(&w, size);
+        var digits [12]u8
+        var w io.Writer
+        io.writer_init(&w, io.STDOUT, digits[:])
+        io.put_u32(&w, size)
         for i in w.used..10 {
-            io.put_byte(&out, ' ');
+            io.put_byte(&out, ' ')
         }
-        io.put(&out, digits[0:w.used]);
-        io.put(&out, "  ");
+        io.put(&out, digits[0:w.used])
+        io.put(&out, "  ")
     }
-    io.put(&out, name);
+    io.put(&out, name)
     if kind == os.KIND_DIR {
-        io.put_byte(&out, '/');
+        io.put_byte(&out, '/')
     }
-    io.put_byte(&out, '\n');
+    io.put_byte(&out, '\n')
 }

@@ -2,242 +2,242 @@
 // yourself or the walls. Each berry makes you longer and faster. Press
 // Space to start again.
 
-import gfx;
-import io;
-import os;
-import sound;
+import gfx
+import io
+import os
+import sound
 
 manifest {
-    memory = 256 * KiB;
-    stack = 16 * KiB;
-    allow = "window audio";
+    memory = 256 * KiB
+    stack = 16 * KiB
+    allow = "window audio"
 }
 
-const COLUMNS = 32;
-const ROWS = 22;
-const CELL = 12;
-const BAR = 22;
-const WIDTH = COLUMNS * CELL;
-const HEIGHT = ROWS * CELL + BAR;
-const MAX = COLUMNS * ROWS;
+const COLUMNS = 32
+const ROWS = 22
+const CELL = 12
+const BAR = 22
+const WIDTH = COLUMNS * CELL
+const HEIGHT = ROWS * CELL + BAR
+const MAX = COLUMNS * ROWS
 
-var canvas: gfx.Canvas;
-var words: [8192]u32;
-var strings: [256]u8;
-var body_x: [MAX]i32;           // the worm, head first
-var body_y: [MAX]i32;
-var length: u32;
-var dx: i32;
-var dy: i32;
-var next_dx: i32;
-var next_dy: i32;
-var berry_x: i32;
-var berry_y: i32;
-var score: u32;
-var best: u32;
-var alive: bool;
-var moving: bool;               // the worm waits for the first key
-var delay: u32;
-var seed: u32;
-var wave: [4096]u16;
-var line_text: [64]u8;
+var canvas gfx.Canvas
+var words [8192]u32
+var strings [256]u8
+var body_x [MAX]i32             // the worm, head first
+var body_y [MAX]i32
+var length u32
+var dx i32
+var dy i32
+var next_dx i32
+var next_dy i32
+var berry_x i32
+var berry_y i32
+var score u32
+var best u32
+var alive bool
+var moving bool                 // the worm waits for the first key
+var delay u32
+var seed u32
+var wave [4096]u16
+var line_text [64]u8
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Worm", WIDTH, HEIGHT);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Worm", WIDTH, HEIGHT)
     if window == io.FAILED {
-        os.complain("worm", "can't open a window", "");
-        return 1;
+        os.complain("worm", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    seed = os.time() | 1;
-    start();
-    var next_tick = os.time() + delay;
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    seed = os.time() | 1
+    start()
+    var next_tick = os.time() + delay
     while true {
-        var now = os.time();
-        var wait: u32 = 0;
+        var now = os.time()
+        var wait u32 = 0
         if next_tick > now {
-            wait = next_tick - now;
+            wait = next_tick - now
         }
-        var e: gfx.Event;
+        var e gfx.Event
         if gfx.event_wait(&e, wait) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
-                return 0;
+                return 0
             }
             if e.kind == gfx.EVENT_DRAW {
-                draw();
+                draw()
             } else if e.kind == gfx.EVENT_KEY_DOWN || (e.kind == gfx.EVENT_TEXT && e.key < 128) {
-                steer(e.key);
+                steer(e.key)
             }
-            continue;
+            continue
         }
         if alive && moving {
-            step();
+            step()
         }
-        draw();
-        next_tick = os.time() + delay;
+        draw()
+        next_tick = os.time() + delay
     }
-    return 0;
+    return 0
 }
 
-fn random(limit: u32) -> u32 {
-    seed = seed * 1103515245 + 12345;
-    return (seed >> 16) % limit;
+fn random(limit u32) u32 {
+    seed = seed * 1103515245 + 12345
+    return (seed >> 16) % limit
 }
 
 fn start() {
-    length = 4;
+    length = 4
     for i in 0..length {
-        body_x[i] = COLUMNS / 2 - i as i32;
-        body_y[i] = ROWS / 2;
+        body_x[i] = COLUMNS / 2 - i as i32
+        body_y[i] = ROWS / 2
     }
-    dx = 1;
-    dy = 0;
-    next_dx = 1;
-    next_dy = 0;
-    score = 0;
-    delay = 140;
-    alive = true;
-    moving = false;
-    place_berry();
+    dx = 1
+    dy = 0
+    next_dx = 1
+    next_dy = 0
+    score = 0
+    delay = 140
+    alive = true
+    moving = false
+    place_berry()
 }
 
 fn place_berry() {
     while true {
-        berry_x = random(COLUMNS) as i32;
-        berry_y = random(ROWS) as i32;
+        berry_x = random(COLUMNS) as i32
+        berry_y = random(ROWS) as i32
         if !on_worm(berry_x, berry_y, length) {
-            return;
+            return
         }
     }
 }
 
-fn on_worm(x: i32, y: i32, count: u32) -> bool {
+fn on_worm(x i32, y i32, count u32) bool {
     for i in 0..count {
         if body_x[i] == x && body_y[i] == y {
-            return true;
+            return true
         }
     }
-    return false;
+    return false
 }
 
-fn steer(key: u32) {
+fn steer(key u32) {
     if !alive {
         if key == ' ' || key == gfx.KEY_ENTER {
-            start();
+            start()
         }
-        return;
+        return
     }
-    var x: i32 = 0;
-    var y: i32 = 0;
+    var x i32 = 0
+    var y i32 = 0
     if key == gfx.KEY_LEFT || key == 'a' {
-        x = -1;
+        x = -1
     } else if key == gfx.KEY_RIGHT || key == 'd' {
-        x = 1;
+        x = 1
     } else if key == gfx.KEY_UP || key == 'w' {
-        y = -1;
+        y = -1
     } else if key == gfx.KEY_DOWN || key == 's' {
-        y = 1;
+        y = 1
     } else {
-        return;
+        return
     }
     // No turning straight back into yourself.
     if x != -dx || y != -dy {
-        next_dx = x;
-        next_dy = y;
+        next_dx = x
+        next_dy = y
     }
-    moving = true;
+    moving = true
 }
 
 fn step() {
-    dx = next_dx;
-    dy = next_dy;
-    var x = body_x[0] + dx;
-    var y = body_y[0] + dy;
+    dx = next_dx
+    dy = next_dy
+    var x = body_x[0] + dx
+    var y = body_y[0] + dy
     if x < 0 || y < 0 || x >= COLUMNS || y >= ROWS || on_worm(x, y, length - 1) {
-        alive = false;
+        alive = false
         if score > best {
-            best = score;
+            best = score
         }
-        beep(110, 400);
-        return;
+        beep(110, 400)
+        return
     }
-    var grow = x == berry_x && y == berry_y;
+    var grow = x == berry_x && y == berry_y
     if grow && length < MAX {
-        length += 1;
+        length += 1
     }
-    var i = length - 1;
+    var i = length - 1
     while i > 0 {
-        body_x[i] = body_x[i - 1];
-        body_y[i] = body_y[i - 1];
-        i -= 1;
+        body_x[i] = body_x[i - 1]
+        body_y[i] = body_y[i - 1]
+        i -= 1
     }
-    body_x[0] = x;
-    body_y[0] = y;
+    body_x[0] = x
+    body_y[0] = y
     if grow {
-        score += 1;
+        score += 1
         if delay > 60 {
-            delay -= 5;
+            delay -= 5
         }
-        beep(880, 50);
-        place_berry();
+        beep(880, 50)
+        place_berry()
     }
 }
 
 // Plays a short square-wave tone.
-fn beep(hertz: u32, milliseconds: u32) {
-    var rate: u32;
-    sound.status(&rate);
+fn beep(hertz u32, milliseconds u32) {
+    var rate u32
+    sound.status(&rate)
     if rate == 0 {
-        return;
+        return
     }
-    var count = rate * milliseconds / 1000;
+    var count = rate * milliseconds / 1000
     if count > wave.len {
-        count = wave.len;
+        count = wave.len
     }
-    var half = rate / hertz / 2;
+    var half = rate / hertz / 2
     for i in 0..count {
-        var fade = 3000 * (count - i) / count;
-        var level = fade;
+        var fade = 3000 * (count - i) / count
+        var level = fade
         if (i / half) % 2 == 0 {
-            level = 0 - fade;
+            level = 0 - fade
         }
-        wave[i] = (level & 0xffff) as u16;
+        wave[i] = (level & 0xffff) as u16
     }
-    sound.play((&wave[0] as *u8)[0:count * 2]);
+    sound.play((&wave[0] as *u8)[0:count * 2])
 }
 
-fn cell(x: i32, y: i32, color: u32) {
-    gfx.draw_fill(&canvas, x * CELL + 1, BAR + y * CELL + 1, CELL - 2, CELL - 2, color);
+fn cell(x i32, y i32, color u32) {
+    gfx.draw_fill(&canvas, x * CELL + 1, BAR + y * CELL + 1, CELL - 2, CELL - 2, color)
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36));
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, BAR, gfx.rgb(45, 90, 80));
-    var w: io.Writer;
-    io.writer_init(&w, io.STDOUT, line_text[:]);
-    io.put(&w, "score ");
-    io.put_u32(&w, score);
-    io.put(&w, "   best ");
-    io.put_u32(&w, best);
-    gfx.draw_text(&canvas, 8, 3, gfx.rgb(242, 239, 230), line_text[0:w.used]);
-    cell(berry_x, berry_y, gfx.rgb(220, 70, 70));
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, BAR, gfx.rgb(45, 90, 80))
+    var w io.Writer
+    io.writer_init(&w, io.STDOUT, line_text[:])
+    io.put(&w, "score ")
+    io.put_u32(&w, score)
+    io.put(&w, "   best ")
+    io.put_u32(&w, best)
+    gfx.draw_text(&canvas, 8, 3, gfx.rgb(242, 239, 230), line_text[0:w.used])
+    cell(berry_x, berry_y, gfx.rgb(220, 70, 70))
     for i in 0..length {
-        var color = gfx.rgb(232, 195, 90);
+        var color = gfx.rgb(232, 195, 90)
         if i == 0 {
-            color = gfx.rgb(250, 230, 160);
+            color = gfx.rgb(250, 230, 160)
         }
-        cell(body_x[i], body_y[i], color);
+        cell(body_x[i], body_y[i], color)
     }
     if !alive {
-        centered("Oops!", HEIGHT / 2 - 16, 2);
-        centered("press Space to play again", HEIGHT / 2 + 18, 1);
+        centered("Oops!", HEIGHT / 2 - 16, 2)
+        centered("press Space to play again", HEIGHT / 2 + 18, 1)
     } else if !moving {
-        centered("steer with the arrow keys", HEIGHT / 2 + 30, 1);
+        centered("steer with the arrow keys", HEIGHT / 2 + 30, 1)
     }
-    gfx.present(&canvas);
+    gfx.present(&canvas)
 }
 
-fn centered(text: []u8, y: i32, scale: u32) {
-    var x = WIDTH / 2 - (text.len * 8 * scale / 2) as i32;
-    gfx.draw_text_scaled(&canvas, x, y, gfx.rgb(242, 239, 230), text, scale);
+fn centered(text []u8, y i32, scale u32) {
+    var x = WIDTH / 2 - (text.len * 8 * scale / 2) as i32
+    gfx.draw_text_scaled(&canvas, x, y, gfx.rgb(242, 239, 230), text, scale)
 }

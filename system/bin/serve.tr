@@ -5,180 +5,180 @@
 //
 // Then on the host, open http://localhost:8080/ in a browser.
 
-import io;
-import mem;
-import net;
-import os;
-import text;
+import io
+import mem
+import net
+import os
+import text
 
 manifest {
-    memory = 256 * KiB;
-    stack = 32 * KiB;
-    allow = "read network";
+    memory = 256 * KiB
+    stack = 32 * KiB
+    allow = "read network"
 }
 
-var request: [4096]u8;
-var buffer: [16384]u8;
-var listing: [16384]u8;
-var path: [512]u8;
+var request [4096]u8
+var buffer [16384]u8
+var listing [16384]u8
+var path [512]u8
 
-fn main(memory: []u8) -> u32 {
-    var word: [16]u8;
-    var n = os.arg(0, word[:]);
-    var port = text.parse_u32(word[0:min(n, 16)]);
+fn main(memory []u8) u32 {
+    var word [16]u8
+    var n = os.arg(0, word[:])
+    var port = text.parse_u32(word[0:min(n, 16)])
     if os.arg_count() != 1 || port == io.FAILED {
-        os.complain("serve", "usage: serve port", "");
-        return 2;
+        os.complain("serve", "usage: serve port", "")
+        return 2
     }
-    var listener = net.listen(port);
+    var listener = net.listen(port)
     if listener == io.FAILED {
-        os.complain("serve", "can't listen on that port", "");
-        return 1;
+        os.complain("serve", "can't listen on that port", "")
+        return 1
     }
-    io.print("serving on http://localhost:");
-    io.print(word[0:min(n, 16)]);
-    io.print("/\n");
+    io.print("serving on http://localhost:")
+    io.print(word[0:min(n, 16)])
+    io.print("/\n")
     while true {
-        var client = net.accept(listener);
+        var client = net.accept(listener)
         if client == io.FAILED {
-            break;
+            break
         }
-        answer(client);
-        io.close(client);
+        answer(client)
+        io.close(client)
     }
-    return 0;
+    return 0
 }
 
-fn min(a: u32, b: u32) -> u32 {
+fn min(a u32, b u32) u32 {
     if a < b {
-        return a;
+        return a
     }
-    return b;
+    return b
 }
 
-fn answer(client: u32) {
+fn answer(client u32) {
     // Read until the blank line that ends the request.
-    var got: u32 = 0;
+    var got u32 = 0
     while got < request.len {
-        var n = io.read(client, request[got:]);
+        var n = io.read(client, request[got:])
         if n == 0 || n == io.FAILED {
-            break;
+            break
         }
-        got += n;
+        got += n
         if ends_request(request[0:got]) {
-            break;
+            break
         }
     }
-    var line = request[0:got];
-    var end: u32 = 0;
+    var line = request[0:got]
+    var end u32 = 0
     while end < line.len && line[end] != '\r' && line[end] != '\n' {
-        end += 1;
+        end += 1
     }
-    line = line[0:end];
-    io.print(line);
-    io.print("\n");
+    line = line[0:end]
+    io.print(line)
+    io.print("\n")
     if line.len < 5 || !text.equal(line[0:4], "GET ") {
-        respond(client, "400 Bad Request", "text/plain", "bad request\n");
-        return;
+        respond(client, "400 Bad Request", "text/plain", "bad request\n")
+        return
     }
-    var target = line[4:];
-    var space: u32 = 0;
+    var target = line[4:]
+    var space u32 = 0
     while space < target.len && target[space] != ' ' {
-        space += 1;
+        space += 1
     }
-    target = target[0:space];
+    target = target[0:space]
     // The path is under the current directory, and can't climb out of it.
     for i in 0..target.len {
         if target[i] == '.' && i + 1 < target.len && target[i + 1] == '.' {
-            respond(client, "403 Forbidden", "text/plain", "no\n");
-            return;
+            respond(client, "403 Forbidden", "text/plain", "no\n")
+            return
         }
     }
-    path[0] = '.';
-    mem.copy(path[1:], target[0:min(target.len, path.len - 1)]);
-    var name = path[0:1 + min(target.len, path.len - 1)];
-    var f: os.FileInfo;
+    path[0] = '.'
+    mem.copy(path[1:], target[0:min(target.len, path.len - 1)])
+    var name = path[0:1 + min(target.len, path.len - 1)]
+    var f os.FileInfo
     if os.info(name, &f) == io.FAILED {
-        respond(client, "404 Not Found", "text/plain", "not found\n");
-        return;
+        respond(client, "404 Not Found", "text/plain", "not found\n")
+        return
     }
     if f.kind == os.KIND_DIR {
-        send_listing(client, name, target);
-        return;
+        send_listing(client, name, target)
+        return
     }
-    var file = io.open(name, io.MODE_READ);
+    var file = io.open(name, io.MODE_READ)
     if file == io.FAILED {
-        respond(client, "404 Not Found", "text/plain", "not found\n");
-        return;
+        respond(client, "404 Not Found", "text/plain", "not found\n")
+        return
     }
-    send_header(client, "200 OK", content_type(name), f.size);
+    send_header(client, "200 OK", content_type(name), f.size)
     while true {
-        var n = io.read(file, buffer[:]);
+        var n = io.read(file, buffer[:])
         if n == 0 || n == io.FAILED {
-            break;
+            break
         }
         if !io.write_all(client, buffer[0:n]) {
-            break;
+            break
         }
     }
-    io.close(file);
+    io.close(file)
 }
 
-fn ends_request(bytes: []u8) -> bool {
+fn ends_request(bytes []u8) bool {
     if bytes.len < 4 {
-        return false;
+        return false
     }
-    var tail = bytes[bytes.len - 4:];
-    return tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n';
+    var tail = bytes[bytes.len - 4:]
+    return tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n'
 }
 
-fn content_type(name: []u8) -> []u8 {
+fn content_type(name []u8) []u8 {
     if name.len > 5 && text.equal(name[name.len - 5:], ".html") {
-        return "text/html";
+        return "text/html"
     }
     if name.len > 4 && text.equal(name[name.len - 4:], ".tim") {
-        return "application/octet-stream";
+        return "application/octet-stream"
     }
-    return "text/plain";
+    return "text/plain"
 }
 
-fn send_header(client: u32, status: []u8, kind: []u8, length: u32) {
-    var header: [256]u8;
-    var w: io.Writer;
-    io.writer_init(&w, client, header[:]);
-    io.put(&w, "HTTP/1.0 ");
-    io.put(&w, status);
-    io.put(&w, "\r\nContent-Type: ");
-    io.put(&w, kind);
-    io.put(&w, "\r\nContent-Length: ");
-    io.put_u32(&w, length);
-    io.put(&w, "\r\nServer: Terrarium\r\n\r\n");
-    io.flush(&w);
+fn send_header(client u32, status []u8, kind []u8, length u32) {
+    var header [256]u8
+    var w io.Writer
+    io.writer_init(&w, client, header[:])
+    io.put(&w, "HTTP/1.0 ")
+    io.put(&w, status)
+    io.put(&w, "\r\nContent-Type: ")
+    io.put(&w, kind)
+    io.put(&w, "\r\nContent-Length: ")
+    io.put_u32(&w, length)
+    io.put(&w, "\r\nServer: Terrarium\r\n\r\n")
+    io.flush(&w)
 }
 
-fn respond(client: u32, status: []u8, kind: []u8, body: []u8) {
-    send_header(client, status, kind, body.len);
-    io.write_all(client, body);
+fn respond(client u32, status []u8, kind []u8, body []u8) {
+    send_header(client, status, kind, body.len)
+    io.write_all(client, body)
 }
 
-fn send_listing(client: u32, dir: []u8, target: []u8) {
-    var raw: [8192]u8;
-    var n = os.list(dir, raw[:]);
-    var w: io.Writer;
-    io.writer_init(&w, io.STDOUT, listing[:]);
-    var i: u32 = 0;
+fn send_listing(client u32, dir []u8, target []u8) {
+    var raw [8192]u8
+    var n = os.list(dir, raw[:])
+    var w io.Writer
+    io.writer_init(&w, io.STDOUT, listing[:])
+    var i u32 = 0
     while i + 64 <= n {
-        var e = &raw[i] as *os.ListEntry;
-        io.put(&w, target);
+        var e = &raw[i] as *os.ListEntry
+        io.put(&w, target)
         if target.len == 0 || target[target.len - 1] != '/' {
-            io.put_byte(&w, '/');
+            io.put_byte(&w, '/')
         }
-        io.put(&w, os.entry_name(e));
+        io.put(&w, os.entry_name(e))
         if e.kind == os.KIND_DIR {
-            io.put_byte(&w, '/');
+            io.put_byte(&w, '/')
         }
-        io.put_byte(&w, '\n');
-        i += 64;
+        io.put_byte(&w, '\n')
+        i += 64
     }
-    respond(client, "200 OK", "text/plain", listing[0:w.used]);
+    respond(client, "200 OK", "text/plain", listing[0:w.used])
 }

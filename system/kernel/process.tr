@@ -4,9 +4,9 @@
 // data. Programs only see addresses relative to their own run, so the kernel
 // can slide runs together whenever free memory is in pieces.
 
-import io;
-import mem;
-import text;
+import io
+import mem
+import text
 
 enum State {
     Free,
@@ -15,285 +15,285 @@ enum State {
     Zombie,         // ended, waiting for its parent to collect the status
 }
 
-const MAX_PROCESSES = 32;
-const MAX_HANDLES = 16;
-const ARGS_SIZE = 1024;
-const PATH_SIZE = 256;
-const PROCESS_NAME_SIZE = 32;
-const PAGE: u32 = 4096;
-const HEADER: u32 = 32;
-const RESERVE: u32 = 2 * MiB;       // memory only recovery programs can use
+const MAX_PROCESSES = 32
+const MAX_HANDLES = 16
+const ARGS_SIZE = 1024
+const PATH_SIZE = 256
+const PROCESS_NAME_SIZE = 32
+const PAGE u32 = 4096
+const HEADER u32 = 32
+const RESERVE u32 = 2 * MiB         // memory only recovery programs can use
 
 // Permissions, as in a program's manifest.
-const ALLOW_READ: u32 = 1;
-const ALLOW_WRITE: u32 = 2;
-const ALLOW_SPAWN: u32 = 4;
-const ALLOW_WINDOW: u32 = 8;
-const ALLOW_PROCESSES: u32 = 16;
-const ALLOW_RECOVERY: u32 = 32;
-const ALLOW_AUDIO: u32 = 64;
-const ALLOW_NETWORK: u32 = 128;
+const ALLOW_READ u32 = 1
+const ALLOW_WRITE u32 = 2
+const ALLOW_SPAWN u32 = 4
+const ALLOW_WINDOW u32 = 8
+const ALLOW_PROCESSES u32 = 16
+const ALLOW_RECOVERY u32 = 32
+const ALLOW_AUDIO u32 = 64
+const ALLOW_NETWORK u32 = 128
 
 struct Process {
-    state: State;
-    id: u32;
-    parent: u32;
-    name: [PROCESS_NAME_SIZE]u8;
-    name_len: u32;
-    regs: [9]u32;
-    pc: u32;
-    region: u32;            // physical address of its memory
-    memory: u32;            // bytes of memory
-    code_size: u32;
-    stack_size: u32;
-    handles: [MAX_HANDLES]*Object;
-    args: [ARGS_SIZE]u8;
-    args_len: u32;
-    arg_count: u32;
-    dir: [PATH_SIZE]u8;
-    dir_len: u32;
-    status: u32;
-    wake_time: u32;         // when a sleep ends, or 0
-    cycles: u32;
-    permissions: u32;
-    trace: *Object;         // where to report this process's system calls
-    trace_spawns: *Object;  // where to report those of processes it starts
-    heap_start: u32;        // where its heap begins, after data and bss
-    bytes_read: u32;
-    bytes_written: u32;
+    state State
+    id u32
+    parent u32
+    name [PROCESS_NAME_SIZE]u8
+    name_len u32
+    regs [9]u32
+    pc u32
+    region u32              // physical address of its memory
+    memory u32              // bytes of memory
+    code_size u32
+    stack_size u32
+    handles [MAX_HANDLES]*Object
+    args [ARGS_SIZE]u8
+    args_len u32
+    arg_count u32
+    dir [PATH_SIZE]u8
+    dir_len u32
+    status u32
+    wake_time u32           // when a sleep ends, or 0
+    cycles u32
+    permissions u32
+    trace *Object           // where to report this process's system calls
+    trace_spawns *Object    // where to report those of processes it starts
+    heap_start u32          // where its heap begins, after data and bss
+    bytes_read u32
+    bytes_written u32
 }
 
-var processes: [MAX_PROCESSES]Process;
-var next_id: u32;
-var last_run: u32;
-var spawn_args: [ARGS_SIZE]u8;
+var processes [MAX_PROCESSES]Process
+var next_id u32
+var last_run u32
+var spawn_args [ARGS_SIZE]u8
 
-fn next_ready() -> *Process {
+fn next_ready() *Process {
     for i in 0..MAX_PROCESSES {
-        var n = (last_run + 1 + i) % MAX_PROCESSES;
+        var n = (last_run + 1 + i) % MAX_PROCESSES
         if processes[n].state == State.Ready {
-            last_run = n;
-            return &processes[n];
+            last_run = n
+            return &processes[n]
         }
     }
-    return null;
+    return null
 }
 
-fn any_alive() -> bool {
+fn any_alive() bool {
     for i in 0..MAX_PROCESSES {
         if processes[i].state == State.Ready || processes[i].state == State.Blocked {
-            return true;
+            return true
         }
     }
-    return false;
+    return false
 }
 
 fn wake_all() {
     for i in 0..MAX_PROCESSES {
         if processes[i].state == State.Blocked {
-            processes[i].state = State.Ready;
+            processes[i].state = State.Ready
         }
     }
 }
 
 // The earliest time a sleeping process wants to wake, or 0.
-fn next_wake() -> u32 {
-    var soonest: u32 = 0;
+fn next_wake() u32 {
+    var soonest u32 = 0
     for i in 0..MAX_PROCESSES {
-        var t = processes[i].wake_time;
+        var t = processes[i].wake_time
         if processes[i].state == State.Blocked && t != 0 && (soonest == 0 || t < soonest) {
-            soonest = t;
+            soonest = t
         }
     }
-    return soonest;
+    return soonest
 }
 
 // Makes the process repeat its system call when it next runs.
-fn block(p: *Process) {
-    p.state = State.Blocked;
-    p.pc -= 4;
+fn block(p *Process) {
+    p.state = State.Blocked
+    p.pc -= 4
 }
 
-fn find_process(id: u32) -> *Process {
+fn find_process(id u32) *Process {
     for i in 0..MAX_PROCESSES {
         if processes[i].state != State.Free && processes[i].id == id {
-            return &processes[i];
+            return &processes[i]
         }
     }
-    return null;
+    return null
 }
 
 // Starts the program at an absolute path. Each argument in args ends with a
 // zero byte. The new process gets handles 0, 1 and 2 from the given objects.
-fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -> *Process {
-    var f: FileRef;
+fn spawn_process(parent *Process, path []u8, args []u8, handles []*Object) *Process {
+    var f FileRef
     if !lookup(path, &f) || f.kind != KIND_FILE {
-        return null;
+        return null
     }
-    var header: [HEADER]u8;
+    var header [HEADER]u8
     if read_at(&f, 0, header[:]) != HEADER || !text.equal(header[0:4], "TRX2") {
-        return null;
+        return null
     }
-    var entry = get_word(header[:], 4);
-    var code = get_word(header[:], 8);
-    var data = get_word(header[:], 12);
-    var bss = get_word(header[:], 16);
-    var stack = get_word(header[:], 20);
-    var memory = get_word(header[:], 24);
+    var entry = get_word(header[:], 4)
+    var code = get_word(header[:], 8)
+    var data = get_word(header[:], 12)
+    var bss = get_word(header[:], 16)
+    var stack = get_word(header[:], 20)
+    var memory = get_word(header[:], 24)
     // A program gets what its manifest asks for, but never more than its parent has.
-    var permissions = get_word(header[:], 28);
+    var permissions = get_word(header[:], 28)
     if parent != null {
-        permissions &= parent.permissions;
+        permissions &= parent.permissions
     }
     // Each size is checked on its own first, so the sums below can't wrap.
     if memory > memory_end - memory_start || code > memory || code > f.size || data > f.size {
-        return null;
+        return null
     }
-    var data_size = memory - code;
+    var data_size = memory - code
     if code % 4 != 0 || memory % 4 != 0 || HEADER + code + data > f.size || data > data_size || bss > data_size || stack > data_size {
-        return null;
+        return null
     }
     if align4(data) + align4(bss) + stack > data_size || entry < GUARD || entry - GUARD >= code || args.len > ARGS_SIZE {
-        return null;
+        return null
     }
     // The arguments may be in the parent's memory, which reserving memory
     // can move, so they're copied first.
-    mem.copy(spawn_args[:], args);
-    var saved_args = spawn_args[0:args.len];
+    mem.copy(spawn_args[:], args)
+    var saved_args = spawn_args[0:args.len]
 
-    var p: *Process = null;
+    var p *Process = null
     for i in 0..MAX_PROCESSES {
         if processes[i].state == State.Free {
-            p = &processes[i];
-            break;
+            p = &processes[i]
+            break
         }
     }
     if p == null {
-        return null;
+        return null
     }
-    mem.fill(p as *u8, 0, size_of(Process));
-    var region = reserve(memory, p, permissions & ALLOW_RECOVERY != 0);
+    mem.fill(p as *u8, 0, size_of(Process))
+    var region = reserve(memory, p, permissions & ALLOW_RECOVERY != 0)
     if region == io.FAILED {
-        return null;
+        return null
     }
-    var bytes = physical_bytes(region, memory);
-    mem.fill(bytes.ptr, 0, memory);
-    read_at(&f, HEADER, bytes[0:code]);
-    read_at(&f, HEADER + code, bytes[code:code + data]);
+    var bytes = physical_bytes(region, memory)
+    mem.fill(bytes.ptr, 0, memory)
+    read_at(&f, HEADER, bytes[0:code])
+    read_at(&f, HEADER + code, bytes[code:code + data])
 
-    next_id += 1;
-    p.id = next_id;
-    p.region = region;
-    p.memory = memory;
-    p.code_size = code;
-    p.stack_size = stack;
-    p.permissions = permissions;
-    p.pc = entry;
-    p.regs[0] = GUARD + align4(data) + align4(bss);
-    p.heap_start = p.regs[0];
-    p.regs[1] = GUARD + data_size - stack;
-    p.regs[8] = GUARD + data_size;
+    next_id += 1
+    p.id = next_id
+    p.region = region
+    p.memory = memory
+    p.code_size = code
+    p.stack_size = stack
+    p.permissions = permissions
+    p.pc = entry
+    p.regs[0] = GUARD + align4(data) + align4(bss)
+    p.heap_start = p.regs[0]
+    p.regs[1] = GUARD + data_size - stack
+    p.regs[8] = GUARD + data_size
 
-    var slash = path.len;
+    var slash = path.len
     while slash > 0 && path[slash - 1] != '/' {
-        slash -= 1;
+        slash -= 1
     }
-    p.name_len = min(path.len - slash, PROCESS_NAME_SIZE);
-    mem.copy(p.name[:], path[slash:slash + p.name_len]);
-    mem.copy(p.args[:], saved_args);
-    p.args_len = saved_args.len;
+    p.name_len = min(path.len - slash, PROCESS_NAME_SIZE)
+    mem.copy(p.name[:], path[slash:slash + p.name_len])
+    mem.copy(p.args[:], saved_args)
+    p.args_len = saved_args.len
     for i in 0..saved_args.len {
         if saved_args[i] == 0 {
-            p.arg_count += 1;
+            p.arg_count += 1
         }
     }
     if parent != null {
-        p.parent = parent.id;
-        mem.copy(p.dir[:], parent.dir[0:parent.dir_len]);
-        p.dir_len = parent.dir_len;
+        p.parent = parent.id
+        mem.copy(p.dir[:], parent.dir[0:parent.dir_len])
+        p.dir_len = parent.dir_len
     } else {
-        p.dir[0] = '/';
-        p.dir_len = 1;
+        p.dir[0] = '/'
+        p.dir_len = 1
     }
     for i in 0..handles.len {
-        p.handles[i] = handles[i];
+        p.handles[i] = handles[i]
         if handles[i] != null {
-            handles[i].refs += 1;
+            handles[i].refs += 1
         }
     }
     if parent != null {
-        p.trace = parent.trace_spawns;
+        p.trace = parent.trace_spawns
         if p.trace == null {
-            p.trace = parent.trace;
+            p.trace = parent.trace
         }
         if p.trace != null {
-            p.trace.refs += 1;
+            p.trace.refs += 1
         }
     }
-    p.state = State.Ready;
-    return p;
+    p.state = State.Ready
+    return p
 }
 
-fn exit_process(p: *Process, status: u32) {
+fn exit_process(p *Process, status u32) {
     if running == p {
-        running = null;
+        running = null
     }
     for i in 0..MAX_HANDLES {
         if p.handles[i] != null {
-            release_object(p.handles[i]);
-            p.handles[i] = null;
+            release_object(p.handles[i])
+            p.handles[i] = null
         }
     }
     if p.trace != null {
-        trace_memory(p);
-        release_object(p.trace);
-        p.trace = null;
+        trace_memory(p)
+        release_object(p.trace)
+        p.trace = null
     }
     if p.trace_spawns != null {
-        release_object(p.trace_spawns);
-        p.trace_spawns = null;
+        release_object(p.trace_spawns)
+        p.trace_spawns = null
     }
-    release_memory(p);
-    p.status = status;
-    var parent = find_process(p.parent);
+    release_memory(p)
+    p.status = status
+    var parent = find_process(p.parent)
     if parent != null && parent.state != State.Zombie {
-        p.state = State.Zombie;
+        p.state = State.Zombie
     } else {
-        p.state = State.Free;
+        p.state = State.Free
     }
     // Children that already ended have nobody left to collect them.
     for i in 0..MAX_PROCESSES {
         if processes[i].state == State.Zombie && processes[i].parent == p.id {
-            processes[i].state = State.Free;
+            processes[i].state = State.Free
         }
     }
-    wake_all();
+    wake_all()
 }
 
-fn align4(n: u32) -> u32 {
-    return (n + 3) & ~3;
+fn align4(n u32) u32 {
+    return (n + 3) & ~3
 }
 
 // Memory ---------------------------------------------------------------------
 
 struct Region {
-    base: u32;
-    size: u32;
-    owner: *Process;
+    base u32
+    size u32
+    owner *Process
 }
 
-var regions: [MAX_PROCESSES]Region;     // sorted by base
-var region_count: u32;
-var memory_start: u32;
-var memory_end: u32;
+var regions [MAX_PROCESSES]Region       // sorted by base
+var region_count u32
+var memory_start u32
+var memory_end u32
 
-fn memory_init(start: u32, end: u32) {
-    memory_start = start;
-    memory_end = end;
+fn memory_init(start u32, end u32) {
+    memory_start = start
+    memory_end = end
 }
 
-fn physical_bytes(base: u32, size: u32) -> []u8 {
-    return ((base + GUARD) as *u8)[0:size];
+fn physical_bytes(base u32, size u32) []u8 {
+    return ((base + GUARD) as *u8)[0:size]
 }
 
 // A process's memory starts zeroed, so how far it has written into its heap
@@ -301,103 +301,103 @@ fn physical_bytes(base: u32, size: u32) -> []u8 {
 // with zeros counts as unused.
 
 // The heap a process has used, up to the highest word it wrote.
-fn heap_used(p: *Process) -> u32 {
-    var words = data_words(p);
-    var start = (p.heap_start - GUARD) / 4;
-    var end = (p.memory - p.code_size - p.stack_size) / 4;
+fn heap_used(p *Process) u32 {
+    var words = data_words(p)
+    var start = (p.heap_start - GUARD) / 4
+    var end = (p.memory - p.code_size - p.stack_size) / 4
     while end > start && words[end - 1] == 0 {
-        end -= 1;
+        end -= 1
     }
-    return (end - start) * 4;
+    return (end - start) * 4
 }
 
 // The most stack a process has used, from the lowest word it wrote.
-fn stack_used(p: *Process) -> u32 {
-    var words = data_words(p);
-    var low = (p.memory - p.code_size - p.stack_size) / 4;
+fn stack_used(p *Process) u32 {
+    var words = data_words(p)
+    var low = (p.memory - p.code_size - p.stack_size) / 4
     while low < words.len && words[low] == 0 {
-        low += 1;
+        low += 1
     }
-    return (words.len - low) * 4;
+    return (words.len - low) * 4
 }
 
 // A process's data space as words: word i is at address GUARD + 4 * i.
-fn data_words(p: *Process) -> []u32 {
-    return ((p.region + GUARD + p.code_size) as *u32)[0:(p.memory - p.code_size) / 4];
+fn data_words(p *Process) []u32 {
+    return ((p.region + GUARD + p.code_size) as *u32)[0:(p.memory - p.code_size) / 4]
 }
 
-fn memory_used() -> u32 {
-    var used: u32 = 0;
+fn memory_used() u32 {
+    var used u32 = 0
     for i in 0..region_count {
-        used += regions[i].size;
+        used += regions[i].size
     }
-    return used;
+    return used
 }
 
 // Finds a run of size bytes for owner, compacting memory if that helps.
 // Only recovery programs may dip into the reserve. Returns the run's physical
 // address, or FAILED.
-fn reserve(request: u32, owner: *Process, recovery: bool) -> u32 {
-    var size = (request + PAGE - 1) / PAGE * PAGE;
-    var available = memory_end - memory_start - memory_used();
+fn reserve(request u32, owner *Process, recovery bool) u32 {
+    var size = (request + PAGE - 1) / PAGE * PAGE
+    var available = memory_end - memory_start - memory_used()
     if !recovery {
         if available < RESERVE {
-            return io.FAILED;
+            return io.FAILED
         }
-        available -= RESERVE;
+        available -= RESERVE
     }
     if region_count == MAX_PROCESSES || size > available {
-        return io.FAILED;
+        return io.FAILED
     }
-    var base = memory_start;
-    var at = region_count;
+    var base = memory_start
+    var at = region_count
     for i in 0..region_count {
         if regions[i].base - base >= size {
-            at = i;
-            break;
+            at = i
+            break
         }
-        base = regions[i].base + regions[i].size;
+        base = regions[i].base + regions[i].size
     }
     if at == region_count && memory_end - base < size {
-        compact();
-        base = memory_start + memory_used();
+        compact()
+        base = memory_start + memory_used()
     }
-    var i = region_count;
+    var i = region_count
     while i > at {
-        regions[i] = regions[i - 1];
-        i -= 1;
+        regions[i] = regions[i - 1]
+        i -= 1
     }
-    regions[at].base = base;
-    regions[at].size = size;
-    regions[at].owner = owner;
-    region_count += 1;
-    return base;
+    regions[at].base = base
+    regions[at].size = size
+    regions[at].owner = owner
+    region_count += 1
+    return base
 }
 
-fn release_memory(owner: *Process) {
+fn release_memory(owner *Process) {
     for i in 0..region_count {
         if regions[i].owner == owner {
             for j in i..region_count - 1 {
-                regions[j] = regions[j + 1];
+                regions[j] = regions[j + 1]
             }
-            region_count -= 1;
-            return;
+            region_count -= 1
+            return
         }
     }
 }
 
 // Slides every process's memory down so the free memory is in one piece.
 fn compact() {
-    io.put(&log, "Terrarium: compacting memory\n");
-    io.flush(&log);
-    var base = memory_start;
+    io.put(&log, "Terrarium: compacting memory\n")
+    io.flush(&log)
+    var base = memory_start
     for i in 0..region_count {
-        var r = &regions[i];
+        var r = &regions[i]
         if r.base != base {
-            mem.move(physical_bytes(base, 0).ptr, physical_bytes(r.base, 0).ptr, r.size);
-            r.base = base;
-            r.owner.region = base;
+            mem.move(physical_bytes(base, 0).ptr, physical_bytes(r.base, 0).ptr, r.size)
+            r.base = base
+            r.owner.region = base
         }
-        base += r.size;
+        base += r.size
     }
 }

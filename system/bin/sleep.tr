@@ -1,22 +1,22 @@
 // sleep waits for a number of milliseconds.
 
-import io;
-import os;
-import text;
+import io
+import os
+import text
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
+    memory = 64 * KiB
+    stack = 16 * KiB
 }
 
-fn main(memory: []u8) -> u32 {
-    var word: [16]u8;
-    var n = os.arg(0, word[:]);
-    var ms = text.parse_u32(word[0:n]);
+fn main(memory []u8) u32 {
+    var word [16]u8
+    var n = os.arg(0, word[:])
+    var ms = text.parse_u32(word[0:n])
     if os.arg_count() != 1 || n > 16 || ms == io.FAILED {
-        os.complain("sleep", "usage: sleep milliseconds", "");
-        return 2;
+        os.complain("sleep", "usage: sleep milliseconds", "")
+        return 2
     }
-    os.sleep(ms);
-    return 0;
+    os.sleep(ms)
+    return 0
 }

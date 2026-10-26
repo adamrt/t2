@@ -1,27 +1,27 @@
 // init is the first program. It starts the shell, and when the shell ends,
 // so does Terrarium.
 
-import gfx;
-import io;
-import os;
+import gfx
+import io
+import os
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
-    allow = "read write spawn window processes recovery audio network";
+    memory = 64 * KiB
+    stack = 16 * KiB
+    allow = "read write spawn window processes recovery audio network"
 }
 
-fn main(memory: []u8) -> u32 {
-    var screen: gfx.ScreenInfo;
+fn main(memory []u8) u32 {
+    var screen gfx.ScreenInfo
     if gfx.screen_info(&screen) != io.FAILED {
-        os.spawn("/bin/launch", "", io.STDIN, io.STDOUT, io.STDERR);
-        os.spawn("/bin/term", "", io.STDIN, io.STDOUT, io.STDERR);
+        os.spawn("/bin/launch", "", io.STDIN, io.STDOUT, io.STDERR)
+        os.spawn("/bin/term", "", io.STDIN, io.STDOUT, io.STDERR)
     }
-    io.print("\nWelcome to Terrarium. Type 'help' for help.\n\n");
-    var shell = os.spawn("/bin/sh", "", io.STDIN, io.STDOUT, io.STDERR);
+    io.print("\nWelcome to Terrarium. Type 'help' for help.\n\n")
+    var shell = os.spawn("/bin/sh", "", io.STDIN, io.STDOUT, io.STDERR)
     if shell == io.FAILED {
-        io.print("init: can't start /bin/sh\n");
-        return 1;
+        io.print("init: can't start /bin/sh\n")
+        return 1
     }
-    return os.wait(shell);
+    return os.wait(shell)
 }

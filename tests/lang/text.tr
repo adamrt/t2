@@ -1,40 +1,40 @@
 // UTF-8 text. Prints "ok", or the number of the first failed check.
 
-import io;
-import text;
+import io
+import text
 
-var failures: u32;
+var failures u32
 
-fn check(ok: bool, number: u32) {
+fn check(ok bool, number u32) {
     if !ok && failures == 0 {
-        failures = number;
+        failures = number
     }
 }
 
-fn main(memory: []u8) -> u32 {
-    var word = "año €";
-    check(word.len == 8, 1);
-    check(text.char_count(word) == 5, 2);
-    check(text.equal(word, "a\xc3\xb1o \xe2\x82\xac"), 3);
-    check(text.char_start(word, word.len) == 5, 4);
-    check(text.char_start(word, 3) == 1, 5);
-    check(text.char_start(word, 1) == 0 && text.char_start(word, 0) == 0, 6);
-    var out: [8]u8;
-    check(text.encode_char('A', out[:]) == 1 && out[0] == 'A', 7);
-    check(text.encode_char(0xf1, out[:]) == 2 && text.equal(out[0:2], "ñ"), 8);
-    check(text.encode_char(0x20ac, out[:]) == 3 && text.equal(out[0:3], "€"), 9);
-    check(text.encode_char(0x1f600, out[:]) == 4 && text.equal(out[0:4], "\xf0\x9f\x98\x80"), 10);
-    check(text.encode_char(0x20ac, out[0:2]) == 0, 11);
-    check(text.is_continuation(word[2]) && !text.is_continuation(word[1]), 12);
-    check('é' == 0xe9 && 'ß' == 0xdf, 13);
-    check('€' == 0x20ac, 14);
+fn main(memory []u8) u32 {
+    var word = "año €"
+    check(word.len == 8, 1)
+    check(text.char_count(word) == 5, 2)
+    check(text.equal(word, "a\xc3\xb1o \xe2\x82\xac"), 3)
+    check(text.char_start(word, word.len) == 5, 4)
+    check(text.char_start(word, 3) == 1, 5)
+    check(text.char_start(word, 1) == 0 && text.char_start(word, 0) == 0, 6)
+    var out [8]u8
+    check(text.encode_char('A', out[:]) == 1 && out[0] == 'A', 7)
+    check(text.encode_char(0xf1, out[:]) == 2 && text.equal(out[0:2], "ñ"), 8)
+    check(text.encode_char(0x20ac, out[:]) == 3 && text.equal(out[0:3], "€"), 9)
+    check(text.encode_char(0x1f600, out[:]) == 4 && text.equal(out[0:4], "\xf0\x9f\x98\x80"), 10)
+    check(text.encode_char(0x20ac, out[0:2]) == 0, 11)
+    check(text.is_continuation(word[2]) && !text.is_continuation(word[1]), 12)
+    check('é' == 0xe9 && 'ß' == 0xdf, 13)
+    check('€' == 0x20ac, 14)
     // Bytes that aren't part of a whole character count one each.
-    check(text.char_count("a\x80b") == 3 && text.char_count("\xc3\xa9\xa9") == 2, 15);
-    var broken = "\xe2\x82\xe2\x82\xac";
-    check(text.char_count(broken) == 3 && text.char_start(broken, 5) == 2 && text.char_start(broken, 2) == 1, 16);
-    check(text.char_length("\xc3", 0) == 1 && text.char_length("\xc0\x80", 0) == 1 && text.char_length("\xf0\x9f\x98\x80", 0) == 4, 17);
+    check(text.char_count("a\x80b") == 3 && text.char_count("\xc3\xa9\xa9") == 2, 15)
+    var broken = "\xe2\x82\xe2\x82\xac"
+    check(text.char_count(broken) == 3 && text.char_start(broken, 5) == 2 && text.char_start(broken, 2) == 1, 16)
+    check(text.char_length("\xc3", 0) == 1 && text.char_length("\xc0\x80", 0) == 1 && text.char_length("\xf0\x9f\x98\x80", 0) == 4, 17)
     if failures == 0 {
-        io.print("ok\n");
+        io.print("ok\n")
     }
-    return failures;
+    return failures
 }

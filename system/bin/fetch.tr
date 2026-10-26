@@ -2,55 +2,55 @@
 //
 //     fetch host port /path
 
-import io;
-import mem;
-import net;
-import os;
-import text;
+import io
+import mem
+import net
+import os
+import text
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "network";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "network"
 }
 
-var buffer: [8192]u8;
+var buffer [8192]u8
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [3][]u8;
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [3][]u8
     if os.arg_count() != 3 {
-        os.complain("fetch", "usage: fetch host port /path", "");
-        return 2;
+        os.complain("fetch", "usage: fetch host port /path", "")
+        return 2
     }
-    os.get_args(&arena, args[:]);
-    var port = text.parse_u32(args[1]);
-    var connection = net.connect(args[0], port);
+    os.get_args(&arena, args[:])
+    var port = text.parse_u32(args[1])
+    var connection = net.connect(args[0], port)
     if port == io.FAILED || connection == io.FAILED {
-        os.complain("fetch", "can't connect to", args[0]);
-        return 1;
+        os.complain("fetch", "can't connect to", args[0])
+        return 1
     }
-    var request: [512]u8;
-    var w: io.Writer;
-    io.writer_init(&w, connection, request[:]);
-    io.put(&w, "GET ");
-    io.put(&w, args[2]);
-    io.put(&w, " HTTP/1.0\r\nHost: ");
-    io.put(&w, args[0]);
-    io.put(&w, "\r\nUser-Agent: Terrarium\r\n\r\n");
+    var request [512]u8
+    var w io.Writer
+    io.writer_init(&w, connection, request[:])
+    io.put(&w, "GET ")
+    io.put(&w, args[2])
+    io.put(&w, " HTTP/1.0\r\nHost: ")
+    io.put(&w, args[0])
+    io.put(&w, "\r\nUser-Agent: Terrarium\r\n\r\n")
     // Connecting finishes in the background, so a failure shows up here.
     if !io.write_all(connection, request[0:w.used]) {
-        os.complain("fetch", "can't connect to", args[0]);
-        return 1;
+        os.complain("fetch", "can't connect to", args[0])
+        return 1
     }
     while true {
-        var n = io.read(connection, buffer[:]);
+        var n = io.read(connection, buffer[:])
         if n == 0 || n == io.FAILED {
-            break;
+            break
         }
-        io.write_all(io.STDOUT, buffer[0:n]);
+        io.write_all(io.STDOUT, buffer[0:n])
     }
-    io.close(connection);
-    return 0;
+    io.close(connection)
+    return 0
 }

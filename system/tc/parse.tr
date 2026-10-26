@@ -1,6 +1,6 @@
 // Turning tokens into a syntax tree.
 
-import io;
+import io
 
 enum N {
     // Declarations
@@ -53,592 +53,596 @@ enum N {
     Cast,           // a: value, b: type
 }
 
-const IS_CONST: u32 = 1;        // value holds the expression's constant value
-const TO_SLICE: u32 = 2;        // an array used as a slice
+const IS_CONST u32 = 1          // value holds the expression's constant value
+const TO_SLICE u32 = 2          // an array used as a slice
 
 struct Node {
-    kind: N;
-    op: Tok;
-    file: u32;
-    line: u32;
-    flags: u32;
-    name: []u8;
-    value: u32;
-    a: *Node;
-    b: *Node;
-    c: *Node;
-    list: *Node;
-    next: *Node;
-    ty: *Type;
-    operand: *Type;
-    sym: *Sym;
-    local: *Local;
-    local2: *Local;
-    module: u32;        // the module a name was found in, or 0 for the file's own
+    kind N
+    op Tok
+    file u32
+    line u32
+    flags u32
+    name []u8
+    value u32
+    a *Node
+    b *Node
+    c *Node
+    list *Node
+    next *Node
+    ty *Type
+    operand *Type
+    sym *Sym
+    local *Local
+    local2 *Local
+    module u32          // the module a name was found in, or 0 for the file's own
 }
 
 struct List {
-    first: *Node;
-    last: *Node;
+    first *Node
+    last *Node
 }
 
-var declarations: List;
+var declarations List
 
-fn node(kind: N) -> *Node {
-    var n = new(&arena, Node);
-    n.kind = kind;
-    n.file = tok.file;
-    n.line = tok.line;
-    return n;
+fn node(kind N) *Node {
+    var n = new(&arena, Node)
+    n.kind = kind
+    n.file = tok.file
+    n.line = tok.line
+    return n
 }
 
-fn append(list: *List, n: *Node) {
+fn append(list *List, n *Node) {
     if list.last == null {
-        list.first = n;
+        list.first = n
     } else {
-        list.last.next = n;
+        list.last.next = n
     }
-    list.last = n;
+    list.last = n
 }
 
-fn parse_fail(message: []u8) {
-    error_start(tok.file, tok.line);
-    io.put(&errors, message);
-    error_end();
+fn parse_fail(message []u8) {
+    error_start(tok.file, tok.line)
+    io.put(&errors, message)
+    error_end()
 }
 
-fn take(kind: Tok) -> bool {
+fn take(kind Tok) bool {
     if tok.kind == kind {
-        next_token();
-        return true;
+        next_token()
+        return true
     }
-    return false;
+    return false
 }
 
-fn expect(kind: Tok, text: []u8) {
+fn expect(kind Tok, text []u8) {
     if !take(kind) {
-        error_start(tok.file, tok.line);
-        io.put(&errors, "expected '");
-        io.put(&errors, text);
-        io.put(&errors, "', found '");
-        io.put(&errors, tok.text);
-        io.put(&errors, "'");
-        error_end();
+        error_start(tok.file, tok.line)
+        io.put(&errors, "expected '")
+        io.put(&errors, text)
+        io.put(&errors, "', found '")
+        io.put(&errors, tok.text)
+        io.put(&errors, "'")
+        error_end()
     }
 }
 
-fn expect_name() -> []u8 {
+fn expect_name() []u8 {
     if tok.kind != Tok.Name {
-        parse_fail("expected a name");
+        parse_fail("expected a name")
     }
-    var text = tok.text;
-    next_token();
-    return text;
+    var text = tok.text
+    next_token()
+    return text
 }
 
 // A statement or declaration ends with a semicolon, or with the end of its
 // line, or just before the } that closes its block.
 fn expect_end() {
     if tok.kind != Tok.RBrace {
-        expect(Tok.Semicolon, ";");
+        expect(Tok.Semicolon, ";")
     }
 }
 
 // Whether a type starts here, as the result after a function's parameters.
-fn starts_type(kind: Tok) -> bool {
-    return kind == Tok.Name || kind == Tok.Star || kind == Tok.LBracket || kind == Tok.KwFn;
+fn starts_type(kind Tok) bool {
+    return kind == Tok.Name || kind == Tok.Star || kind == Tok.LBracket || kind == Tok.KwFn
 }
 
-fn parse_file(file: u32) {
-    lex_start(file);
-    var f = &files[file];
+fn parse_file(file u32) {
+    lex_start(file)
+    var f = &files[file]
     while take(Tok.KwImport) {
-        var m = load_module(expect_name());
-        expect_end();
+        var m = load_module(expect_name())
+        expect_end()
         if imported(file, modules[m]) == 0 {
             if f.import_count == MAX_IMPORTS {
-                parse_fail("too many imports");
+                parse_fail("too many imports")
             }
-            f.imports[f.import_count] = m;
-            f.import_count += 1;
+            f.imports[f.import_count] = m
+            f.import_count += 1
         }
     }
     while tok.kind != Tok.End {
-        append(&declarations, parse_declaration());
+        append(&declarations, parse_declaration())
     }
 }
 
 // Declarations ---------------------------------------------------------------
 
-fn parse_declaration() -> *Node {
-    var n: *Node;
+fn parse_declaration() *Node {
+    var n *Node
     if take(Tok.KwFn) {
-        n = node(N.Fn);
-        n.name = expect_name();
-        expect(Tok.LParen, "(");
-        var params: List;
+        n = node(N.Fn)
+        n.name = expect_name()
+        expect(Tok.LParen, "(")
+        var params List
         while !take(Tok.RParen) {
-            var p = node(N.Param);
-            p.name = expect_name();
-            take(Tok.Colon);
-            p.a = parse_type();
-            append(&params, p);
+            var p = node(N.Param)
+            p.name = expect_name()
+            p.a = parse_type()
+            append(&params, p)
             if tok.kind != Tok.RParen {
-                expect(Tok.Comma, ",");
+                expect(Tok.Comma, ",")
             }
         }
-        n.list = params.first;
-        if take(Tok.Arrow) || starts_type(tok.kind) {
-            n.a = parse_type();
+        n.list = params.first
+        if starts_type(tok.kind) {
+            n.a = parse_type()
         }
         if !take(Tok.Semicolon) {
-            n.b = parse_block();
+            n.b = parse_block()
         }
-        return n;
+        return n
     }
     if take(Tok.KwStruct) {
-        n = node(N.Struct);
-        n.name = expect_name();
-        expect(Tok.LBrace, "{");
-        var fields: List;
+        n = node(N.Struct)
+        n.name = expect_name()
+        expect(Tok.LBrace, "{")
+        var fields List
         while !take(Tok.RBrace) {
-            var f = node(N.Field);
-            f.name = expect_name();
-            take(Tok.Colon);
-            f.a = parse_type();
-            expect_end();
-            append(&fields, f);
+            var f = node(N.Field)
+            f.name = expect_name()
+            f.a = parse_type()
+            expect_end()
+            append(&fields, f)
         }
-        n.list = fields.first;
-        return n;
+        n.list = fields.first
+        return n
     }
     if take(Tok.KwEnum) {
-        n = node(N.Enum);
-        n.name = expect_name();
-        expect(Tok.LBrace, "{");
-        var items: List;
+        n = node(N.Enum)
+        n.name = expect_name()
+        expect(Tok.LBrace, "{")
+        var items List
         while !take(Tok.RBrace) {
-            var item = node(N.Item);
-            item.name = expect_name();
+            var item = node(N.Item)
+            item.name = expect_name()
             if take(Tok.Assign) {
-                item.a = parse_expr();
+                item.a = parse_expr()
             }
-            append(&items, item);
+            append(&items, item)
             if tok.kind != Tok.RBrace && !take(Tok.Semicolon) {
-                expect(Tok.Comma, ",");
+                expect(Tok.Comma, ",")
             }
         }
-        n.list = items.first;
-        return n;
+        n.list = items.first
+        return n
     }
     if take(Tok.KwConst) {
-        n = node(N.Const);
-        n.name = expect_name();
-        if take(Tok.Colon) || tok.kind != Tok.Assign {
-            n.a = parse_type();
+        n = node(N.Const)
+        n.name = expect_name()
+        if tok.kind != Tok.Assign {
+            n.a = parse_type()
         }
-        expect(Tok.Assign, "=");
-        n.b = parse_expr();
-        expect_end();
-        return n;
+        expect(Tok.Assign, "=")
+        n.b = parse_expr()
+        expect_end()
+        return n
     }
     if take(Tok.KwVar) {
-        n = node(N.Global);
-        n.name = expect_name();
-        take(Tok.Colon);
-        n.a = parse_type();
-        expect_end();
-        return n;
+        n = node(N.Global)
+        n.name = expect_name()
+        n.a = parse_type()
+        expect_end()
+        return n
     }
     if take(Tok.KwManifest) {
-        n = node(N.Manifest);
-        expect(Tok.LBrace, "{");
-        var entries: List;
+        n = node(N.Manifest)
+        expect(Tok.LBrace, "{")
+        var entries List
         while !take(Tok.RBrace) {
-            var entry = node(N.Item);
-            entry.name = expect_name();
-            expect(Tok.Assign, "=");
-            entry.a = parse_expr();
-            expect_end();
-            append(&entries, entry);
+            var entry = node(N.Item)
+            entry.name = expect_name()
+            expect(Tok.Assign, "=")
+            entry.a = parse_expr()
+            expect_end()
+            append(&entries, entry)
         }
-        n.list = entries.first;
-        return n;
+        n.list = entries.first
+        return n
     }
     if tok.kind == Tok.KwImport {
-        parse_fail("imports go at the top of the file");
+        parse_fail("imports go at the top of the file")
     }
-    parse_fail("expected a declaration");
-    return null;
+    parse_fail("expected a declaration")
+    return null
 }
 
-fn parse_type() -> *Node {
-    var n: *Node;
+fn parse_type() *Node {
+    var n *Node
     if tok.kind == Tok.KwFn {
-        n = node(N.TypeFn);
-        next_token();
-        expect(Tok.LParen, "(");
-        var params: List;
+        n = node(N.TypeFn)
+        next_token()
+        expect(Tok.LParen, "(")
+        var params List
         while !take(Tok.RParen) {
-            append(&params, parse_type());
+            append(&params, parse_type())
             if tok.kind != Tok.RParen {
-                expect(Tok.Comma, ",");
+                expect(Tok.Comma, ",")
             }
         }
-        n.list = params.first;
-        if take(Tok.Arrow) || starts_type(tok.kind) {
-            n.a = parse_type();
+        n.list = params.first
+        if starts_type(tok.kind) {
+            n.a = parse_type()
         }
-        return n;
+        return n
     }
     if tok.kind == Tok.Star {
-        n = node(N.TypePtr);
-        next_token();
-        n.a = parse_type();
-        return n;
+        n = node(N.TypePtr)
+        next_token()
+        n.a = parse_type()
+        return n
     }
     if tok.kind == Tok.LBracket {
-        n = node(N.TypeSlice);
-        next_token();
+        n = node(N.TypeSlice)
+        next_token()
         if !take(Tok.RBracket) {
-            n.kind = N.TypeArray;
-            n.a = parse_expr();
-            expect(Tok.RBracket, "]");
-            n.b = parse_type();
-            return n;
+            n.kind = N.TypeArray
+            n.a = parse_expr()
+            expect(Tok.RBracket, "]")
+            n.b = parse_type()
+            return n
         }
-        n.a = parse_type();
-        return n;
+        n.a = parse_type()
+        return n
     }
-    n = node(N.TypeName);
-    n.name = expect_name();
+    n = node(N.TypeName)
+    if tok.kind != Tok.Name {
+        error_start(tok.file, tok.line)
+        io.put(&errors, "expected a type, found '")
+        io.put(&errors, tok.text)
+        io.put(&errors, "'")
+        error_end()
+    }
+    n.name = expect_name()
     if take(Tok.Dot) {
-        n.module = imported(n.file, n.name);
+        n.module = imported(n.file, n.name)
         if n.module == 0 {
-            error_start(n.file, n.line);
-            io.put(&errors, "no module '");
-            io.put(&errors, n.name);
-            io.put(&errors, "' is imported here");
-            error_end();
+            error_start(n.file, n.line)
+            io.put(&errors, "no module '")
+            io.put(&errors, n.name)
+            io.put(&errors, "' is imported here")
+            error_end()
         }
-        n.name = expect_name();
+        n.name = expect_name()
     }
-    return n;
+    return n
 }
 
 // Statements -----------------------------------------------------------------
 
-fn parse_block() -> *Node {
-    var n = node(N.Block);
-    expect(Tok.LBrace, "{");
-    var statements: List;
+fn parse_block() *Node {
+    var n = node(N.Block)
+    expect(Tok.LBrace, "{")
+    var statements List
     while !take(Tok.RBrace) {
-        append(&statements, parse_statement());
+        append(&statements, parse_statement())
     }
-    n.list = statements.first;
-    return n;
+    n.list = statements.first
+    return n
 }
 
-fn parse_statement() -> *Node {
-    var n: *Node;
+fn parse_statement() *Node {
+    var n *Node
     if tok.kind == Tok.LBrace {
-        return parse_block();
+        return parse_block()
     }
     if tok.kind == Tok.KwVar {
-        n = node(N.Var);
-        next_token();
-        n.name = expect_name();
-        if take(Tok.Colon) || (tok.kind != Tok.Assign && tok.kind != Tok.Semicolon) {
-            n.a = parse_type();
+        n = node(N.Var)
+        next_token()
+        n.name = expect_name()
+        if tok.kind != Tok.Assign && tok.kind != Tok.Semicolon {
+            n.a = parse_type()
         }
         if take(Tok.Assign) {
-            n.b = parse_expr();
+            n.b = parse_expr()
         }
         if n.a == null && n.b == null {
-            parse_fail("a variable needs a type or a value");
+            parse_fail("a variable needs a type or a value")
         }
-        expect_end();
-        return n;
+        expect_end()
+        return n
     }
     if tok.kind == Tok.KwIf {
-        n = node(N.If);
-        next_token();
-        n.a = parse_expr();
-        n.b = parse_block();
+        n = node(N.If)
+        next_token()
+        n.a = parse_expr()
+        n.b = parse_block()
         if take(Tok.KwElse) {
             if tok.kind == Tok.KwIf {
-                n.c = parse_statement();
+                n.c = parse_statement()
             } else {
-                n.c = parse_block();
+                n.c = parse_block()
             }
         }
-        return n;
+        return n
     }
     if tok.kind == Tok.KwWhile {
-        n = node(N.While);
-        next_token();
-        n.a = parse_expr();
-        n.b = parse_block();
-        return n;
+        n = node(N.While)
+        next_token()
+        n.a = parse_expr()
+        n.b = parse_block()
+        return n
     }
     if tok.kind == Tok.KwFor {
-        n = node(N.For);
-        next_token();
-        n.name = expect_name();
-        expect(Tok.KwIn, "in");
-        n.a = parse_expr();
-        expect(Tok.DotDot, "..");
-        n.b = parse_expr();
-        n.c = parse_block();
-        return n;
+        n = node(N.For)
+        next_token()
+        n.name = expect_name()
+        expect(Tok.KwIn, "in")
+        n.a = parse_expr()
+        expect(Tok.DotDot, "..")
+        n.b = parse_expr()
+        n.c = parse_block()
+        return n
     }
     if tok.kind == Tok.KwMatch {
-        n = node(N.Match);
-        next_token();
-        n.a = parse_expr();
-        expect(Tok.LBrace, "{");
-        var arms: List;
+        n = node(N.Match)
+        next_token()
+        n.a = parse_expr()
+        expect(Tok.LBrace, "{")
+        var arms List
         while !take(Tok.RBrace) {
             if take(Tok.KwElse) {
-                expect(Tok.FatArrow, "=>");
-                n.b = parse_block();
-                continue;
+                expect(Tok.FatArrow, "=>")
+                n.b = parse_block()
+                continue
             }
-            var arm = node(N.Arm);
-            var values: List;
-            append(&values, parse_expr());
+            var arm = node(N.Arm)
+            var values List
+            append(&values, parse_expr())
             while take(Tok.Comma) {
-                append(&values, parse_expr());
+                append(&values, parse_expr())
             }
-            arm.list = values.first;
-            expect(Tok.FatArrow, "=>");
-            arm.a = parse_block();
-            append(&arms, arm);
+            arm.list = values.first
+            expect(Tok.FatArrow, "=>")
+            arm.a = parse_block()
+            append(&arms, arm)
         }
-        n.list = arms.first;
-        return n;
+        n.list = arms.first
+        return n
     }
     if tok.kind == Tok.KwBreak || tok.kind == Tok.KwContinue {
-        n = node(N.Break);
+        n = node(N.Break)
         if tok.kind == Tok.KwContinue {
-            n.kind = N.Continue;
+            n.kind = N.Continue
         }
-        next_token();
-        expect_end();
-        return n;
+        next_token()
+        expect_end()
+        return n
     }
     if tok.kind == Tok.KwReturn {
-        n = node(N.Return);
-        next_token();
+        n = node(N.Return)
+        next_token()
         if tok.kind != Tok.Semicolon {
-            n.a = parse_expr();
+            n.a = parse_expr()
         }
-        expect_end();
-        return n;
+        expect_end()
+        return n
     }
-    n = node(N.ExprStmt);
-    var e = parse_expr();
+    n = node(N.ExprStmt)
+    var e = parse_expr()
     if is_assignment(tok.kind) {
-        n.kind = N.Assign;
-        n.op = tok.kind;
-        next_token();
-        n.a = e;
-        n.b = parse_expr();
+        n.kind = N.Assign
+        n.op = tok.kind
+        next_token()
+        n.a = e
+        n.b = parse_expr()
     } else {
-        n.a = e;
+        n.a = e
     }
-    expect_end();
-    return n;
+    expect_end()
+    return n
 }
 
-fn is_assignment(kind: Tok) -> bool {
+fn is_assignment(kind Tok) bool {
     match kind {
         Tok.Assign, Tok.PlusAssign, Tok.MinusAssign, Tok.StarAssign, Tok.SlashAssign,
         Tok.PercentAssign, Tok.AmpAssign, Tok.PipeAssign, Tok.CaretAssign,
         Tok.ShlAssign, Tok.ShrAssign => {
-            return true;
+            return true
         }
     }
-    return false;
+    return false
 }
 
 // Expressions ----------------------------------------------------------------
 
 // Binary operators bind tighter as the level rises.
-fn binary_level(kind: Tok) -> u32 {
+fn binary_level(kind Tok) u32 {
     match kind {
-        Tok.OrOr => { return 1; }
-        Tok.AndAnd => { return 2; }
-        Tok.Equal, Tok.NotEqual, Tok.Less, Tok.LessEqual, Tok.Greater, Tok.GreaterEqual => { return 3; }
-        Tok.Pipe => { return 4; }
-        Tok.Caret => { return 5; }
-        Tok.Amp => { return 6; }
-        Tok.Shl, Tok.Shr => { return 7; }
-        Tok.Plus, Tok.Minus => { return 8; }
-        Tok.Star, Tok.Slash, Tok.Percent => { return 9; }
+        Tok.OrOr => { return 1 }
+        Tok.AndAnd => { return 2 }
+        Tok.Equal, Tok.NotEqual, Tok.Less, Tok.LessEqual, Tok.Greater, Tok.GreaterEqual => { return 3 }
+        Tok.Pipe => { return 4 }
+        Tok.Caret => { return 5 }
+        Tok.Amp => { return 6 }
+        Tok.Shl, Tok.Shr => { return 7 }
+        Tok.Plus, Tok.Minus => { return 8 }
+        Tok.Star, Tok.Slash, Tok.Percent => { return 9 }
     }
-    return 0;
+    return 0
 }
 
-fn parse_expr() -> *Node {
-    return parse_binary(1);
+fn parse_expr() *Node {
+    return parse_binary(1)
 }
 
-fn parse_binary(level: u32) -> *Node {
+fn parse_binary(level u32) *Node {
     if level > 9 {
-        return parse_cast();
+        return parse_cast()
     }
-    var left = parse_binary(level + 1);
+    var left = parse_binary(level + 1)
     while binary_level(tok.kind) == level {
-        var n = node(N.Binary);
-        n.op = tok.kind;
-        next_token();
-        n.a = left;
-        n.b = parse_binary(level + 1);
-        left = n;
+        var n = node(N.Binary)
+        n.op = tok.kind
+        next_token()
+        n.a = left
+        n.b = parse_binary(level + 1)
+        left = n
         if level == 3 && binary_level(tok.kind) == 3 {
-            parse_fail("comparisons can't be chained");
+            parse_fail("comparisons can't be chained")
         }
     }
-    return left;
+    return left
 }
 
-fn parse_cast() -> *Node {
-    var e = parse_unary();
+fn parse_cast() *Node {
+    var e = parse_unary()
     while tok.kind == Tok.KwAs {
-        var n = node(N.Cast);
-        next_token();
-        n.a = e;
-        n.b = parse_type();
-        e = n;
+        var n = node(N.Cast)
+        next_token()
+        n.a = e
+        n.b = parse_type()
+        e = n
     }
-    return e;
+    return e
 }
 
-fn parse_unary() -> *Node {
+fn parse_unary() *Node {
     match tok.kind {
         Tok.Minus, Tok.Bang, Tok.Tilde, Tok.Amp, Tok.Star => {
-            var n = node(N.Unary);
-            n.op = tok.kind;
-            next_token();
-            n.a = parse_unary();
-            return n;
+            var n = node(N.Unary)
+            n.op = tok.kind
+            next_token()
+            n.a = parse_unary()
+            return n
         }
     }
-    return parse_postfix(parse_primary());
+    return parse_postfix(parse_primary())
 }
 
-fn parse_primary() -> *Node {
-    var n: *Node;
+fn parse_primary() *Node {
+    var n *Node
     match tok.kind {
         Tok.Int => {
-            n = node(N.Int);
-            n.value = tok.value;
-            next_token();
-            return n;
+            n = node(N.Int)
+            n.value = tok.value
+            next_token()
+            return n
         }
         Tok.Fixed => {
-            n = node(N.Fixed);
-            n.value = tok.value;
-            next_token();
-            return n;
+            n = node(N.Fixed)
+            n.value = tok.value
+            next_token()
+            return n
         }
         Tok.Str => {
-            n = node(N.Str);
-            n.name = tok.text;
-            next_token();
-            return n;
+            n = node(N.Str)
+            n.name = tok.text
+            next_token()
+            return n
         }
         Tok.Name => {
-            n = node(N.Name);
-            n.name = tok.text;
-            next_token();
-            return n;
+            n = node(N.Name)
+            n.name = tok.text
+            next_token()
+            return n
         }
         Tok.KwTrue, Tok.KwFalse => {
-            n = node(N.Bool);
+            n = node(N.Bool)
             if tok.kind == Tok.KwTrue {
-                n.value = 1;
+                n.value = 1
             }
-            next_token();
-            return n;
+            next_token()
+            return n
         }
         Tok.KwNull => {
-            n = node(N.Null);
-            next_token();
-            return n;
+            n = node(N.Null)
+            next_token()
+            return n
         }
         Tok.KwSizeOf => {
-            n = node(N.SizeOf);
-            next_token();
-            expect(Tok.LParen, "(");
-            n.a = parse_type();
-            expect(Tok.RParen, ")");
-            return n;
+            n = node(N.SizeOf)
+            next_token()
+            expect(Tok.LParen, "(")
+            n.a = parse_type()
+            expect(Tok.RParen, ")")
+            return n
         }
         Tok.KwNew => {
-            n = node(N.New);
-            next_token();
-            expect(Tok.LParen, "(");
-            n.a = parse_expr();
-            expect(Tok.Comma, ",");
-            n.b = parse_type();
+            n = node(N.New)
+            next_token()
+            expect(Tok.LParen, "(")
+            n.a = parse_expr()
+            expect(Tok.Comma, ",")
+            n.b = parse_type()
             if take(Tok.Comma) {
-                n.c = parse_expr();
+                n.c = parse_expr()
             }
-            expect(Tok.RParen, ")");
-            return n;
+            expect(Tok.RParen, ")")
+            return n
         }
         Tok.LParen => {
-            next_token();
-            n = parse_expr();
-            expect(Tok.RParen, ")");
-            return n;
+            next_token()
+            n = parse_expr()
+            expect(Tok.RParen, ")")
+            return n
         }
     }
-    parse_fail("expected an expression");
-    return null;
+    parse_fail("expected an expression")
+    return null
 }
 
-fn parse_postfix(base: *Node) -> *Node {
-    var e = base;
+fn parse_postfix(base *Node) *Node {
+    var e = base
     while true {
-        var n: *Node;
+        var n *Node
         if tok.kind == Tok.LParen {
-            n = node(N.Call);
-            next_token();
-            var args: List;
+            n = node(N.Call)
+            next_token()
+            var args List
             while !take(Tok.RParen) {
-                append(&args, parse_expr());
+                append(&args, parse_expr())
                 if tok.kind != Tok.RParen {
-                    expect(Tok.Comma, ",");
+                    expect(Tok.Comma, ",")
                 }
             }
-            n.a = e;
-            n.list = args.first;
+            n.a = e
+            n.list = args.first
         } else if tok.kind == Tok.LBracket {
-            n = node(N.Index);
-            next_token();
-            n.a = e;
+            n = node(N.Index)
+            next_token()
+            n.a = e
             if tok.kind != Tok.Colon {
-                n.b = parse_expr();
+                n.b = parse_expr()
             }
             if take(Tok.Colon) {
-                n.kind = N.Slice;
+                n.kind = N.Slice
                 if tok.kind != Tok.RBracket {
-                    n.c = parse_expr();
+                    n.c = parse_expr()
                 }
             }
-            expect(Tok.RBracket, "]");
+            expect(Tok.RBracket, "]")
         } else if tok.kind == Tok.Dot {
-            n = node(N.Member);
-            next_token();
-            n.a = e;
-            n.name = expect_name();
+            n = node(N.Member)
+            next_token()
+            n.a = e
+            n.name = expect_name()
         } else {
-            return e;
+            return e
         }
-        e = n;
+        e = n
     }
-    return e;
+    return e
 }

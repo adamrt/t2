@@ -1,88 +1,88 @@
 // launch, a window of buttons that start programs.
 
-import gfx;
-import io;
-import os;
-import ui;
+import gfx
+import io
+import os
+import ui
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "read write spawn window processes audio network";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "read write spawn window processes audio network"
 }
 
-const WIDTH = 150;
-const BUTTON = 26;
-const COUNT = 13;
+const WIDTH = 150
+const BUTTON = 26
+const COUNT = 13
 
-var canvas: gfx.Canvas;
-var words: [1024]u32;
-var strings: [512]u8;
-var panel: ui.Panel;
+var canvas gfx.Canvas
+var words [1024]u32
+var strings [512]u8
+var panel ui.Panel
 
-fn label(i: u32) -> []u8 {
+fn label(i u32) []u8 {
     match i {
-        0 => { return "Terminal"; }
-        1 => { return "Files"; }
-        2 => { return "Editor"; }
-        3 => { return "Monitor"; }
-        4 => { return "Calculator"; }
-        9 => { return "Clock"; }
-        10 => { return "Paint"; }
-        5 => { return "Cube"; }
-        6 => { return "Fractal"; }
-        7 => { return "Piano"; }
-        8 => { return "Worm"; }
-        11 => { return "Life"; }
+        0 => { return "Terminal" }
+        1 => { return "Files" }
+        2 => { return "Editor" }
+        3 => { return "Monitor" }
+        4 => { return "Calculator" }
+        9 => { return "Clock" }
+        10 => { return "Paint" }
+        5 => { return "Cube" }
+        6 => { return "Fractal" }
+        7 => { return "Piano" }
+        8 => { return "Worm" }
+        11 => { return "Life" }
     }
-    return "GPU demo";
+    return "GPU demo"
 }
 
-fn program(i: u32) -> []u8 {
+fn program(i u32) []u8 {
     match i {
-        0 => { return "/bin/term"; }
-        1 => { return "/bin/files"; }
-        2 => { return "/bin/edit"; }
-        3 => { return "/bin/monitor"; }
-        4 => { return "/bin/calc"; }
-        9 => { return "/bin/clock"; }
-        10 => { return "/bin/paint"; }
-        5 => { return "/bin/cube"; }
-        6 => { return "/bin/fractal"; }
-        7 => { return "/bin/piano"; }
-        8 => { return "/bin/worm"; }
-        11 => { return "/bin/life"; }
+        0 => { return "/bin/term" }
+        1 => { return "/bin/files" }
+        2 => { return "/bin/edit" }
+        3 => { return "/bin/monitor" }
+        4 => { return "/bin/calc" }
+        9 => { return "/bin/clock" }
+        10 => { return "/bin/paint" }
+        5 => { return "/bin/cube" }
+        6 => { return "/bin/fractal" }
+        7 => { return "/bin/piano" }
+        8 => { return "/bin/worm" }
+        11 => { return "/bin/life" }
     }
-    return "/bin/demo";
+    return "/bin/demo"
 }
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Programs", WIDTH, COUNT * BUTTON + 8);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Programs", WIDTH, COUNT * BUTTON + 8)
     if window == io.FAILED {
-        os.complain("launch", "can't open a window", "");
-        return 1;
+        os.complain("launch", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    ui.init(&panel, &canvas);
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    ui.init(&panel, &canvas)
     while true {
-        var e: gfx.Event;
-        gfx.event_wait(&e, gfx.FOREVER);
+        var e gfx.Event
+        gfx.event_wait(&e, gfx.FOREVER)
         if e.kind == gfx.EVENT_CLOSE {
-            return 0;
+            return 0
         }
         if e.kind == gfx.EVENT_MOUSE_MOVE && panel.active == 0 {
-            continue;
+            continue
         }
-        ui.event(&panel, &e);
-        gfx.draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, ui.BACKGROUND);
+        ui.event(&panel, &e)
+        gfx.draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, ui.BACKGROUND)
         for i in 0..COUNT {
-            var y = 4 + (i * BUTTON) as i32;
+            var y = 4 + (i * BUTTON) as i32
             if ui.button(&panel, i + 1, 6, y + 2, WIDTH - 12, BUTTON - 4, label(i)) {
-                os.spawn(program(i), "", io.STDIN, io.STDOUT, io.STDERR);
+                os.spawn(program(i), "", io.STDIN, io.STDOUT, io.STDERR)
             }
         }
-        ui.end(&panel);
-        gfx.present(&canvas);
+        ui.end(&panel)
+        gfx.present(&canvas)
     }
-    return 0;
+    return 0
 }

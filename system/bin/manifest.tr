@@ -4,67 +4,67 @@
 //
 //     manifest /bin/edit
 
-import io;
-import os;
-import text;
+import io
+import os
+import text
 
 manifest {
-    memory = 64 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 64 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-fn main(memory: []u8) -> u32 {
-    var name: [256]u8;
-    var n = os.arg(0, name[:]);
+fn main(memory []u8) u32 {
+    var name [256]u8
+    var n = os.arg(0, name[:])
     if os.arg_count() != 1 || n > 256 {
-        os.complain("manifest", "usage: manifest program", "");
-        return 2;
+        os.complain("manifest", "usage: manifest program", "")
+        return 2
     }
-    var path = name[0:n];
-    var file = io.open(path, io.MODE_READ);
-    var header: [32]u8;
+    var path = name[0:n]
+    var file = io.open(path, io.MODE_READ)
+    var header [32]u8
     if file == io.FAILED || io.read(file, header[:]) != 32 || !text.equal(header[0:4], "TRX2") {
-        os.complain("manifest", "not a program:", path);
-        return 1;
+        os.complain("manifest", "not a program:", path)
+        return 1
     }
-    var out: io.Writer;
-    var buffer: [512]u8;
-    io.writer_init(&out, io.STDOUT, buffer[:]);
-    io.put(&out, path);
-    io.put(&out, "\n  memory  ");
-    io.put_u32(&out, word(header[:], 24) / KiB);
-    io.put(&out, " KiB\n  stack   ");
-    io.put_u32(&out, word(header[:], 20) / KiB);
-    io.put(&out, " KiB\n  code    ");
-    io.put_u32(&out, word(header[:], 8));
-    io.put(&out, " bytes\n  data    ");
-    io.put_u32(&out, word(header[:], 12) + word(header[:], 16));
-    io.put(&out, " bytes\n  allows  ");
-    var permissions = word(header[:], 28);
-    var names = "read write spawn window processes recovery audio network";
-    var bit: u32 = 1;
-    var start: u32 = 0;
-    var any = false;
+    var out io.Writer
+    var buffer [512]u8
+    io.writer_init(&out, io.STDOUT, buffer[:])
+    io.put(&out, path)
+    io.put(&out, "\n  memory  ")
+    io.put_u32(&out, word(header[:], 24) / KiB)
+    io.put(&out, " KiB\n  stack   ")
+    io.put_u32(&out, word(header[:], 20) / KiB)
+    io.put(&out, " KiB\n  code    ")
+    io.put_u32(&out, word(header[:], 8))
+    io.put(&out, " bytes\n  data    ")
+    io.put_u32(&out, word(header[:], 12) + word(header[:], 16))
+    io.put(&out, " bytes\n  allows  ")
+    var permissions = word(header[:], 28)
+    var names = "read write spawn window processes recovery audio network"
+    var bit u32 = 1
+    var start u32 = 0
+    var any = false
     for i in 0..names.len + 1 {
         if i == names.len || names[i] == ' ' {
             if permissions & bit != 0 {
-                io.put(&out, names[start:i]);
-                io.put_byte(&out, ' ');
-                any = true;
+                io.put(&out, names[start:i])
+                io.put_byte(&out, ' ')
+                any = true
             }
-            bit <<= 1;
-            start = i + 1;
+            bit <<= 1
+            start = i + 1
         }
     }
     if !any {
-        io.put(&out, "nothing");
+        io.put(&out, "nothing")
     }
-    io.put_byte(&out, '\n');
-    io.flush(&out);
-    return 0;
+    io.put_byte(&out, '\n')
+    io.flush(&out)
+    return 0
 }
 
-fn word(bytes: []u8, offset: u32) -> u32 {
-    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+fn word(bytes []u8, offset u32) u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
 }

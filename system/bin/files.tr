@@ -2,193 +2,193 @@
 // Clicking a file opens it: pictures (.tim) in view, sounds (.tsn) in play,
 // anything else in edit. Dragging the strip under the window resizes it.
 
-import gfx;
-import io;
-import mem;
-import os;
-import text;
+import gfx
+import io
+import mem
+import os
+import text
 
 manifest {
-    memory = 256 * KiB;
-    stack = 32 * KiB;
-    allow = "read spawn window audio";
+    memory = 256 * KiB
+    stack = 32 * KiB
+    allow = "read spawn window audio"
 }
 
-const WIDTH = 360;
-const ROWS = 22;
-const ROW = 18;
-const MAX = 256;
+const WIDTH = 360
+const ROWS = 22
+const ROW = 18
+const MAX = 256
 
-var canvas: gfx.Canvas;
-var words: [2048]u32;
-var strings: [4096]u8;
-var listing: [MAX * 64]u8;
-var entries: []os.ListEntry;
-var count: u32;
-var dir: [256]u8;
-var dir_len: u32;
-var top: u32;
-var full_path: [512]u8;
-var width: i32;
-var height: i32;
-var rows: u32;
+var canvas gfx.Canvas
+var words [2048]u32
+var strings [4096]u8
+var listing [MAX * 64]u8
+var entries []os.ListEntry
+var count u32
+var dir [256]u8
+var dir_len u32
+var top u32
+var full_path [512]u8
+var width i32
+var height i32
+var rows u32
 
-fn main(memory: []u8) -> u32 {
-    width = WIDTH;
-    height = ROWS * ROW + 28;
-    rows = ROWS;
-    var window = gfx.window_open("Files", width as u32, height as u32);
+fn main(memory []u8) u32 {
+    width = WIDTH
+    height = ROWS * ROW + 28
+    rows = ROWS
+    var window = gfx.window_open("Files", width as u32, height as u32)
     if window == io.FAILED {
-        os.complain("files", "can't open a window", "");
-        return 1;
+        os.complain("files", "can't open a window", "")
+        return 1
     }
-    gfx.window_resizable(window, 200, 4 * ROW + 28);
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    dir_len = min(os.get_dir(dir[:]), dir.len);
-    load();
+    gfx.window_resizable(window, 200, 4 * ROW + 28)
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    dir_len = min(os.get_dir(dir[:]), dir.len)
+    load()
     while true {
-        var e: gfx.Event;
-        gfx.event_wait(&e, gfx.FOREVER);
+        var e gfx.Event
+        gfx.event_wait(&e, gfx.FOREVER)
         if e.kind == gfx.EVENT_CLOSE {
-            return 0;
+            return 0
         }
         if e.kind == gfx.EVENT_RESIZE {
-            width = e.x;
-            height = e.y;
-            rows = ((height - 28) / ROW) as u32;
+            width = e.x
+            height = e.y
+            rows = ((height - 28) / ROW) as u32
         } else if e.kind == gfx.EVENT_MOUSE_DOWN {
-            var row = (e.y - 24) / ROW;
+            var row = (e.y - 24) / ROW
             if row >= 0 && (row as u32) < rows {
-                click(top + row as u32);
+                click(top + row as u32)
             }
         } else if e.kind == gfx.EVENT_WHEEL {
             if e.y > 0 && top + rows < count + 1 {
-                top += 1;
+                top += 1
             } else if e.y < 0 && top > 0 {
-                top -= 1;
+                top -= 1
             }
         } else if e.kind != gfx.EVENT_DRAW {
-            continue;
+            continue
         }
-        draw();
+        draw()
     }
-    return 0;
+    return 0
 }
 
-fn min(a: u32, b: u32) -> u32 {
+fn min(a u32, b u32) u32 {
     if a < b {
-        return a;
+        return a
     }
-    return b;
+    return b
 }
 
 fn load() {
-    var n = os.list(dir[0:dir_len], listing[:]);
+    var n = os.list(dir[0:dir_len], listing[:])
     if n == io.FAILED {
-        n = 0;
+        n = 0
     }
-    count = n / 64;
-    entries = (&listing[0] as *os.ListEntry)[0:count];
+    count = n / 64
+    entries = (&listing[0] as *os.ListEntry)[0:count]
     // Directories first, then by name.
     for i in 1..count {
-        var j = i;
+        var j = i
         while j > 0 && before(&entries[j], &entries[j - 1]) {
-            var swap = entries[j];
-            entries[j] = entries[j - 1];
-            entries[j - 1] = swap;
-            j -= 1;
+            var swap = entries[j]
+            entries[j] = entries[j - 1]
+            entries[j - 1] = swap
+            j -= 1
         }
     }
-    top = 0;
+    top = 0
 }
 
-fn before(a: *os.ListEntry, b: *os.ListEntry) -> bool {
+fn before(a *os.ListEntry, b *os.ListEntry) bool {
     if a.kind != b.kind {
-        return a.kind == os.KIND_DIR;
+        return a.kind == os.KIND_DIR
     }
-    var x = os.entry_name(a);
-    var y = os.entry_name(b);
+    var x = os.entry_name(a)
+    var y = os.entry_name(b)
     for i in 0..x.len {
         if i == y.len {
-            return false;
+            return false
         }
         if x[i] != y[i] {
-            return x[i] < y[i];
+            return x[i] < y[i]
         }
     }
-    return x.len < y.len;
+    return x.len < y.len
 }
 
 // Row 0 is "..", and the entries follow.
-fn click(row: u32) {
+fn click(row u32) {
     if row == 0 {
         while dir_len > 1 && dir[dir_len - 1] != '/' {
-            dir_len -= 1;
+            dir_len -= 1
         }
         if dir_len > 1 {
-            dir_len -= 1;
+            dir_len -= 1
         }
-        load();
-        return;
+        load()
+        return
     }
     if row > count {
-        return;
+        return
     }
-    var e = &entries[row - 1];
-    var name = os.entry_name(e);
-    var n: u32 = 0;
-    mem.copy(full_path[:], dir[0:dir_len]);
-    n = dir_len;
+    var e = &entries[row - 1]
+    var name = os.entry_name(e)
+    var n u32 = 0
+    mem.copy(full_path[:], dir[0:dir_len])
+    n = dir_len
     if n > 1 {
-        full_path[n] = '/';
-        n += 1;
+        full_path[n] = '/'
+        n += 1
     }
-    mem.copy(full_path[n:], name);
-    n += name.len;
+    mem.copy(full_path[n:], name)
+    n += name.len
     if e.kind == os.KIND_DIR {
-        mem.copy(dir[:], full_path[0:n]);
-        dir_len = n;
-        load();
-        return;
+        mem.copy(dir[:], full_path[0:n])
+        dir_len = n
+        load()
+        return
     }
-    var args: [512]u8;
-    mem.copy(args[:], full_path[0:n]);
-    args[n] = 0;
-    var program = "/bin/edit";
+    var args [512]u8
+    mem.copy(args[:], full_path[0:n])
+    args[n] = 0
+    var program = "/bin/edit"
     if name.len > 4 && text.equal(name[name.len - 4:], ".tim") {
-        program = "/bin/view";
+        program = "/bin/view"
     } else if name.len > 4 && text.equal(name[name.len - 4:], ".tsn") {
-        program = "/bin/play";
+        program = "/bin/play"
     }
-    os.spawn(program, args[0:n + 1], io.STDIN, io.STDOUT, io.STDERR);
+    os.spawn(program, args[0:n + 1], io.STDIN, io.STDOUT, io.STDERR)
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230));
-    gfx.draw_fill(&canvas, 0, 0, width, 22, gfx.rgb(224, 219, 206));
-    gfx.draw_text(&canvas, 8, 3, gfx.rgb(30, 30, 36), dir[0:dir_len]);
+    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230))
+    gfx.draw_fill(&canvas, 0, 0, width, 22, gfx.rgb(224, 219, 206))
+    gfx.draw_text(&canvas, 8, 3, gfx.rgb(30, 30, 36), dir[0:dir_len])
     for row in 0..rows {
-        var n = top + row;
-        var y = 24 + (row * ROW) as i32;
+        var n = top + row
+        var y = 24 + (row * ROW) as i32
         if n == 0 {
-            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), "..");
-            continue;
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), "..")
+            continue
         }
         if n > count {
-            break;
+            break
         }
-        var e = &entries[n - 1];
+        var e = &entries[n - 1]
         if e.kind == os.KIND_DIR {
-            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), os.entry_name(e));
-            gfx.draw_text(&canvas, 8 + text.char_count(os.entry_name(e)) as i32 * 8, y, gfx.rgb(45, 90, 80), "/");
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), os.entry_name(e))
+            gfx.draw_text(&canvas, 8 + text.char_count(os.entry_name(e)) as i32 * 8, y, gfx.rgb(45, 90, 80), "/")
         } else {
-            gfx.draw_text(&canvas, 8, y, gfx.rgb(30, 30, 36), os.entry_name(e));
-            var digits: [12]u8;
-            var w: io.Writer;
-            io.writer_init(&w, io.STDOUT, digits[:]);
-            io.put_u32(&w, e.size);
-            gfx.draw_text(&canvas, width - 12 - (w.used * 8) as i32, y, gfx.rgb(120, 116, 106), digits[0:w.used]);
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(30, 30, 36), os.entry_name(e))
+            var digits [12]u8
+            var w io.Writer
+            io.writer_init(&w, io.STDOUT, digits[:])
+            io.put_u32(&w, e.size)
+            gfx.draw_text(&canvas, width - 12 - (w.used * 8) as i32, y, gfx.rgb(120, 116, 106), digits[0:w.used])
         }
     }
-    gfx.present(&canvas);
+    gfx.present(&canvas)
 }

@@ -2,184 +2,184 @@
 // or drag to bring cells to life, Space to pause, N to step while paused,
 // R to scatter cells at random and C to clear.
 
-import gfx;
-import io;
-import mem;
-import os;
+import gfx
+import io
+import mem
+import os
 
 manifest {
-    memory = 1 * MiB;
-    stack = 16 * KiB;
-    allow = "window";
+    memory = 1 * MiB
+    stack = 16 * KiB
+    allow = "window"
 }
 
-const COLUMNS = 100;
-const ROWS = 72;
-const CELL = 4;
-const STATUS = 20;              // the height of the line under the grid
-const WIDTH = COLUMNS * CELL;
-const HEIGHT = ROWS * CELL + STATUS;
-const DELAY: u32 = 80;
-const LIVE: u32 = 0xff9fd86a;
-const DEAD: u32 = 0xff15181d;
-const GRID: u32 = 0xff1e2229;
-const TEXT: u32 = 0xffb8b4a8;
+const COLUMNS = 100
+const ROWS = 72
+const CELL = 4
+const STATUS = 20               // the height of the line under the grid
+const WIDTH = COLUMNS * CELL
+const HEIGHT = ROWS * CELL + STATUS
+const DELAY u32 = 80
+const LIVE u32 = 0xff9fd86a
+const DEAD u32 = 0xff15181d
+const GRID u32 = 0xff1e2229
+const TEXT u32 = 0xffb8b4a8
 
-var cells: [ROWS * COLUMNS]u8;
-var next: [ROWS * COLUMNS]u8;
-var pixels: [WIDTH * ROWS * CELL]u32;
-var picture: gfx.Image;
-var canvas: gfx.Canvas;
-var words: [256]u32;
-var strings: [256]u8;
-var running: bool;
-var generation: u32;
-var seed: u32;
+var cells [ROWS * COLUMNS]u8
+var next [ROWS * COLUMNS]u8
+var pixels [WIDTH * ROWS * CELL]u32
+var picture gfx.Image
+var canvas gfx.Canvas
+var words [256]u32
+var strings [256]u8
+var running bool
+var generation u32
+var seed u32
 
-fn main(memory: []u8) -> u32 {
-    var window = gfx.window_open("Life", WIDTH, HEIGHT);
+fn main(memory []u8) u32 {
+    var window = gfx.window_open("Life", WIDTH, HEIGHT)
     if window == io.FAILED {
-        os.complain("life", "can't open a window", "");
-        return 1;
+        os.complain("life", "can't open a window", "")
+        return 1
     }
-    gfx.canvas_init(&canvas, window, words[:], strings[:]);
-    picture.width = WIDTH;
-    picture.height = ROWS * CELL;
-    picture.pixels = pixels[:];
-    running = true;
-    seed = os.time() | 1;
-    scatter();
-    draw();
-    var next_step = os.time() + DELAY;
+    gfx.canvas_init(&canvas, window, words[:], strings[:])
+    picture.width = WIDTH
+    picture.height = ROWS * CELL
+    picture.pixels = pixels[:]
+    running = true
+    seed = os.time() | 1
+    scatter()
+    draw()
+    var next_step = os.time() + DELAY
     while true {
-        var wait: u32 = gfx.FOREVER;
+        var wait u32 = gfx.FOREVER
         if running {
-            wait = 0;
-            var now = os.time();
+            wait = 0
+            var now = os.time()
             if next_step > now {
-                wait = next_step - now;
+                wait = next_step - now
             }
         }
-        var e: gfx.Event;
+        var e gfx.Event
         if gfx.event_wait(&e, wait) == 1 {
             if e.kind == gfx.EVENT_CLOSE {
-                return 0;
+                return 0
             }
             if handle(&e) {
-                draw();
+                draw()
             }
         }
         if running && os.time() >= next_step {
-            step();
-            draw();
-            next_step = os.time() + DELAY;
+            step()
+            draw()
+            next_step = os.time() + DELAY
         }
     }
-    return 0;
+    return 0
 }
 
 // Returns true if the window needs drawing again.
-fn handle(e: *gfx.Event) -> bool {
+fn handle(e *gfx.Event) bool {
     if e.kind == gfx.EVENT_DRAW {
-        return true;
+        return true
     }
     if (e.kind == gfx.EVENT_MOUSE_DOWN || e.kind == gfx.EVENT_MOUSE_MOVE) && e.buttons == 1 {
-        var column = e.x / CELL;
-        var row = e.y / CELL;
+        var column = e.x / CELL
+        var row = e.y / CELL
         if column >= 0 && column < COLUMNS && row >= 0 && row < ROWS {
-            cells[row as u32 * COLUMNS + column as u32] = 1;
-            return true;
+            cells[row as u32 * COLUMNS + column as u32] = 1
+            return true
         }
-        return false;
+        return false
     }
     if e.kind != gfx.EVENT_TEXT {
-        return false;
+        return false
     }
     if e.key == ' ' {
-        running = !running;
+        running = !running
     } else if (e.key == 'n' || e.key == 'N') && !running {
-        step();
+        step()
     } else if e.key == 'r' || e.key == 'R' {
-        scatter();
+        scatter()
     } else if e.key == 'c' || e.key == 'C' {
-        mem.fill(&cells[0], 0, cells.len);
-        generation = 0;
+        mem.fill(&cells[0], 0, cells.len)
+        generation = 0
     } else {
-        return false;
+        return false
     }
-    return true;
+    return true
 }
 
-fn random(limit: u32) -> u32 {
-    seed = seed * 1103515245 + 12345;
-    return (seed >> 16) % limit;
+fn random(limit u32) u32 {
+    seed = seed * 1103515245 + 12345
+    return (seed >> 16) % limit
 }
 
 fn scatter() {
     for i in 0..cells.len {
-        cells[i] = 0;
+        cells[i] = 0
         if random(5) == 0 {
-            cells[i] = 1;
+            cells[i] = 1
         }
     }
-    generation = 0;
+    generation = 0
 }
 
 fn step() {
     for row in 0..ROWS {
-        var up = (row + ROWS - 1) % ROWS * COLUMNS;
-        var here = row * COLUMNS;
-        var down = (row + 1) % ROWS * COLUMNS;
+        var up = (row + ROWS - 1) % ROWS * COLUMNS
+        var here = row * COLUMNS
+        var down = (row + 1) % ROWS * COLUMNS
         for column in 0..COLUMNS {
-            var left = (column + COLUMNS - 1) % COLUMNS;
-            var right = (column + 1) % COLUMNS;
+            var left = (column + COLUMNS - 1) % COLUMNS
+            var right = (column + 1) % COLUMNS
             var n = cells[up + left] + cells[up + column] + cells[up + right] +
                 cells[here + left] + cells[here + right] +
-                cells[down + left] + cells[down + column] + cells[down + right];
-            var alive: u8 = 0;
+                cells[down + left] + cells[down + column] + cells[down + right]
+            var alive u8 = 0
             if n == 3 || (n == 2 && cells[here + column] == 1) {
-                alive = 1;
+                alive = 1
             }
-            next[here + column] = alive;
+            next[here + column] = alive
         }
     }
-    mem.copy(cells[:], next[:]);
-    generation += 1;
+    mem.copy(cells[:], next[:])
+    generation += 1
 }
 
 fn draw() {
-    var population: u32 = 0;
+    var population u32 = 0
     for row in 0..ROWS {
         for column in 0..COLUMNS {
-            var color = DEAD;
+            var color = DEAD
             if cells[row * COLUMNS + column] == 1 {
-                color = LIVE;
-                population += 1;
+                color = LIVE
+                population += 1
             }
-            var at = row * CELL * WIDTH + column * CELL;
+            var at = row * CELL * WIDTH + column * CELL
             for y in 0..CELL {
                 for x in 0..CELL {
-                    var c = color;
+                    var c = color
                     if x == CELL - 1 || y == CELL - 1 {
-                        c = GRID;
+                        c = GRID
                     }
-                    pixels[at + y * WIDTH + x] = c;
+                    pixels[at + y * WIDTH + x] = c
                 }
             }
         }
     }
-    gfx.draw_image(&canvas, &picture, 0, 0, WIDTH, ROWS * CELL, 0, 0, false);
-    gfx.draw_fill(&canvas, 0, ROWS * CELL, WIDTH, STATUS, DEAD);
-    var line: [64]u8;
-    var w: io.Writer;
-    io.writer_init(&w, io.FAILED, line[:]);
-    io.put(&w, "generation ");
-    io.put_u32(&w, generation);
-    io.put(&w, "   alive ");
-    io.put_u32(&w, population);
+    gfx.draw_image(&canvas, &picture, 0, 0, WIDTH, ROWS * CELL, 0, 0, false)
+    gfx.draw_fill(&canvas, 0, ROWS * CELL, WIDTH, STATUS, DEAD)
+    var line [64]u8
+    var w io.Writer
+    io.writer_init(&w, io.FAILED, line[:])
+    io.put(&w, "generation ")
+    io.put_u32(&w, generation)
+    io.put(&w, "   alive ")
+    io.put_u32(&w, population)
     if !running {
-        io.put(&w, "   paused");
+        io.put(&w, "   paused")
     }
-    gfx.draw_text(&canvas, 6, ROWS * CELL + 2, TEXT, line[0:w.used]);
-    gfx.present(&canvas);
+    gfx.draw_text(&canvas, 6, ROWS * CELL + 2, TEXT, line[0:w.used])
+    gfx.present(&canvas)
 }

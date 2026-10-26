@@ -1,75 +1,75 @@
 // wc counts the lines, words and bytes of files, or of its input.
 
-import io;
-import mem;
-import os;
+import io
+import mem
+import os
 
 manifest {
-    memory = 128 * KiB;
-    stack = 16 * KiB;
-    allow = "read";
+    memory = 128 * KiB
+    stack = 16 * KiB
+    allow = "read"
 }
 
-var buffer: [16 * KiB]u8;
+var buffer [16 * KiB]u8
 
-fn main(memory: []u8) -> u32 {
-    var arena: mem.Arena;
-    mem.arena_init(&arena, memory);
-    var args: [64][]u8;
-    var count = os.get_args(&arena, args[:]);
+fn main(memory []u8) u32 {
+    var arena mem.Arena
+    mem.arena_init(&arena, memory)
+    var args [64][]u8
+    var count = os.get_args(&arena, args[:])
     if count == 0 {
-        count_file(io.STDIN, "");
-        return 0;
+        count_file(io.STDIN, "")
+        return 0
     }
-    var status: u32 = 0;
+    var status u32 = 0
     for i in 0..count {
-        var file = io.open(args[i], io.MODE_READ);
+        var file = io.open(args[i], io.MODE_READ)
         if file == io.FAILED {
-            os.complain("wc", "can't read", args[i]);
-            status = 1;
-            continue;
+            os.complain("wc", "can't read", args[i])
+            status = 1
+            continue
         }
-        count_file(file, args[i]);
-        io.close(file);
+        count_file(file, args[i])
+        io.close(file)
     }
-    return status;
+    return status
 }
 
-fn count_file(file: u32, name: []u8) {
-    var lines: u32 = 0;
-    var words: u32 = 0;
-    var bytes: u32 = 0;
-    var in_word = false;
+fn count_file(file u32, name []u8) {
+    var lines u32 = 0
+    var words u32 = 0
+    var bytes u32 = 0
+    var in_word = false
     while true {
-        var n = io.read(file, buffer[:]);
+        var n = io.read(file, buffer[:])
         if n == 0 || n == io.FAILED {
-            break;
+            break
         }
-        bytes += n;
+        bytes += n
         for i in 0..n {
-            var c = buffer[i];
+            var c = buffer[i]
             if c == '\n' {
-                lines += 1;
+                lines += 1
             }
-            var space = c == ' ' || c == '\n' || c == '\t' || c == '\r';
+            var space = c == ' ' || c == '\n' || c == '\t' || c == '\r'
             if !space && !in_word {
-                words += 1;
+                words += 1
             }
-            in_word = !space;
+            in_word = !space
         }
     }
-    var out: io.Writer;
-    var text: [128]u8;
-    io.writer_init(&out, io.STDOUT, text[:]);
-    io.put_u32(&out, lines);
-    io.put_byte(&out, ' ');
-    io.put_u32(&out, words);
-    io.put_byte(&out, ' ');
-    io.put_u32(&out, bytes);
+    var out io.Writer
+    var text [128]u8
+    io.writer_init(&out, io.STDOUT, text[:])
+    io.put_u32(&out, lines)
+    io.put_byte(&out, ' ')
+    io.put_u32(&out, words)
+    io.put_byte(&out, ' ')
+    io.put_u32(&out, bytes)
     if name.len > 0 {
-        io.put_byte(&out, ' ');
-        io.put(&out, name);
+        io.put_byte(&out, ' ')
+        io.put(&out, name)
     }
-    io.put_byte(&out, '\n');
-    io.flush(&out);
+    io.put_byte(&out, '\n')
+    io.flush(&out)
 }
