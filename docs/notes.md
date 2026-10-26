@@ -76,6 +76,8 @@ decodes only what it shows). Terra, the system font, is drawn in
 
 - Fixed tables: 32 processes, 128 open handles across the system, 16 pipes
   of 4 KiB, 16 windows, 64 open files, 16 network connections.
+- Looking up a host name for `connect` stops the whole machine until the
+  host's resolver answers. Connecting itself happens in the background.
 - Disks are at most 64 MiB. There is no rename, and nothing writes past a
   file's end except appending.
 - When anything happens, every blocked process runs again to retry its

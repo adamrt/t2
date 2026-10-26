@@ -56,6 +56,10 @@ spawned it.
 2 to write at its end. Reading a pipe or the console waits until there is
 something to read; writing a full pipe waits until there is room.
 
+`connect` returns a handle before the connection is made. Writing to it
+waits until it is, and fails if connecting did. Reading a connection waits
+for data, and reads 0 bytes once it has closed or failed.
+
 ## Paths
 
 Paths are separated by `/`. A path that doesn't start with `/` is relative

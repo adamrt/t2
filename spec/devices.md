@@ -148,9 +148,12 @@ queue at the same pace.
 
 ## Network
 
-TCP connections, made with the host's sockets. Nothing waits: a receive
-with no data returns at once, and interrupt bit 4 is raised when a
-connection becomes readable or a listener has someone waiting.
+TCP connections, made with the host's sockets. Nothing waits except
+looking up a host name. A connect returns a connection at once and finishes
+in the background; until it does, a send returns 0 and a receive
+`0xfffffffe`. Interrupt bit 4 is raised when a connection becomes readable,
+a listener has someone waiting, a connect finishes or fails, or a
+connection whose last send returned 0 has room again.
 
 | Port   |   | Meaning                                                    |
 | ------ | - | ---------------------------------------------------------- |
@@ -172,8 +175,8 @@ connection becomes readable or a listener has someone waiting.
 | 5 receive | bytes received, or `0xfffffffe` if none have arrived yet     |
 | 6 close   | 0                                                            |
 
-Failures, including a connection the other side closed, return
-`0xffffffff`.
+Ports are 1 to 65535. Failures, including a connect that didn't succeed
+and a connection the other side closed, return `0xffffffff`.
 
 ## Starting
 

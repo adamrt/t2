@@ -33,7 +33,11 @@ fn main(memory: []u8) -> u32 {
     put(&w, " HTTP/1.0\r\nHost: ");
     put(&w, args[0]);
     put(&w, "\r\nUser-Agent: Terrarium\r\n\r\n");
-    flush(&w);
+    // Connecting finishes in the background, so a failure shows up here.
+    if !write_all(connection, request[0:w.used]) {
+        complain("fetch", "can't connect to", args[0]);
+        return 1;
+    }
     while true {
         var n = read(connection, buffer[:]);
         if n == 0 || n == FAILED {
