@@ -13,6 +13,7 @@ const EVENT_MOUSE_DOWN: u32 = 6;
 const EVENT_MOUSE_UP: u32 = 7;
 const EVENT_WHEEL: u32 = 8;
 const EVENT_CLOSE: u32 = 9;
+const EVENT_RESIZE: u32 = 10;      // x and y are the new width and height
 
 const KEY_BACKSPACE: u32 = 8;
 const KEY_TAB: u32 = 9;
@@ -63,6 +64,8 @@ struct Image {
 
 fn window_open(title: []u8, width: u32, height: u32) -> u32;
 fn window_draw(window: u32, commands: []u32) -> u32;
+// Lets the window be resized by dragging the strip under it.
+fn window_resizable(window: u32, min_width: u32, min_height: u32) -> u32;
 fn event_wait(event: *Event, timeout: u32) -> u32;
 fn available(handle: u32) -> u32;
 fn screen_info(info: *ScreenInfo) -> u32;

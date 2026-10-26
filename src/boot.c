@@ -449,6 +449,7 @@ boot(const BootOptions *o)
     int status = 0;
     const char *typing = o->type;
     uint64_t next_key = h.start + 500000;
+    int drag_step = o->has_drag ? 0 : -1;
     for (;;) {
         if (o->run_for != 0 && now() - h.start > (uint64_t)o->run_for * 1000)
             break;
@@ -465,6 +466,21 @@ boot(const BootOptions *o)
             h.events.events[(h.events.start + h.events.count) % INPUT_QUEUE] = e;
             h.events.count++;
             next_key = now() + 20000;
+        } else if ((typing == NULL || *typing == '\0') && drag_step >= 0 && now() >= next_key + 300000 && h.events.count + 2 < INPUT_QUEUE) {
+            // The drag comes after the typing, in 10 steps: down, moves, up.
+            const int32_t *d = o->drag;
+            int32_t x = d[0] + (d[2] - d[0]) * drag_step / 10, y = d[1] + (d[3] - d[1]) * drag_step / 10;
+            InputQueue *q = &h.events;
+            if (drag_step == 0)
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_MOUSE_DOWN, (uint32_t)x, (uint32_t)y, 1 };
+            q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_MOUSE_MOVE, (uint32_t)x, (uint32_t)y, 1 };
+            if (drag_step == 10) {
+                q->events[(q->start + q->count++) % INPUT_QUEUE] = (InputEvent){ INPUT_MOUSE_UP, (uint32_t)x, (uint32_t)y, 1 };
+                drag_step = -1;
+            } else {
+                drag_step++;
+            }
+            next_key = now() - 300000 + 30000;
         }
         read_console(&m, &h, 0);
         check_timer(&m, &h);

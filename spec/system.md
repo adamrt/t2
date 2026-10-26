@@ -42,6 +42,7 @@ monitor, so the same tools run on both.
 | 32 | accept     | r0 listening handle                               | handle for the next connection |
 | 33 | clipboard_set | r0 text, r1 length (at most 64 KiB)            | 0                          |
 | 34 | clipboard_get | r0 buffer, r1 length                           | the clipboard's length     |
+| 35 | window_resizable | r0 handle, r1 least width, r2 least height  | 0                          |
 
 ## Handles
 
@@ -90,7 +91,8 @@ draw event.
 `event_wait` fills eight words: the kind, the window's handle, x, y, key,
 modifiers, buttons, and 0. The kinds are 1 draw, 2 key down, 3 key up,
 4 text (the key is a character), 5 mouse move, 6 mouse down, 7 mouse up,
-8 wheel, and 9 close (the close box was clicked). Mouse positions are
+8 wheel, 9 close (the close box was clicked), and 10 resize (x and y are
+the new width and height). Mouse positions are
 relative to the window; keys are as in [devices.md](devices.md).
 
 `screen_info` gives the screen's width and height, and the system font's
@@ -101,7 +103,8 @@ permission can set or read, for copying between programs.
 
 The kernel draws each window's frame and title bar. Dragging the title bar
 moves the window, clicking a window brings it to the front, and keys go to
-the front window.
+the front window. After `window_resizable`, a window has a strip under it,
+and dragging the strip changes its size.
 
 ## Tracing
 

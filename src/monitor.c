@@ -153,6 +153,10 @@ main(int argc, char **argv)
                 o.screenshot = argv[++i];
             } else if (strcmp(argv[i], "--type") == 0 && i + 1 < argc) {
                 o.type = argv[++i];
+            } else if (strcmp(argv[i], "--drag") == 0 && i + 1 < argc) {
+                if (sscanf(argv[++i], "%d,%d,%d,%d", &o.drag[0], &o.drag[1], &o.drag[2], &o.drag[3]) != 4)
+                    usage();
+                o.has_drag = true;
             } else {
                 usage();
             }

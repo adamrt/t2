@@ -1,7 +1,8 @@
 // term, a terminal: a window with a shell in it. What you type is edited
 // here a line at a time, drawn after whatever the shell has printed, and
 // sent to the shell when you press Enter. Up and Down bring back earlier
-// lines, and Ctrl-C stops whatever the shell is running.
+// lines, Ctrl-C stops whatever the shell is running, and dragging the strip
+// under the window resizes it.
 
 manifest {
     memory = 512 * KiB;
@@ -9,14 +10,19 @@ manifest {
     allow = "read write spawn window processes recovery audio network";
 }
 
-const COLUMNS = 80;
-const ROWS = 30;
+const MAX_COLUMNS = 160;
+const MAX_ROWS = 64;
 const MARGIN = 4;
 const BACKGROUND: u32 = 0xff1b1d23;
 const FOREGROUND: u32 = 0xffd8d4c8;
 const CURSOR: u32 = 0xffe8c35a;
 
-var cells: [ROWS * COLUMNS]u8;
+// Each row of text takes MAX_COLUMNS bytes, however wide the window is.
+var cells: [MAX_ROWS * MAX_COLUMNS]u8;
+var columns: u32;
+var rows: u32;
+var width: i32;
+var height: i32;
 var cursor_x: u32;
 var cursor_y: u32;
 var typed: [256]u8;
@@ -44,11 +50,16 @@ fn main(memory: []u8) -> u32 {
     }
     font_width = screen.font_width as i32;
     font_height = screen.font_height as i32;
-    var window = window_open("Terminal", COLUMNS * screen.font_width + 2 * MARGIN, ROWS * screen.font_height + 2 * MARGIN);
+    columns = 80;
+    rows = 30;
+    width = columns as i32 * font_width + 2 * MARGIN;
+    height = rows as i32 * font_height + 2 * MARGIN;
+    var window = window_open("Terminal", width as u32, height as u32);
     if window == FAILED {
         complain("term", "can't open a window", "");
         return 1;
     }
+    window_resizable(window, 20 * screen.font_width + 2 * MARGIN, 4 * screen.font_height + 2 * MARGIN);
     canvas_init(&canvas, window, words[:], strings[:]);
     mem_fill(&cells[0], ' ', cells.len);
 
@@ -86,6 +97,9 @@ fn main(memory: []u8) -> u32 {
             if e.kind == EVENT_CLOSE {
                 kill(shell);
                 return 0;
+            }
+            if e.kind == EVENT_RESIZE {
+                resize(e.x, e.y);
             }
             if e.kind == EVENT_DRAW || handle_key(&e) {
                 changed = true;
@@ -214,6 +228,27 @@ fn stop_programs() {
     put_char('\n');
 }
 
+// Fits the text to a new window size, scrolling up if the cursor would be
+// below the bottom.
+fn resize(new_width: i32, new_height: i32) {
+    width = new_width;
+    height = new_height;
+    columns = min(((width - 2 * MARGIN) / font_width) as u32, MAX_COLUMNS);
+    rows = min(((height - 2 * MARGIN) / font_height) as u32, MAX_ROWS);
+    while cursor_y >= rows {
+        scroll();
+        cursor_y -= 1;
+    }
+    if cursor_x > columns {
+        cursor_x = columns;
+    }
+}
+
+fn scroll() {
+    copy(cells[:], cells[MAX_COLUMNS:]);
+    mem_fill(&cells[(MAX_ROWS - 1) * MAX_COLUMNS], ' ', MAX_COLUMNS);
+}
+
 fn put_char(c: u8) {
     if c == '\n' {
         cursor_x = 0;
@@ -230,28 +265,31 @@ fn put_char(c: u8) {
     if c < 32 || c > 126 {
         return;
     }
-    if cursor_x == COLUMNS {
+    if cursor_x >= columns {
         cursor_x = 0;
         new_line();
     }
-    cells[cursor_y * COLUMNS + cursor_x] = c;
+    cells[cursor_y * MAX_COLUMNS + cursor_x] = c;
     cursor_x += 1;
 }
 
 fn new_line() {
-    if cursor_y + 1 < ROWS {
+    if cursor_y + 1 < rows {
         cursor_y += 1;
         return;
     }
-    copy(cells[:], cells[COLUMNS:]);
-    mem_fill(&cells[(ROWS - 1) * COLUMNS], ' ', COLUMNS);
+    // Clear what's below the visible rows, then move everything up one.
+    for r in rows..MAX_ROWS {
+        mem_fill(&cells[r * MAX_COLUMNS], ' ', MAX_COLUMNS);
+    }
+    scroll();
 }
 
 fn draw() {
-    draw_fill(&canvas, 0, 0, COLUMNS * font_width + 2 * MARGIN, ROWS * font_height + 2 * MARGIN, BACKGROUND);
-    for row in 0..ROWS {
-        var line = cells[row * COLUMNS:(row + 1) * COLUMNS];
-        var end: u32 = COLUMNS;
+    draw_fill(&canvas, 0, 0, width, height, BACKGROUND);
+    for row in 0..rows {
+        var line = cells[row * MAX_COLUMNS:row * MAX_COLUMNS + columns];
+        var end = columns;
         while end > 0 && line[end - 1] == ' ' {
             end -= 1;
         }

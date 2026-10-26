@@ -45,6 +45,7 @@ enum EventKind {
     MouseUp,
     Wheel,
     Close,
+    Resize,         // x and y are the new width and height
 }
 
 const GPU_FILL: u32 = 1;
@@ -52,6 +53,7 @@ const GPU_TEXT: u32 = 4;
 
 const TITLE: i32 = 20;
 const BORDER: i32 = 1;
+const GRIP: i32 = 7;                // the strip under a resizable window
 const MAX_WINDOWS = 16;
 const MAX_CLIPS = 32;
 const QUEUE = 64;
@@ -90,6 +92,9 @@ struct Window {
     title_len: u32;
     visible: [MAX_CLIPS]Rect;       // the content not covered by windows above
     visible_count: u32;
+    resizable: bool;
+    min_w: i32;
+    min_h: i32;
     events: [QUEUE]Event;
     event_start: u32;
     event_count: u32;
@@ -107,6 +112,7 @@ var capture: u32;                   // the window a mouse press began in, plus o
 var drag: u32;                      // the window being moved, plus one
 var drag_x: i32;
 var drag_y: i32;
+var resizing: bool;                 // the drag changes the size, not the place
 var mouse_x: i32;
 var mouse_y: i32;
 var screen_dirty: bool;
@@ -148,7 +154,19 @@ fn set_rect(r: *Rect, x: i32, y: i32, w: i32, h: i32) {
 }
 
 fn frame_of(w: *Window, r: *Rect) {
-    set_rect(r, w.content.x - BORDER, w.content.y - TITLE - BORDER, w.content.w + 2 * BORDER, w.content.h + TITLE + 2 * BORDER);
+    var below = BORDER;
+    if w.resizable {
+        below = GRIP;
+    }
+    set_rect(r, w.content.x - BORDER, w.content.y - TITLE - BORDER, w.content.w + 2 * BORDER, w.content.h + TITLE + BORDER + below);
+}
+
+// Lets a window be resized by dragging the strip under it, down to a size.
+fn window_resizable(w: *Window, min_w: u32, min_h: u32) {
+    w.resizable = true;
+    w.min_w = max_i(min_w as i32, 40);
+    w.min_h = max_i(min_h as i32, 20);
+    redraw_all();
 }
 
 fn inside(r: *Rect, x: i32, y: i32) -> bool {
@@ -298,6 +316,13 @@ fn draw_frame(n: u32) {
     draw_fill(box, frame.y + 5, 10, 10, FRAME);
     draw_fill(box + 2, frame.y + 7, 6, 6, bar);
     draw_fill(w.content.x, w.content.y, w.content.w, w.content.h, CONTENT);
+    if w.resizable {
+        // Grip marks at the right end of the strip.
+        var grip_y = w.content.y + w.content.h + 2;
+        for i in 0..3 {
+            draw_fill(w.content.x + w.content.w - 6 - i as i32 * 5, grip_y, 3, 3, bar);
+        }
+    }
 }
 
 // Repaints the desktop and every frame, and asks every window to paint itself.
@@ -538,7 +563,17 @@ fn receive_input() {
         } else if kind == INPUT_MOUSE_MOVE {
             mouse_x = a as i32;
             mouse_y = b as i32;
-            if drag != 0 {
+            if drag != 0 && resizing {
+                var w = &windows[drag - 1];
+                var width = max_i(mouse_x - w.content.x + drag_x, w.min_w);
+                var height = max_i(mouse_y - w.content.y + drag_y, w.min_h);
+                if width != w.content.w || height != w.content.h {
+                    w.content.w = width;
+                    w.content.h = height;
+                    post(w, EventKind.Resize, width, height, 0, 0, 0);
+                    redraw_all();
+                }
+            } else if drag != 0 {
                 var w = &windows[drag - 1];
                 w.content.x = mouse_x - drag_x;
                 w.content.y = max_i(mouse_y - drag_y, TITLE + BORDER);
@@ -590,7 +625,14 @@ fn press(button: u32) {
     }
     if mouse_y < w.content.y {
         drag = n;
+        resizing = false;
         drag_x = mouse_x - w.content.x;
         drag_y = mouse_y - w.content.y;
+    } else if w.resizable && mouse_y >= w.content.y + w.content.h {
+        // The grip: remember how far from the corner the drag began.
+        drag = n;
+        resizing = true;
+        drag_x = w.content.w - (mouse_x - w.content.x);
+        drag_y = w.content.h - (mouse_y - w.content.y);
     }
 }

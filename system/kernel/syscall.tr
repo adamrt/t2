@@ -145,6 +145,7 @@ enum Call {
     Accept,
     ClipboardSet,
     ClipboardGet,
+    WindowResizable,
 }
 
 // Text copied by one program for another to paste.
@@ -335,7 +336,7 @@ fn needs(p: *Process, call: Call) -> bool {
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.ClipboardGet as u32 && !needs(p, number as Call) {
+    if number <= Call.WindowResizable as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -538,6 +539,13 @@ fn system_call(p: *Process, number: u32) {
             r[1] = io_read(0x60);
             result = io_read(0x64);
         }
+        Call.WindowResizable => {
+            var o = handle_object(p, r[0]);
+            if o != null && o.kind == ObjectKind.Window {
+                window_resizable(o.window, r[1], r[2]);
+                result = 0;
+            }
+        }
         Call.ClipboardSet => {
             var bytes = user_bytes(p, r[0], r[1]);
             if bytes.ptr != null && bytes.len <= clipboard.len {
@@ -639,6 +647,7 @@ fn call_name(number: u32) -> []u8 {
         32 => { return "accept"; }
         33 => { return "clipboard_set"; }
         34 => { return "clipboard_get"; }
+        35 => { return "window_resizable"; }
     }
     return "call";
 }

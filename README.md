@@ -97,7 +97,8 @@ one with `-s`) puts label names in traces and fault reports.
 a screen without a window, `--type text` presses keys once it has started,
 `--run-for ms` stops it, and `--screenshot out.png` saves the screen. In
 `--type`, a newline is Enter, `\x1b` is Escape, and other control characters
-are Ctrl with a letter.
+are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
+typing.
 
 The assembler and compiler build themselves from seeds in `bootstrap/`; see
 its README.

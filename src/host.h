@@ -41,6 +41,8 @@ typedef struct {
     const char *screenshot; // where to save the screen when stopping
     const char *type;       // keys to press once the system has started
     bool mute;              // a silent sound device, even with a window
+    int32_t drag[4];        // a mouse drag after the typing: x0, y0, x1, y1
+    bool has_drag;
 } BootOptions;
 
 int boot(const BootOptions *options);

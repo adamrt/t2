@@ -258,6 +258,14 @@ _clipboard_get:
     sys 34
     return
 
+; fn window_resizable(window: u32, min_width: u32, min_height: u32) -> u32;
+_window_resizable:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    sys 35
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]
