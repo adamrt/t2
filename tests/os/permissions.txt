@@ -1,0 +1,5 @@
+manifest /bin/edit
+manifest /bin/echo
+manifest /bin/tc
+ls /src/scripts
+exit

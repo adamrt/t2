@@ -3,6 +3,7 @@
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
+    allow = "read write spawn window processes";
 }
 
 const WIDTH = 150;

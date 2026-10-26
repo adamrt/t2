@@ -11,6 +11,7 @@
 manifest {
     memory = 2 * MiB;
     stack = 32 * KiB;
+    allow = "read write window";
 }
 
 const CAPACITY = 1 * MiB;

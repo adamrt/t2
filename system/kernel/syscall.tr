@@ -190,8 +190,53 @@ fn path_argument(p: *Process, address: u32, length: u32, out: []u8) -> []u8 {
     return resolve_path(p, text, out);
 }
 
+// Whether the process may do something, saying so on the console if not.
+fn allowed(p: *Process, permission: u32, what: []u8) -> bool {
+    if p.permissions & permission != 0 {
+        return true;
+    }
+    put(&log, p.name[0:p.name_len]);
+    put(&log, ": not allowed to ");
+    put(&log, what);
+    put_byte(&log, '\n');
+    flush(&log);
+    return false;
+}
+
+// Whether the process may make the call. Calls not listed need nothing.
+fn needs(p: *Process, call: Call) -> bool {
+    match call {
+        Call.Open => {
+            if p.regs[2] == 0 {
+                return allowed(p, ALLOW_READ, "read files");
+            }
+            return allowed(p, ALLOW_WRITE, "write files");
+        }
+        Call.Info, Call.List, Call.SetDir => {
+            return allowed(p, ALLOW_READ, "read files");
+        }
+        Call.Remove, Call.MakeDir => {
+            return allowed(p, ALLOW_WRITE, "write files");
+        }
+        Call.Spawn => {
+            return allowed(p, ALLOW_SPAWN, "start programs");
+        }
+        Call.Processes, Call.Kill => {
+            return allowed(p, ALLOW_PROCESSES, "see or stop other processes");
+        }
+        Call.WindowOpen => {
+            return allowed(p, ALLOW_WINDOW, "open windows");
+        }
+    }
+    return true;
+}
+
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
+    if number <= Call.Seek as u32 && !needs(p, number as Call) {
+        r[0] = FAILED;
+        return;
+    }
     var result = FAILED;
     var path_buffer: [PATH_SIZE]u8;
     var path: []u8;

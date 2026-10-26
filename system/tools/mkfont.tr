@@ -13,6 +13,7 @@
 manifest {
     memory = 1 * MiB;
     stack = 16 * KiB;
+    allow = "read write";
 }
 
 var arena: Arena;

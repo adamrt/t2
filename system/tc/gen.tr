@@ -3,6 +3,9 @@
 // Every expression leaves its value in r0, or a slice in r0 (pointer) and r1
 // (length), or a struct or array as its address in r0. Temporaries go on the
 // stack, and r7 points at the current function's frame.
+//
+// Only functions that main can reach are generated: starting from main, each
+// call puts its function in the queue.
 
 struct StringData {
     node: *Node;
@@ -22,15 +25,28 @@ var first_string: *StringData;
 var last_string: *StringData;
 var string_count: u32;
 var immediate: i32;
+var queue: []*Sym;
+var queue_start: u32;
+var queue_end: u32;
 
 fn generate() {
     put(&out, ".code\n");
+    var functions: u32 = 0;
     var s = first_sym;
     while s != null {
-        if s.kind == SymKind.Fn && s.node.b != null {
-            gen_function(s);
+        if s.kind == SymKind.Fn {
+            functions += 1;
         }
         s = s.after;
+    }
+    queue = new(&arena, *Sym, functions);
+    use_function(find_sym("main"));
+    while queue_start < queue_end {
+        var f = queue[queue_start];
+        queue_start += 1;
+        if f.node.b != null {
+            gen_function(f);
+        }
     }
 
     put(&out, "\n.data\n");
@@ -76,6 +92,9 @@ fn generate() {
     }
     if manifest_stack != null {
         emit_value(".stack ", manifest_stack.value);
+    }
+    if manifest_allow != null {
+        emit_value(".allow ", manifest_allow.value);
     }
 }
 
@@ -641,7 +660,16 @@ fn gen_value(e: *Node) {
     }
 }
 
+fn use_function(s: *Sym) {
+    if !s.used {
+        s.used = true;
+        queue[queue_end] = s;
+        queue_end += 1;
+    }
+}
+
 fn emit_call(s: *Sym) {
+    use_function(s);
     start_line();
     put(&out, "call _");
     put(&out, s.name);

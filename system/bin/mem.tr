@@ -3,6 +3,7 @@
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
+    allow = "recovery";
 }
 
 fn main(memory: []u8) -> u32 {

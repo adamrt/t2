@@ -52,6 +52,7 @@ struct Sym {
     ty: *Type;          // the struct or enum, the constant's or global's type, or the result
     value: u32;         // a constant's value
     state: u32;         // 0 new, 1 being declared, 2 declared
+    used: bool;         // a function that main can reach, so it gets generated
     next: *Sym;         // next in the same bucket
     after: *Sym;        // next in declaration order
 }
@@ -63,6 +64,7 @@ var first_sym: *Sym;
 var last_sym: *Sym;
 var manifest_memory: *Node;
 var manifest_stack: *Node;
+var manifest_allow: *Node;
 
 var t_u8: *Type;
 var t_u16: *Type;
@@ -272,6 +274,8 @@ fn check_program() {
                         manifest_memory = entry;
                     } else if text_equal(entry.name, "stack") {
                         manifest_stack = entry;
+                    } else if text_equal(entry.name, "allow") {
+                        manifest_allow = entry;
                     } else {
                         fail_name(entry, "unknown manifest entry", entry.name);
                     }
@@ -293,6 +297,9 @@ fn check_program() {
     if manifest_stack != null {
         manifest_stack.value = const_value(manifest_stack.a, t_u32);
     }
+    if manifest_allow != null {
+        manifest_allow.value = permissions(manifest_allow.a);
+    }
 
     s = first_sym;
     while s != null {
@@ -310,6 +317,43 @@ fn check_program() {
     if p == null || p.next != null || p.ty != slice_of(t_u8) || main.ty != t_u32 {
         fail(main.node, "main must be 'fn main(memory: []u8) -> u32'");
     }
+}
+
+// Turns a list of permission names, like "read write", into their bits.
+fn permissions(e: *Node) -> u32 {
+    if e.kind != N.Str {
+        fail(e, "allow takes a list of permissions, like \"read write\"");
+    }
+    var bits: u32 = 0;
+    var rest = e.name;
+    while rest.len > 0 {
+        if rest[0] == ' ' {
+            rest = rest[1:];
+            continue;
+        }
+        var end: u32 = 0;
+        while end < rest.len && rest[end] != ' ' {
+            end += 1;
+        }
+        var word = rest[0:end];
+        rest = rest[end:];
+        if text_equal(word, "read") {
+            bits |= 1;
+        } else if text_equal(word, "write") {
+            bits |= 2;
+        } else if text_equal(word, "spawn") {
+            bits |= 4;
+        } else if text_equal(word, "window") {
+            bits |= 8;
+        } else if text_equal(word, "processes") {
+            bits |= 16;
+        } else if text_equal(word, "recovery") {
+            bits |= 32;
+        } else {
+            fail_name(e, "unknown permission", word);
+        }
+    }
+    return bits;
 }
 
 fn declare(s: *Sym) {

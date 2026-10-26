@@ -4,6 +4,7 @@
 manifest {
     memory = 256 * KiB;
     stack = 16 * KiB;
+    allow = "window";
 }
 
 const WIDTH = 360;

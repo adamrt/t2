@@ -4,6 +4,7 @@
 manifest {
     memory = 256 * KiB;
     stack = 32 * KiB;
+    allow = "read spawn window";
 }
 
 const WIDTH = 360;

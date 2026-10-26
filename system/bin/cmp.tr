@@ -3,6 +3,7 @@
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
+    allow = "read";
 }
 
 var a_buffer: [16 * KiB]u8;

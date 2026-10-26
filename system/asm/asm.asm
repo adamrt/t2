@@ -19,7 +19,7 @@ SYS_ARG = 6
 
 STDERR = 2
 GUARD = 0x10000
-HEADER_SIZE = 28
+HEADER_SIZE = 32
 DEFAULT_STACK = 0x10000
 
 SOURCE_SIZE = 0x800000
@@ -69,6 +69,7 @@ D_ZERO = 5
 D_ALIGN = 6
 D_MEMORY = 7
 D_STACK = 8
+D_ALLOW = 9
 
 OP_PLUS = 30
 OP_MINUS = 31
@@ -274,6 +275,8 @@ assemble:
     r1 = memory_set
     [r1] = r0
     r1 = stack_set
+    [r1] = r0
+    r1 = allow_set
     [r1] = r0
     r4 = files
     r5 = file_count
@@ -1826,7 +1829,17 @@ directive_not_section:
     if r4 == r3 goto directive_align
     r3 = D_MEMORY
     if r4 == r3 goto directive_memory
+    r3 = D_ALLOW
+    if r4 == r3 goto directive_allow
     r0 = stack_set
+    r1 = [r0]
+    if r1 != 0 goto directive_twice
+    r1 = 1
+    [r0] = r1
+    [r0 + 4] = r5
+    goto directive_done
+directive_allow:
+    r0 = allow_set
     r1 = [r0]
     if r1 != 0 goto directive_twice
     r1 = 1
@@ -1939,8 +1952,11 @@ write_executable:
     call label_address
     r4 = header
     [r4 + 4] = r0
-    r0 = 0x31585254             ; "TRX1"
+    r0 = 0x32585254             ; "TRX2"
     [r4] = r0
+    r0 = allow_set
+    r0 = [r0 + 4]
+    [r4 + 28] = r0
     r1 = offsets
     r5 = [r1]
     [r4 + 8] = r5               ; code
@@ -2248,7 +2264,7 @@ keywords:
 
 directives:
     .byte 4, "code", 4, "data", 3, "bss", 4, "byte", 4, "word", 4, "zero"
-    .byte 5, "align", 6, "memory", 5, "stack"
+    .byte 5, "align", 6, "memory", 5, "stack", 5, "allow"
     .byte 0
 
 escapes:
@@ -2427,6 +2443,8 @@ memory_set:
     .zero 8                     ; set?, value
 stack_set:
     .zero 8
+allow_set:
+    .zero 8
 symbol_count:
     .zero 4
 cursor:
@@ -2444,7 +2462,7 @@ file_count:
 files:
     .zero 1024                  ; MAX_FILES * FILE_SIZE: name, name length, start, end
 header:
-    .zero 28
+    .zero 32
 zero_page:
     .zero 256
 number_buffer:
@@ -2477,3 +2495,4 @@ data:
 
 .memory 0x1000000
 .stack 0x4000
+.allow 3                       ; read and write files

@@ -17,6 +17,16 @@ const ARGS_SIZE = 1024;
 const PATH_SIZE = 256;
 const PROCESS_NAME_SIZE = 32;
 const PAGE: u32 = 4096;
+const HEADER: u32 = 32;
+const RESERVE: u32 = 2 * MiB;       // memory only recovery programs can use
+
+// Permissions, as in a program's manifest.
+const ALLOW_READ: u32 = 1;
+const ALLOW_WRITE: u32 = 2;
+const ALLOW_SPAWN: u32 = 4;
+const ALLOW_WINDOW: u32 = 8;
+const ALLOW_PROCESSES: u32 = 16;
+const ALLOW_RECOVERY: u32 = 32;
 
 struct Process {
     state: State;
@@ -39,6 +49,7 @@ struct Process {
     status: u32;
     wake_time: u32;         // when a sleep ends, or 0
     cycles: u32;
+    permissions: u32;
 }
 
 var processes: [MAX_PROCESSES]Process;
@@ -107,8 +118,8 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     if !lookup(path, &f) || f.kind != KIND_FILE {
         return null;
     }
-    var header: [28]u8;
-    if read_at(&f, 0, header[:]) != 28 || !text_equal(header[0:4], "TRX1") {
+    var header: [HEADER]u8;
+    if read_at(&f, 0, header[:]) != HEADER || !text_equal(header[0:4], "TRX2") {
         return null;
     }
     var entry = get_word(header[:], 4);
@@ -117,8 +128,13 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     var bss = get_word(header[:], 16);
     var stack = get_word(header[:], 20);
     var memory = get_word(header[:], 24);
+    // A program gets what its manifest asks for, but never more than its parent has.
+    var permissions = get_word(header[:], 28);
+    if parent != null {
+        permissions &= parent.permissions;
+    }
     var data_size = memory - code;
-    if code % 4 != 0 || memory % 4 != 0 || memory < code || 28 + code + data > f.size {
+    if code % 4 != 0 || memory % 4 != 0 || memory < code || HEADER + code + data > f.size {
         return null;
     }
     if align4(data) + align4(bss) + stack > data_size || entry < GUARD || entry - GUARD >= code || args.len > ARGS_SIZE {
@@ -136,14 +152,14 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
         return null;
     }
     mem_fill(p as *u8, 0, size_of(Process));
-    var region = reserve(memory, p);
+    var region = reserve(memory, p, permissions & ALLOW_RECOVERY != 0);
     if region == FAILED {
         return null;
     }
     var bytes = physical_bytes(region, memory);
     mem_fill(bytes.ptr, 0, memory);
-    read_at(&f, 28, bytes[0:code]);
-    read_at(&f, 28 + code, bytes[code:code + data]);
+    read_at(&f, HEADER, bytes[0:code]);
+    read_at(&f, HEADER + code, bytes[code:code + data]);
 
     next_id += 1;
     p.id = next_id;
@@ -151,6 +167,7 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     p.memory = memory;
     p.code_size = code;
     p.stack_size = stack;
+    p.permissions = permissions;
     p.pc = entry;
     p.regs[0] = GUARD + align4(data) + align4(bss);
     p.regs[1] = GUARD + data_size - stack;
@@ -246,10 +263,18 @@ fn memory_used() -> u32 {
 }
 
 // Finds a run of size bytes for owner, compacting memory if that helps.
-// Returns its physical address, or FAILED.
-fn reserve(request: u32, owner: *Process) -> u32 {
+// Only recovery programs may dip into the reserve. Returns the run's physical
+// address, or FAILED.
+fn reserve(request: u32, owner: *Process, recovery: bool) -> u32 {
     var size = (request + PAGE - 1) / PAGE * PAGE;
-    if region_count == MAX_PROCESSES || size > memory_end - memory_start - memory_used() {
+    var available = memory_end - memory_start - memory_used();
+    if !recovery {
+        if available < RESERVE {
+            return FAILED;
+        }
+        available -= RESERVE;
+    }
+    if region_count == MAX_PROCESSES || size > available {
         return FAILED;
     }
     var base = memory_start;

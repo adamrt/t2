@@ -71,7 +71,8 @@ fn main(memory: []u8) -> u32 {
     handles[0] = console;
     handles[1] = console;
     handles[2] = console;
-    if spawn_process(null, "/bin/init", "", handles[:]) == null {
+    var init = spawn_process(null, "/bin/init", "", handles[:]);
+    if init == null {
         panic("can't start /bin/init");
     }
     schedule();

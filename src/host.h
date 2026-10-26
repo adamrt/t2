@@ -4,7 +4,6 @@
 
 #include <stdio.h>
 
-#define HEADER_SIZE 28
 #define FAILED      0xffffffffu
 
 typedef struct {
@@ -14,6 +13,8 @@ typedef struct {
     uint32_t bss;
     uint32_t stack;
     uint32_t memory;
+    uint32_t permissions;
+    uint32_t header_size;   // 28 for TRX1, 32 for TRX2
     const uint8_t *code_bytes;
     const uint8_t *data_bytes;
 } Executable;

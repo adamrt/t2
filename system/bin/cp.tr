@@ -5,6 +5,7 @@
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
+    allow = "read write";
 }
 
 var buffer: [32 * KiB]u8;

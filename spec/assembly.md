@@ -152,6 +152,7 @@ Code can't be read as data, so strings and tables go in `.data`.
 .align 4                    ; pad with zeros to a multiple of 4
 .memory 0x100000            ; total memory the program needs
 .stack 0x4000               ; stack size within that memory
+.allow 3                    ; permissions, see executable.md
 ```
 
 `.byte` and `.word` belong in `.data`. `.zero` and `.align` work in `.data`

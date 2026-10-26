@@ -14,7 +14,8 @@ fn sum(values: []u32) -> u32 {
 ```
 
 A program is a set of files compiled together. Every top-level name is
-visible in every file, and declarations can appear in any order.
+visible in every file, and declarations can appear in any order. Only the
+functions `main` can reach end up in the program.
 
 ## Types
 
@@ -122,8 +123,13 @@ A program declares its memory once:
 manifest {
     memory = 4 * MiB;
     stack = 64 * KiB;
+    allow = "read write window";
 }
 ```
+
+`allow` lists what the program may do: `read`, `write`, `spawn`, `window`,
+`processes` and `recovery` (see [executable.md](executable.md)). Without it,
+a program may do none of those.
 
 `main` receives all of the program's working memory as a slice and returns
 its exit status:

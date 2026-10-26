@@ -5,6 +5,7 @@
 manifest {
     memory = 1 * MiB;
     stack = 64 * KiB;
+    allow = "write window";
 }
 
 const WIDTH = 320;

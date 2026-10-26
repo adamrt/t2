@@ -1,0 +1,25 @@
+Terrarium: 49152 KiB for programs
+
+Welcome to Terrarium. Type 'help' for help.
+
+/> /bin/edit
+  memory  2048 KiB
+  stack   32 KiB
+  code    14332 bytes
+  data    1094435 bytes
+  allows  read write window 
+/> /bin/echo
+  memory  64 KiB
+  stack   16 KiB
+  code    3072 bytes
+  data    4161 bytes
+  allows  nothing
+/> /bin/tc
+  memory  32768 KiB
+  stack   256 KiB
+  code    70056 bytes
+  data    22542 bytes
+  allows  read write 
+/> build-asm
+build-tc
+/> Terrarium: every process has ended

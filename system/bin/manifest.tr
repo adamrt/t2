@@ -1,0 +1,66 @@
+// manifest shows what a program declares about itself: the memory it
+// reserves, its stack, the size of its code and data, and what it's allowed
+// to do.
+//
+//     manifest /bin/edit
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+    allow = "read";
+}
+
+fn main(memory: []u8) -> u32 {
+    var name: [256]u8;
+    var n = arg(0, name[:]);
+    if arg_count() != 1 || n > 256 {
+        complain("manifest", "usage: manifest program", "");
+        return 2;
+    }
+    var path = name[0:n];
+    var file = open(path, MODE_READ);
+    var header: [32]u8;
+    if file == FAILED || read(file, header[:]) != 32 || !text_equal(header[0:4], "TRX2") {
+        complain("manifest", "not a program:", path);
+        return 1;
+    }
+    var out: Writer;
+    var buffer: [512]u8;
+    writer_init(&out, STDOUT, buffer[:]);
+    put(&out, path);
+    put(&out, "\n  memory  ");
+    put_u32(&out, word(header[:], 24) / KiB);
+    put(&out, " KiB\n  stack   ");
+    put_u32(&out, word(header[:], 20) / KiB);
+    put(&out, " KiB\n  code    ");
+    put_u32(&out, word(header[:], 8));
+    put(&out, " bytes\n  data    ");
+    put_u32(&out, word(header[:], 12) + word(header[:], 16));
+    put(&out, " bytes\n  allows  ");
+    var permissions = word(header[:], 28);
+    var names = "read write spawn window processes recovery";
+    var bit: u32 = 1;
+    var start: u32 = 0;
+    var any = false;
+    for i in 0..names.len + 1 {
+        if i == names.len || names[i] == ' ' {
+            if permissions & bit != 0 {
+                put(&out, names[start:i]);
+                put_byte(&out, ' ');
+                any = true;
+            }
+            bit <<= 1;
+            start = i + 1;
+        }
+    }
+    if !any {
+        put(&out, "nothing");
+    }
+    put_byte(&out, '\n');
+    flush(&out);
+    return 0;
+}
+
+fn word(bytes: []u8, offset: u32) -> u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+}

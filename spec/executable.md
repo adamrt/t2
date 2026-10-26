@@ -1,19 +1,43 @@
 # Executables
 
 An executable is a header followed by the program's code and initialized
-data. All fields are little-endian 32-bit words.
+data. All fields are little-endian 32-bit words. The header is the
+program's manifest: anyone can read what it needs and what it may do.
 
 | Offset | Field  | Meaning                                         |
 | ------ | ------ | ----------------------------------------------- |
-| 0      | magic  | the bytes `TRX1`                                |
+| 0      | magic  | the bytes `TRX2`                                |
 | 4      | entry  | code address where execution starts             |
 | 8      | code   | size of the code in bytes, a multiple of 4      |
 | 12     | data   | size of the initialized data in bytes           |
 | 16     | bss    | size of the zero-filled data in bytes           |
 | 20     | stack  | size of the stack in bytes                      |
 | 24     | memory | total memory the program needs                  |
+| 28     | allow  | what the program may do (below)                 |
 
-The code follows at offset 28, then the data. Nothing else is in the file.
+The code follows at offset 32, then the data. Nothing else is in the file.
+(`TRX1` files, which only the seed tools still are, have no `allow` word
+and a 28-byte header.)
+
+## Permissions
+
+| Bit | Name      | Lets the program                                     |
+| --- | --------- | ---------------------------------------------------- |
+| 1   | read      | read files and directories                           |
+| 2   | write     | create, change and remove files and directories      |
+| 4   | spawn     | start programs                                       |
+| 8   | window    | open windows                                         |
+| 16  | processes | list and stop other processes                        |
+| 32  | recovery  | use the memory kept back for recovery                |
+
+A program gets the permissions its manifest asks for, but never more than
+the program that started it has. A call it isn't allowed to make fails, and
+the kernel says so on the console. Using its handles, its own memory, pipes,
+time and sleep needs no permission.
+
+The kernel keeps 2 MiB of program memory back, which only programs with the
+`recovery` permission can reserve, so `ps`, `kill` and `monitor` still start
+when everything else has filled memory.
 
 ## Memory
 

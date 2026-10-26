@@ -5,6 +5,7 @@
 manifest {
     memory = 4 * MiB;
     stack = 32 * KiB;
+    allow = "read window";
 }
 
 const SLOTS = 96;               // decoded tiles kept at once

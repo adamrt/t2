@@ -8,6 +8,7 @@
 
 manifest {
     memory = 48 * MiB;
+    allow = "read write";
 }
 
 const BLOCK = 4096;

@@ -4,6 +4,7 @@
 manifest {
     memory = 256 * KiB;
     stack = 32 * KiB;
+    allow = "window processes recovery";
 }
 
 const WIDTH = 440;
