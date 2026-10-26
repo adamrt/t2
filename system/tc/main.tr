@@ -1,9 +1,11 @@
 // tc, the Terrarium compiler.
 //
-//     tc -o program.asm file.tr...
+//     tc [-L library] -o program.asm file.tr...
 //
-// Reads every file, checks the whole program, and writes assembly for the
-// Terrarium assembler. The language is described in spec/language.md.
+// Reads every file, and the modules they import from the library (/lib
+// unless -L says otherwise), checks the whole program, and writes assembly
+// for the Terrarium assembler. The language is described in
+// spec/language.md.
 
 manifest {
     memory = 32 * MiB;
@@ -12,15 +14,23 @@ manifest {
 }
 
 const MAX_FILES = 64;
+const MAX_MODULES = 32;
+const MAX_IMPORTS = 16;
 
 struct SourceFile {
     name: []u8;
     text: []u8;
+    module: u32;                    // 0 for the program's own files
+    imports: [MAX_IMPORTS]u32;
+    import_count: u32;
 }
 
 var arena: Arena;
 var files: [MAX_FILES]SourceFile;
 var file_count: u32;
+var modules: [MAX_MODULES][]u8;     // their names; module 0 is the program
+var module_count: u32;
+var library: []u8;
 var errors: Writer;
 var error_buffer: [512]u8;
 
@@ -29,31 +39,35 @@ fn main(memory: []u8) -> u32 {
     writer_init(&errors, STDERR, error_buffer[:]);
 
     var output: []u8;
+    library = "/lib";
+    module_count = 1;
     var i: u32 = 0;
     while i < arg_count() {
         var text = argument(i);
         i += 1;
-        if text_equal(text, "-o") {
+        if text_equal(text, "-o") || text_equal(text, "-L") {
             if i == arg_count() {
                 usage();
             }
-            output = argument(i);
+            if text_equal(text, "-o") {
+                output = argument(i);
+            } else {
+                library = argument(i);
+            }
             i += 1;
         } else {
-            if file_count == MAX_FILES {
-                fail_plain("too many files");
-            }
-            files[file_count].name = text;
-            files[file_count].text = read_source(text);
-            file_count += 1;
+            add_file(text, 0);
         }
     }
     if output.len == 0 || file_count == 0 {
         usage();
     }
 
-    for f in 0..file_count {
+    // Parsing a file can load the modules it imports, which adds files.
+    var f: u32 = 0;
+    while f < file_count {
         parse_file(f);
+        f += 1;
     }
     check_program();
 
@@ -70,7 +84,70 @@ fn main(memory: []u8) -> u32 {
 }
 
 fn usage() {
-    fail_plain("usage: tc -o program.asm file.tr...");
+    fail_plain("usage: tc [-L library] -o program.asm file.tr...");
+}
+
+fn add_file(path: []u8, module: u32) {
+    if file_count == MAX_FILES {
+        fail_plain("too many files");
+    }
+    files[file_count].name = path;
+    files[file_count].text = read_source(path);
+    files[file_count].module = module;
+    file_count += 1;
+}
+
+// The module with this name. The first time, its file is found in the
+// library and added to those to parse.
+fn load_module(name: []u8) -> u32 {
+    var m = module_named(name);
+    if m != 0 {
+        return m;
+    }
+    if module_count == MAX_MODULES {
+        parse_fail("too many modules");
+    }
+    var path = alloc_bytes(&arena, library.len + name.len + 4);
+    copy(path, library);
+    path[library.len] = '/';
+    copy(path[library.len + 1:], name);
+    copy(path[library.len + 1 + name.len:], ".tr");
+    var file = open(path, 0);
+    if file == FAILED {
+        error_start(tok.file, tok.line);
+        put(&errors, "no module '");
+        put(&errors, name);
+        put(&errors, "' in ");
+        put(&errors, library);
+        error_end();
+    }
+    close(file);
+    m = module_count;
+    modules[m] = name;
+    module_count += 1;
+    add_file(path, m);
+    return m;
+}
+
+// The loaded module with this name, or 0.
+fn module_named(name: []u8) -> u32 {
+    for m in 1..module_count {
+        if text_equal(modules[m], name) {
+            return m;
+        }
+    }
+    return 0;
+}
+
+// The module a file imports under this name, or 0.
+fn imported(file: u32, name: []u8) -> u32 {
+    var f = &files[file];
+    for i in 0..f.import_count {
+        if text_equal(modules[f.imports[i]], name) {
+            return f.imports[i];
+        }
+    }
+    return 0;
 }
 
 fn argument(index: u32) -> []u8 {

@@ -2279,11 +2279,12 @@ directives:
 escapes:
     .byte 'n', 10, 't', 9, 'r', 13, '0', 0, '\\', 92, '\'', 39, '"', 34, 0
 
-; 1 for digits, 2 for letters and '_', 0 for everything else.
+; 2 for letters and '_', which start names; 1 for digits and '.', which
+; only continue them, as in _io.write; 0 for everything else.
 char_classes:
     .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0
     .byte 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0
     .byte 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
     .byte 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 2

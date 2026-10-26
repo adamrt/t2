@@ -9,7 +9,7 @@ enum Tok {
 
     KwFn, KwStruct, KwEnum, KwConst, KwVar, KwManifest, KwIf, KwElse, KwWhile,
     KwFor, KwIn, KwMatch, KwBreak, KwContinue, KwReturn, KwTrue, KwFalse,
-    KwNull, KwAs, KwNew, KwSizeOf,
+    KwNull, KwAs, KwNew, KwSizeOf, KwImport,
 
     LParen, RParen, LBracket, RBracket, LBrace, RBrace,
     Comma, Semicolon, Colon, Dot, DotDot, Arrow, FatArrow,
@@ -139,6 +139,7 @@ fn keyword(text: []u8) -> Tok {
         'i' => {
             if text_equal(text, "if") { return Tok.KwIf; }
             if text_equal(text, "in") { return Tok.KwIn; }
+            if text_equal(text, "import") { return Tok.KwImport; }
         }
         'm' => {
             if text_equal(text, "match") { return Tok.KwMatch; }

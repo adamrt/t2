@@ -17,8 +17,8 @@ Welcome to Terrarium. Type 'help' for help.
 /> /bin/tc
   memory  32768 KiB
   stack   256 KiB
-  code    72092 bytes
-  data    22541 bytes
+  code    76960 bytes
+  data    27635 bytes
   allows  read write 
 /> build-asm
 build-tc

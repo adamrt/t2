@@ -13,7 +13,7 @@ enum N {
     Manifest,       // list: items
 
     // Types
-    TypeName,       // name
+    TypeName,       // name, module if it has one
     TypePtr,        // a: element
     TypeSlice,      // a: element
     TypeArray,      // a: length, b: element
@@ -37,7 +37,7 @@ enum N {
     Int,            // value
     Fixed,          // value, in 16.16
     Str,            // name: bytes, value: label number
-    Name,           // name, then local or sym
+    Name,           // name, module once io.write becomes one, then local or sym
     Bool,           // value
     Null,
     SizeOf,         // a: type
@@ -72,6 +72,7 @@ struct Node {
     sym: *Sym;
     local: *Local;
     local2: *Local;
+    module: u32;        // the module a name was found in, or 0 for the file's own
 }
 
 struct List {
@@ -135,6 +136,18 @@ fn expect_name() -> []u8 {
 
 fn parse_file(file: u32) {
     lex_start(file);
+    var f = &files[file];
+    while take(Tok.KwImport) {
+        var m = load_module(expect_name());
+        expect(Tok.Semicolon, ";");
+        if imported(file, modules[m]) == 0 {
+            if f.import_count == MAX_IMPORTS {
+                parse_fail("too many imports");
+            }
+            f.imports[f.import_count] = m;
+            f.import_count += 1;
+        }
+    }
     while tok.kind != Tok.End {
         append(&declarations, parse_declaration());
     }
@@ -237,6 +250,9 @@ fn parse_declaration() -> *Node {
         n.list = entries.first;
         return n;
     }
+    if tok.kind == Tok.KwImport {
+        parse_fail("imports go at the top of the file");
+    }
     parse_fail("expected a declaration");
     return null;
 }
@@ -281,6 +297,17 @@ fn parse_type() -> *Node {
     }
     n = node(N.TypeName);
     n.name = expect_name();
+    if take(Tok.Dot) {
+        n.module = imported(n.file, n.name);
+        if n.module == 0 {
+            error_start(n.file, n.line);
+            put(&errors, "no module '");
+            put(&errors, n.name);
+            put(&errors, "' is imported here");
+            error_end();
+        }
+        n.name = expect_name();
+    }
     return n;
 }
 

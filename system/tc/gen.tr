@@ -41,7 +41,7 @@ fn generate() {
         s = s.after;
     }
     queue = new(&arena, *Sym, functions);
-    use_function(find_sym("main"));
+    use_function(find_sym(0, "main"));
     while queue_start < queue_end {
         var f = queue[queue_start];
         queue_start += 1;
@@ -76,8 +76,7 @@ fn generate() {
     while s != null {
         if s.kind == SymKind.Global && s.used {
             emit(".align 4");
-            put_byte(&out, '_');
-            put(&out, s.name);
+            put_symbol(s);
             put(&out, ":\n");
             var size = (s.ty.size + 3) & ~3;
             if size < 4 {
@@ -104,8 +103,8 @@ fn gen_function(s: *Sym) {
     return_label = new_label();
     bounds_label = 0;
     loop_depth = 0;
-    put(&out, "\n_");
-    put(&out, n.name);
+    put_byte(&out, '\n');
+    put_symbol(s);
     put(&out, ":\n");
     emit("push r7");
     emit("r7 = sp");
@@ -668,6 +667,16 @@ fn use_function(s: *Sym) {
     }
 }
 
+// A name's label: write is _write, and write in the module io is _io.write.
+fn put_symbol(s: *Sym) {
+    put_byte(&out, '_');
+    if s.module != 0 {
+        put(&out, modules[s.module]);
+        put_byte(&out, '.');
+    }
+    put(&out, s.name);
+}
+
 // Puts the address of a global or function in r0, and marks it used.
 fn emit_symbol(s: *Sym) {
     if s.kind == SymKind.Fn {
@@ -676,16 +685,16 @@ fn emit_symbol(s: *Sym) {
         s.used = true;
     }
     start_line();
-    put(&out, "r0 = _");
-    put(&out, s.name);
+    put(&out, "r0 = ");
+    put_symbol(s);
     end_line();
 }
 
 fn emit_call(s: *Sym) {
     use_function(s);
     start_line();
-    put(&out, "call _");
-    put(&out, s.name);
+    put(&out, "call ");
+    put_symbol(s);
     end_line();
 }
 

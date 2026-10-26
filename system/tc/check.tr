@@ -299,17 +299,17 @@ fn lookup(e: *Node) -> *Type {
         }
         local = local.next;
     }
-    if text_equal(e.name, "KiB") {
+    if e.module == 0 && text_equal(e.name, "KiB") {
         set_const(e, 1024);
         return t_untyped;
     }
-    if text_equal(e.name, "MiB") {
+    if e.module == 0 && text_equal(e.name, "MiB") {
         set_const(e, 1048576);
         return t_untyped;
     }
-    var s = find_sym(e.name);
+    var s = find_sym(module_of(e), e.name);
     if s == null {
-        fail_name(e, "unknown name", e.name);
+        unknown_name(e, "unknown name");
     }
     declare(s);
     e.sym = s;
@@ -329,16 +329,62 @@ fn lookup(e: *Node) -> *Type {
     return null;
 }
 
+// Fails for a name that isn't defined. If one of the modules the file
+// imports has it, the message says so.
+fn unknown_name(e: *Node, message: []u8) {
+    error_start(e.file, e.line);
+    if e.module != 0 {
+        put(&errors, "no '");
+        put(&errors, e.name);
+        put(&errors, "' in module ");
+        put(&errors, modules[e.module]);
+        error_end();
+    }
+    put(&errors, message);
+    put(&errors, " '");
+    put(&errors, e.name);
+    put(&errors, "'");
+    var f = &files[e.file];
+    for i in 0..f.import_count {
+        var m = f.imports[i];
+        if find_sym(m, e.name) != null {
+            put(&errors, "; did you mean '");
+            put(&errors, modules[m]);
+            put_byte(&errors, '.');
+            put(&errors, e.name);
+            put(&errors, "'?");
+            break;
+        }
+    }
+    error_end();
+}
+
+// Turns io.write, where io is a module the file imports, into the name
+// write found in io. A local or a name of the file's own module hides the
+// module.
+fn qualify(e: *Node) {
+    if e.kind != N.Member || e.a.kind != N.Name || e.a.module != 0 {
+        return;
+    }
+    var name = e.a.name;
+    if is_local(name) || find_sym(files[e.a.file].module, name) != null {
+        return;
+    }
+    var m = imported(e.a.file, name);
+    if m == 0 {
+        return;
+    }
+    e.kind = N.Name;
+    e.module = m;
+    e.a = null;
+}
+
 // Whether the name refers to a value rather than an enum.
 fn is_value_name(e: *Node) -> bool {
-    var local = scope;
-    while local != null {
-        if text_equal(local.name, e.name) {
-            return true;
-        }
-        local = local.next;
+    if e.module == 0 && is_local(e.name) {
+        return true;
     }
-    var s = find_sym(e.name);
+    var s = find_sym(module_of(e), e.name);
     return s == null || s.kind != SymKind.Enum;
 }
 
@@ -379,6 +425,10 @@ fn check_expr(e: *Node, want: *Type) -> *Type {
             return lookup(e);
         }
         N.Member => {
+            qualify(e);
+            if e.kind == N.Name {
+                return lookup(e);
+            }
             return check_member(e);
         }
         N.Index => {
@@ -425,9 +475,9 @@ fn check_expr(e: *Node, want: *Type) -> *Type {
         }
         N.New => {
             var arena_type = check(e.a, null);
-            var alloc = find_sym("alloc");
+            var alloc = find_sym(module_named("mem"), "alloc");
             if alloc == null || alloc.kind != SymKind.Fn {
-                fail(e, "'new' needs an 'alloc' function");
+                fail(e, "'new' needs mem.alloc, from the module mem");
             }
             declare(alloc);
             var p = alloc.node.list;
@@ -449,8 +499,9 @@ fn check_expr(e: *Node, want: *Type) -> *Type {
 }
 
 fn check_member(e: *Node) -> *Type {
+    qualify(e.a);
     if e.a.kind == N.Name && !is_value_name(e.a) {
-        var s = find_sym(e.a.name);
+        var s = find_sym(module_of(e.a), e.a.name);
         declare(s);
         var item = s.node.list;
         while item != null {
@@ -477,6 +528,9 @@ fn check_member(e: *Node) -> *Type {
         st = t.elem;
     }
     if st.kind != TypeKind.Struct {
+        if e.a.kind == N.Name && e.a.local != null && imported(e.a.file, e.a.name) != 0 {
+            fail_name(e.a, "this variable hides the module", e.a.name);
+        }
         fail_name(e, "no such field:", e.name);
     }
     complete(st);
@@ -498,8 +552,9 @@ fn check_call(e: *Node) -> *Type {
     var params: *Node;
     var result: *Type;
     var s: *Sym = null;
-    if e.a.kind == N.Name && !is_local(e.a.name) {
-        s = find_sym(e.a.name);
+    qualify(e.a);
+    if e.a.kind == N.Name && (e.a.module != 0 || !is_local(e.a.name)) {
+        s = find_sym(module_of(e.a), e.a.name);
     }
     if s != null && s.kind == SymKind.Fn {
         declare(s);

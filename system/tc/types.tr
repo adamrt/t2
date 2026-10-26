@@ -50,6 +50,7 @@ enum SymKind {
 struct Sym {
     kind: SymKind;
     name: []u8;
+    module: u32;        // 0 for the program's own names
     node: *Node;
     ty: *Type;          // the struct or enum, the constant's or global's type, or the result
     value: u32;         // a constant's value
@@ -213,6 +214,10 @@ fn put_type(w: *Writer, t: *Type) {
             put_type(w, t.elem);
         }
         TypeKind.Struct, TypeKind.Enum => {
+            if t.sym.module != 0 {
+                put(w, modules[t.sym.module]);
+                put_byte(w, '.');
+            }
             put(w, t.sym.name);
         }
         TypeKind.Func => {
@@ -257,10 +262,11 @@ fn hash(name: []u8) -> u32 {
     return h & (BUCKETS - 1);
 }
 
-fn find_sym(name: []u8) -> *Sym {
+// Each module has its own names, so the same name can be in several.
+fn find_sym(module: u32, name: []u8) -> *Sym {
     var s = buckets[hash(name)];
     while s != null {
-        if text_equal(s.name, name) {
+        if s.module == module && text_equal(s.name, name) {
             return s;
         }
         s = s.next;
@@ -268,13 +274,24 @@ fn find_sym(name: []u8) -> *Sym {
     return null;
 }
 
+// The module a name in the source refers to: the one it was qualified
+// with, or else the one its file belongs to.
+fn module_of(n: *Node) -> u32 {
+    if n.module != 0 {
+        return n.module;
+    }
+    return files[n.file].module;
+}
+
 fn add_sym(kind: SymKind, n: *Node) -> *Sym {
-    if find_sym(n.name) != null || builtin_type(n.name) != null || text_equal(n.name, "KiB") || text_equal(n.name, "MiB") {
+    var module = files[n.file].module;
+    if find_sym(module, n.name) != null || builtin_type(n.name) != null || text_equal(n.name, "KiB") || text_equal(n.name, "MiB") {
         fail_name(n, "already defined:", n.name);
     }
     var s = new(&arena, Sym);
     s.kind = kind;
     s.name = n.name;
+    s.module = module;
     s.node = n;
     var h = hash(n.name);
     s.next = buckets[h];
@@ -352,7 +369,7 @@ fn check_program() {
         s = s.after;
     }
 
-    var main = find_sym("main");
+    var main = find_sym(0, "main");
     if main == null || main.kind != SymKind.Fn {
         fail_plain("no 'main' function");
     }
@@ -547,13 +564,16 @@ fn resolve_ref(tn: *Node) -> *Type {
     if tn.kind != N.TypeName {
         return resolve(tn);
     }
-    var t = builtin_type(tn.name);
+    var t: *Type = null;
+    if tn.module == 0 {
+        t = builtin_type(tn.name);
+    }
     if t != null {
         return t;
     }
-    var s = find_sym(tn.name);
+    var s = find_sym(module_of(tn), tn.name);
     if s == null || (s.kind != SymKind.Struct && s.kind != SymKind.Enum) {
-        fail_name(tn, "unknown type", tn.name);
+        unknown_name(tn, "unknown type");
     }
     return s.ty;
 }
