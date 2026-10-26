@@ -1,71 +1,113 @@
 # Terrarium
 
-A tiny computer built from scratch: a 32-bit CPU and its devices in C, and
-everything else written in Terrarium's own assembly and language: the
-assembler, the compiler, the kernel, the shell and the programs.
+A tiny computer built from scratch, small enough to understand from its
+first instruction to its desktop. The machine — a 32-bit CPU, a GPU, sound,
+disk and network devices — is C. Everything that runs on it is written in
+Terrarium's own assembly and language: the assembler, the compiler, the
+kernel, the window system, the shell and the programs.
+
+![The Terrarium desktop: a terminal compiling a program, a monitor, a
+spinning cube and a fractal](docs/images/desktop.png)
 
 ```sh
 make            # the machine, the tools (built by themselves), and a disk
-make run        # boot Terrarium: a window with a terminal, and a console here
-make test
+make run        # boot Terrarium in a window; this terminal becomes its console
+make test       # instructions, faults, the language, and whole-system sessions
 ```
 
-`make run` opens a window with the desktop and a terminal, and the host
-terminal becomes Terrarium's console, with its own shell. In the terminal,
-try `edit /src/hello.tr`, `cube`, `fractal`, `monitor` or `demo`.
+It needs a C11 compiler and SDL3.
 
-`serve 8080` in Terrarium shares the current directory on the web, so
-`curl localhost:8080/` works from the host, and `fetch host port /path`
-goes the other way. `trace program` shows every system call a program
-makes, and `manifest program` what it's allowed to do.
+## What's inside
 
-`build/mkimage.bin` turns BMP pictures into Terrarium's TIM1 images, which
-`view` shows:
+| Part                          | Written in | Lines |
+| ----------------------------- | ---------- | ----- |
+| The machine (`src/`)          | C11        | 2,900 |
+| The assembler (`system/asm/`) | assembly   | 2,500 |
+| The compiler (`system/tc/`)   | the language | 3,400 |
+| The kernel (`system/kernel/`) | the language | 2,600 |
+| Libraries (`system/lib/`)     | both       | 1,300 |
+| 30 programs (`system/bin/`)   | the language | 3,500 |
 
-```sh
-build/terrarium build/mkimage.bin -o picture.tim picture.bmp
+- **The CPU** has eight registers, 45 instructions of one word each, and
+  16.16 fixed-point multiply and divide instead of floating point. Each
+  program gets one contiguous block of memory, with null pointers and stack
+  overflows caught by the hardware.
+- **The language** is small and C-like: explicit types, structs, enums,
+  bounds-checked slices, `fixed`, and arenas instead of a heap. A program
+  declares all its memory up front, and what it's allowed to do.
+- **The kernel** runs programs with preemptive multitasking, pipes, a file
+  system, windows, sound and networking. It enforces each program's
+  permissions, keeps memory back for recovery tools, and slides programs
+  together in memory when free space is in pieces.
+- **The GPU** draws PS1-style: fills, lines, text, images, and shaded or
+  affine-textured triangles. Windows draw straight into the one shared
+  framebuffer, clipped to the parts other windows don't cover.
+- **Terra**, the system font, is drawn as text in `system/fonts/terra.txt`.
+
+![The editor, a game, a piano and the launcher](docs/images/apps.png)
+
+## Inside Terrarium
+
+The desktop starts with a launcher and a terminal. Programs live in `/bin`
+(`help` lists them), libraries in `/lib`, the documentation in `/docs`, and
+the whole system's source in `/src`.
+
 ```
-
-Inside Terrarium:
-
-```
-/> ls /bin
 /> cd /src
 /src> tc -o hello.asm /lib/core.tr hello.tr
 /src> asm -o hello /lib/rt.asm hello.asm
 /src> ./hello
+Hello from the Terrarium language!
+/src> sh /src/scripts/build-tc
 ```
 
-On the host, the development monitor runs a single program with the host's
-files, which is how the tools build Terrarium:
+The last line rebuilds the compiler inside Terrarium and checks that the
+result is byte for byte the compiler the host built. Some others to try:
+
+- `edit file` — a text editor; `files` — a file browser
+- `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
+- `worm`, `piano` — a game and an instrument
+- `monitor`, `ps`, `mem` — memory reserved and instructions used
+- `manifest /bin/edit` — what a program declares about itself
+- `trace ls` — every system call a program makes
+- `serve 8080` — share the current directory; then `curl localhost:8080/`
+  on the host. `fetch host port /path` goes the other way.
+- `view picture.tim` — Terrarium's own image format
+
+## On the host
+
+The tools are Terrarium programs too. On the host they run on the
+development monitor, which runs one program and lends it the host's files:
 
 ```sh
 build/terrarium build/tc.bin -o build/hello.asm system/lib/core.tr examples/hello.tr
 build/terrarium build/asm.bin -o build/hello.bin system/lib/rt.asm build/hello.asm
 build/terrarium build/hello.bin
+build/terrarium build/mkimage.bin -o picture.tim picture.bmp    # BMP to TIM1
 ```
 
-| Path         | What                                                    |
-| ------------ | ------------------------------------------------------- |
-| `spec/`            | The CPU, devices, assembly, the language, files, formats, system calls |
-| `src/`             | The machine (C11): CPU, devices, monitor               |
-| `system/asm/`      | The assembler, in assembly                             |
-| `system/tc/`       | The compiler, in the language                          |
-| `system/kernel/`   | The kernel                                             |
-| `system/bin/`      | The shell and programs                                 |
-| `system/lib/`      | The runtime and libraries                              |
-| `system/tools/`    | `mkdisk`, `mkfont` and `mkimage`, which run on the host |
-| `system/fonts/`    | Terra, the system font, drawn as text                  |
-| `bootstrap/`       | Seed builds of the tools, see its README               |
-| `tests/`           | Instruction, fault, language and system tests          |
+`build/terrarium [--trace] [--stats] program.bin [arguments...]` runs a
+program on the monitor. `--trace` prints every instruction and `--stats`
+the cycle count; a `program.sym` next to the program (the assembler writes
+one with `-s`) puts label names in traces and fault reports.
 
-`build/terrarium boot [--headless] [--fullscreen] disk.img [kernel.sym]`
-starts the whole machine; `--headless` leaves out the screen. For testing,
-`--screen WxH` gives it a screen without a window, `--type text` presses
-keys once it has started, `--run-for ms` stops it, and `--screenshot
-out.png` saves the screen when it stops.
-`build/terrarium [--trace] [--stats] program.bin [arguments...]` runs one
-program directly on the development monitor. With `--trace` it prints every instruction,
-and `--stats` prints the cycle count at exit. If a `program.sym` file sits
-next to the program (the assembler writes one with `-s`), faults and traces
-show label names.
+`build/terrarium boot [--headless] [--fullscreen] [--mute] disk.img
+[kernel.sym]` starts the whole machine. For testing, `--screen WxH` gives it
+a screen without a window, `--type text` presses keys once it has started,
+`--run-for ms` stops it, and `--screenshot out.png` saves the screen.
+
+The assembler and compiler build themselves from seeds in `bootstrap/`; see
+its README.
+
+## Documentation
+
+| Spec                                   |                                     |
+| -------------------------------------- | ----------------------------------- |
+| [isa.md](spec/isa.md)                  | the CPU, kernel mode, ports         |
+| [devices.md](spec/devices.md)          | console, timer, disk, video, GPU, input, sound, network |
+| [assembly.md](spec/assembly.md)        | the assembly language               |
+| [language.md](spec/language.md)        | the Terrarium language              |
+| [executable.md](spec/executable.md)    | programs, memory, permissions       |
+| [system.md](spec/system.md)            | system calls, windows, tracing      |
+| [filesystem.md](spec/filesystem.md)    | the disk                            |
+| [formats.md](spec/formats.md)          | images and the other file formats   |
