@@ -850,6 +850,12 @@ fn gen_operands(e: *Node, allow_immediate: bool) -> bool {
         emit_value("r1 = ", right.value);
         return false;
     }
+    // A plain local on the right can be loaded straight into r1.
+    if right.kind == N.Name && right.local != null && is_scalar(right.ty) && right.flags & TO_SLICE == 0 {
+        gen_expr(e.a);
+        load_local(right.local, "r1");
+        return false;
+    }
     gen_expr(e.a);
     emit("push r0");
     gen_expr(right);
