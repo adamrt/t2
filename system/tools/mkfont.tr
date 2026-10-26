@@ -11,47 +11,52 @@
 // count, then each glyph's rows, one byte per row with the leftmost pixel in
 // the top bit.
 
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 1 * MiB;
     stack = 16 * KiB;
     allow = "read write";
 }
 
-var arena: Arena;
+var arena: mem.Arena;
 var line: [256]u8;
 var glyphs: [256 * 16]u8;
 var present: [256]bool;
 
 fn main(memory: []u8) -> u32 {
-    arena_init(&arena, memory);
-    if arg_count() != 3 {
+    mem.arena_init(&arena, memory);
+    if os.arg_count() != 3 {
         fail("usage: mkfont -o font.tfn font.txt");
     }
     var output = argument(1);
-    var file = open(argument(2), 0);
-    if file == FAILED {
+    var file = io.open(argument(2), 0);
+    if file == io.FAILED {
         fail("can't read the font");
     }
-    var reader: Reader;
-    reader_init(&reader, file, alloc_bytes(&arena, 4096));
+    var reader: io.Reader;
+    io.reader_init(&reader, file, mem.alloc_bytes(&arena, 4096));
 
     var width: u32 = 0;
     var height: u32 = 0;
     var glyph: u32 = 256;
     var row: u32 = 0;
     while true {
-        var n = read_line(&reader, line[:]);
-        if n == FAILED {
+        var n = io.read_line(&reader, line[:]);
+        if n == io.FAILED {
             break;
         }
-        var text = line[0:n];
+        var chars = line[0:n];
         if glyph < 256 && row < height {
-            if text.len < width {
+            if chars.len < width {
                 fail("a row is too short");
             }
             var bits: u32 = 0;
             for x in 0..width {
-                if text[x] == '#' {
+                if chars[x] == '#' {
                     bits |= 0x80 >> x;
                 }
             }
@@ -59,16 +64,16 @@ fn main(memory: []u8) -> u32 {
             row += 1;
             continue;
         }
-        if text.len == 0 || text[0] == '#' {
+        if chars.len == 0 || chars[0] == '#' {
             continue;
         }
-        var word = first_word(text);
-        var value = parse_u32(first_word(text[word.len:]));
-        if text_equal(word, "width") {
+        var word = first_word(chars);
+        var value = text.parse_u32(first_word(chars[word.len:]));
+        if text.equal(word, "width") {
             width = value;
-        } else if text_equal(word, "height") {
+        } else if text.equal(word, "height") {
             height = value;
-        } else if text_equal(word, "glyph") {
+        } else if text.equal(word, "glyph") {
             if value >= 256 || width == 0 || width > 8 || height == 0 || height > 16 {
                 fail("bad glyph, or width and height missing");
             }
@@ -92,37 +97,37 @@ fn main(memory: []u8) -> u32 {
     // Codes missing between the first and last draw as "?".
     for c in first..last + 1 {
         if !present[c] {
-            copy(glyphs[c * 16:c * 16 + 16], glyphs['?' * 16:'?' * 16 + 16]);
+            mem.copy(glyphs[c * 16:c * 16 + 16], glyphs['?' * 16:'?' * 16 + 16]);
         }
     }
-    var out = open(output, 1);
-    if out == FAILED || first == 256 {
+    var out = io.open(output, 1);
+    if out == io.FAILED || first == 256 {
         fail("can't write the font");
     }
     var header: [20]u8;
-    copy(header[:], "TFN1");
+    mem.copy(header[:], "TFN1");
     set_word(header[:], 4, width);
     set_word(header[:], 8, height);
     set_word(header[:], 12, first);
     set_word(header[:], 16, count);
-    write_all(out, header[:]);
+    io.write_all(out, header[:]);
     for c in first..last + 1 {
-        write_all(out, glyphs[c * 16:c * 16 + height]);
+        io.write_all(out, glyphs[c * 16:c * 16 + height]);
     }
-    close(out);
+    io.close(out);
     return 0;
 }
 
 fn fail(message: []u8) {
-    write_all(STDERR, "mkfont: ");
-    write_all(STDERR, message);
-    write_all(STDERR, "\n");
-    exit(1);
+    io.write_all(io.STDERR, "mkfont: ");
+    io.write_all(io.STDERR, message);
+    io.write_all(io.STDERR, "\n");
+    os.exit(1);
 }
 
 fn argument(index: u32) -> []u8 {
-    var buffer = alloc_bytes(&arena, 256);
-    var n = arg(index, buffer);
+    var buffer = mem.alloc_bytes(&arena, 256);
+    var n = os.arg(index, buffer);
     if n > buffer.len {
         fail("argument is too long");
     }

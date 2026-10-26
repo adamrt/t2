@@ -4,7 +4,7 @@ Terrarium's tools are written in Terrarium's own languages, so building them
 needs a previous build. These are those builds.
 
 - `asm.bin` is the assembler, built from `system/asm/asm.asm`.
-- `tc.bin` is the compiler, built from `system/tc/*.tr` and `system/lib/core.tr`.
+- `tc.bin` is the compiler, built from `system/tc/*.tr` and the modules in `system/lib`.
 
 `make` uses each seed to build the tool from source, then rebuilds it with
 the result, so the tools you run are always built by themselves. After

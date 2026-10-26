@@ -1,5 +1,9 @@
 // Turning source text into tokens, one at a time.
 
+import io;
+import mem;
+import text;
+
 enum Tok {
     End,
     Name,
@@ -44,7 +48,7 @@ fn lex_start(file: u32) {
 
 fn lex_fail(message: []u8) {
     error_start(lex_file, lex_line);
-    put(&errors, message);
+    io.put(&errors, message);
     error_end();
 }
 
@@ -86,13 +90,13 @@ fn next_token() {
     }
     var start = lex_pos;
     var c = lex_text[lex_pos];
-    if is_letter(c) {
-        while lex_pos < lex_text.len && (is_letter(lex_text[lex_pos]) || is_digit(lex_text[lex_pos])) {
+    if text.is_letter(c) {
+        while lex_pos < lex_text.len && (text.is_letter(lex_text[lex_pos]) || text.is_digit(lex_text[lex_pos])) {
             lex_pos += 1;
         }
         tok.text = lex_text[start:lex_pos];
         tok.kind = keyword(tok.text);
-    } else if is_digit(c) {
+    } else if text.is_digit(c) {
         lex_number();
     } else if c == '\'' {
         lex_pos += 1;
@@ -115,55 +119,55 @@ fn next_token() {
     }
 }
 
-fn keyword(text: []u8) -> Tok {
-    match text[0] {
+fn keyword(word: []u8) -> Tok {
+    match word[0] {
         'a' => {
-            if text_equal(text, "as") { return Tok.KwAs; }
+            if text.equal(word, "as") { return Tok.KwAs; }
         }
         'b' => {
-            if text_equal(text, "break") { return Tok.KwBreak; }
+            if text.equal(word, "break") { return Tok.KwBreak; }
         }
         'c' => {
-            if text_equal(text, "const") { return Tok.KwConst; }
-            if text_equal(text, "continue") { return Tok.KwContinue; }
+            if text.equal(word, "const") { return Tok.KwConst; }
+            if text.equal(word, "continue") { return Tok.KwContinue; }
         }
         'e' => {
-            if text_equal(text, "else") { return Tok.KwElse; }
-            if text_equal(text, "enum") { return Tok.KwEnum; }
+            if text.equal(word, "else") { return Tok.KwElse; }
+            if text.equal(word, "enum") { return Tok.KwEnum; }
         }
         'f' => {
-            if text_equal(text, "fn") { return Tok.KwFn; }
-            if text_equal(text, "for") { return Tok.KwFor; }
-            if text_equal(text, "false") { return Tok.KwFalse; }
+            if text.equal(word, "fn") { return Tok.KwFn; }
+            if text.equal(word, "for") { return Tok.KwFor; }
+            if text.equal(word, "false") { return Tok.KwFalse; }
         }
         'i' => {
-            if text_equal(text, "if") { return Tok.KwIf; }
-            if text_equal(text, "in") { return Tok.KwIn; }
-            if text_equal(text, "import") { return Tok.KwImport; }
+            if text.equal(word, "if") { return Tok.KwIf; }
+            if text.equal(word, "in") { return Tok.KwIn; }
+            if text.equal(word, "import") { return Tok.KwImport; }
         }
         'm' => {
-            if text_equal(text, "match") { return Tok.KwMatch; }
-            if text_equal(text, "manifest") { return Tok.KwManifest; }
+            if text.equal(word, "match") { return Tok.KwMatch; }
+            if text.equal(word, "manifest") { return Tok.KwManifest; }
         }
         'n' => {
-            if text_equal(text, "new") { return Tok.KwNew; }
-            if text_equal(text, "null") { return Tok.KwNull; }
+            if text.equal(word, "new") { return Tok.KwNew; }
+            if text.equal(word, "null") { return Tok.KwNull; }
         }
         'r' => {
-            if text_equal(text, "return") { return Tok.KwReturn; }
+            if text.equal(word, "return") { return Tok.KwReturn; }
         }
         's' => {
-            if text_equal(text, "struct") { return Tok.KwStruct; }
-            if text_equal(text, "size_of") { return Tok.KwSizeOf; }
+            if text.equal(word, "struct") { return Tok.KwStruct; }
+            if text.equal(word, "size_of") { return Tok.KwSizeOf; }
         }
         't' => {
-            if text_equal(text, "true") { return Tok.KwTrue; }
+            if text.equal(word, "true") { return Tok.KwTrue; }
         }
         'v' => {
-            if text_equal(text, "var") { return Tok.KwVar; }
+            if text.equal(word, "var") { return Tok.KwVar; }
         }
         'w' => {
-            if text_equal(text, "while") { return Tok.KwWhile; }
+            if text.equal(word, "while") { return Tok.KwWhile; }
         }
     }
     return Tok.Name;
@@ -184,28 +188,28 @@ fn digit_value(c: u8) -> u32 {
 
 fn lex_number() {
     var start = lex_pos;
-    while lex_pos < lex_text.len && (is_letter(lex_text[lex_pos]) || is_digit(lex_text[lex_pos])) {
+    while lex_pos < lex_text.len && (text.is_letter(lex_text[lex_pos]) || text.is_digit(lex_text[lex_pos])) {
         lex_pos += 1;
     }
-    var text = lex_text[start:lex_pos];
+    var number = lex_text[start:lex_pos];
     tok.kind = Tok.Int;
-    tok.text = text;
+    tok.text = number;
 
     var base: u32 = 10;
     var i: u32 = 0;
-    if text.len > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') {
+    if number.len > 2 && number[0] == '0' && (number[1] == 'x' || number[1] == 'X') {
         base = 16;
         i = 2;
-    } else if text.len > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B') {
+    } else if number.len > 2 && number[0] == '0' && (number[1] == 'b' || number[1] == 'B') {
         base = 2;
         i = 2;
-    } else if text.len > 1 && text[0] == '0' {
+    } else if number.len > 1 && number[0] == '0' {
         lex_fail("bad number");
     }
     var value: u32 = 0;
     var digits: u32 = 0;
-    while i < text.len {
-        var c = text[i];
+    while i < number.len {
+        var c = number[i];
         i += 1;
         if c == '_' {
             continue;
@@ -224,7 +228,7 @@ fn lex_number() {
         lex_fail("bad number");
     }
     tok.value = value;
-    if base == 10 && peek_char(0) == '.' && is_digit(peek_char(1)) {
+    if base == 10 && peek_char(0) == '.' && text.is_digit(peek_char(1)) {
         lex_fraction();
     }
 }
@@ -233,7 +237,7 @@ fn lex_number() {
 fn lex_fraction() {
     lex_pos += 1;
     var start = lex_pos;
-    while lex_pos < lex_text.len && is_digit(lex_text[lex_pos]) {
+    while lex_pos < lex_text.len && text.is_digit(lex_text[lex_pos]) {
         lex_pos += 1;
     }
     // Work from the last digit to the first, dividing by ten each time.
@@ -320,7 +324,7 @@ fn lex_string() {
         }
         end += 1;
     }
-    var bytes = alloc_bytes(&arena, end - lex_pos);
+    var bytes = mem.alloc_bytes(&arena, end - lex_pos);
     var n: u32 = 0;
     while peek_char(0) != '"' {
         bytes[n] = lex_escape() as u8;

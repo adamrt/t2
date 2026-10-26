@@ -1,5 +1,9 @@
 // cmp compares two files and says where they first differ.
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
@@ -10,18 +14,18 @@ var a_buffer: [16 * KiB]u8;
 var b_buffer: [16 * KiB]u8;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [2][]u8;
-    if arg_count() != 2 {
-        complain("cmp", "usage: cmp file1 file2", "");
+    if os.arg_count() != 2 {
+        os.complain("cmp", "usage: cmp file1 file2", "");
         return 2;
     }
-    get_args(&arena, args[:]);
-    var a = open(args[0], MODE_READ);
-    var b = open(args[1], MODE_READ);
-    if a == FAILED || b == FAILED {
-        complain("cmp", "can't read both files", "");
+    os.get_args(&arena, args[:]);
+    var a = io.open(args[0], io.MODE_READ);
+    var b = io.open(args[1], io.MODE_READ);
+    if a == io.FAILED || b == io.FAILED {
+        os.complain("cmp", "can't read both files", "");
         return 2;
     }
     var offset: u32 = 0;
@@ -47,16 +51,16 @@ fn main(memory: []u8) -> u32 {
         }
         offset += n;
     }
-    var out: Writer;
+    var out: io.Writer;
     var text: [256]u8;
-    writer_init(&out, STDOUT, text[:]);
-    put(&out, args[0]);
-    put(&out, " and ");
-    put(&out, args[1]);
-    put(&out, " are the same, ");
-    put_u32(&out, offset);
-    put(&out, " bytes\n");
-    flush(&out);
+    io.writer_init(&out, io.STDOUT, text[:]);
+    io.put(&out, args[0]);
+    io.put(&out, " and ");
+    io.put(&out, args[1]);
+    io.put(&out, " are the same, ");
+    io.put_u32(&out, offset);
+    io.put(&out, " bytes\n");
+    io.flush(&out);
     return 0;
 }
 
@@ -64,8 +68,8 @@ fn main(memory: []u8) -> u32 {
 fn read_full(file: u32, buffer: []u8) -> u32 {
     var n: u32 = 0;
     while n < buffer.len {
-        var got = read(file, buffer[n:]);
-        if got == 0 || got == FAILED {
+        var got = io.read(file, buffer[n:]);
+        if got == 0 || got == io.FAILED {
             break;
         }
         n += got;
@@ -74,14 +78,14 @@ fn read_full(file: u32, buffer: []u8) -> u32 {
 }
 
 fn differ(a: []u8, b: []u8, offset: u32) {
-    var out: Writer;
+    var out: io.Writer;
     var text: [256]u8;
-    writer_init(&out, STDOUT, text[:]);
-    put(&out, a);
-    put(&out, " and ");
-    put(&out, b);
-    put(&out, " differ at byte ");
-    put_u32(&out, offset);
-    put_byte(&out, '\n');
-    flush(&out);
+    io.writer_init(&out, io.STDOUT, text[:]);
+    io.put(&out, a);
+    io.put(&out, " and ");
+    io.put(&out, b);
+    io.put(&out, " differ at byte ");
+    io.put_u32(&out, offset);
+    io.put_byte(&out, '\n');
+    io.flush(&out);
 }

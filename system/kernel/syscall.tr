@@ -4,6 +4,10 @@
 // when something changes, so a blocked call leaves the registers alone.
 // Arguments come in r0-r6 and the result goes in r0.
 
+import io;
+import mem;
+import text;
+
 enum ObjectKind {
     Free,
     Console,
@@ -169,7 +173,7 @@ fn new_object(kind: ObjectKind) -> *Object {
     for i in 0..MAX_OBJECTS {
         var o = &objects[i];
         if o.kind == ObjectKind.Free {
-            mem_fill(o as *u8, 0, size_of(Object));
+            mem.fill(o as *u8, 0, size_of(Object));
             o.kind = kind;
             o.refs = 1;
             return o;
@@ -213,7 +217,7 @@ fn add_handle(p: *Process, o: *Object) -> u32 {
         }
     }
     release_object(o);
-    return FAILED;
+    return io.FAILED;
 }
 
 fn has_free_handle(p: *Process) -> bool {
@@ -249,7 +253,7 @@ fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
     var n: u32 = 0;
     if path.len == 0 || path[0] != '/' {
         if p.dir_len > 1 {
-            copy(out, p.dir[0:p.dir_len]);
+            mem.copy(out, p.dir[0:p.dir_len]);
             n = p.dir_len;
         }
     }
@@ -265,7 +269,7 @@ fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
         } else {
             rest = rest[end:];
         }
-        if part.len == 0 || text_equal(part, ".") {
+        if part.len == 0 || text.equal(part, ".") {
             continue;
         }
         for i in 0..part.len {
@@ -273,7 +277,7 @@ fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
                 return empty;
             }
         }
-        if text_equal(part, "..") {
+        if text.equal(part, "..") {
             while n > 0 && out[n - 1] != '/' {
                 n -= 1;
             }
@@ -286,7 +290,7 @@ fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
             return empty;
         }
         out[n] = '/';
-        copy(out[n + 1:], part);
+        mem.copy(out[n + 1:], part);
         n += 1 + part.len;
     }
     if n == 0 {
@@ -311,11 +315,11 @@ fn allowed(p: *Process, permission: u32, what: []u8) -> bool {
     if p.permissions & permission != 0 {
         return true;
     }
-    put(&log, p.name[0:p.name_len]);
-    put(&log, ": not allowed to ");
-    put(&log, what);
-    put_byte(&log, '\n');
-    flush(&log);
+    io.put(&log, p.name[0:p.name_len]);
+    io.put(&log, ": not allowed to ");
+    io.put(&log, what);
+    io.put_byte(&log, '\n');
+    io.flush(&log);
     return false;
 }
 
@@ -359,10 +363,10 @@ fn needs(p: *Process, call: Call) -> bool {
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
     if number <= Call.WindowTitle as u32 && !needs(p, number as Call) {
-        r[0] = FAILED;
+        r[0] = io.FAILED;
         return;
     }
-    var result = FAILED;
+    var result = io.FAILED;
     var path_buffer: [PATH_SIZE]u8;
     var path: []u8;
     var f: FileRef;
@@ -375,7 +379,7 @@ fn system_call(p: *Process, number: u32) {
             var bytes = user_bytes(p, r[1], r[2]);
             if o != null && bytes.ptr != null {
                 result = read_object(p, o, bytes);
-                if result != FAILED && p.state == State.Ready {
+                if result != io.FAILED && p.state == State.Ready {
                     p.bytes_read += result;
                 }
             }
@@ -385,7 +389,7 @@ fn system_call(p: *Process, number: u32) {
             var bytes = user_bytes(p, r[1], r[2]);
             if o != null && bytes.ptr != null {
                 result = write_object(p, o, bytes);
-                if result != FAILED && p.state == State.Ready {
+                if result != io.FAILED && p.state == State.Ready {
                     p.bytes_written += result;
                 }
             }
@@ -411,7 +415,7 @@ fn system_call(p: *Process, number: u32) {
             var buffer = user_bytes(p, r[1], r[2]);
             var arg = nth_arg(p, r[0]);
             if buffer.ptr != null && arg.ptr != null {
-                copy(buffer, arg[0:min(arg.len, buffer.len)]);
+                mem.copy(buffer, arg[0:min(arg.len, buffer.len)]);
                 result = arg.len;
             }
         }
@@ -477,7 +481,7 @@ fn system_call(p: *Process, number: u32) {
         Call.SetDir => {
             path = path_argument(p, r[0], r[1], path_buffer[:]);
             if path.len > 0 && lookup(path, &f) && f.kind == KIND_DIR {
-                copy(p.dir[:], path);
+                mem.copy(p.dir[:], path);
                 p.dir_len = path.len;
                 result = 0;
             }
@@ -485,7 +489,7 @@ fn system_call(p: *Process, number: u32) {
         Call.GetDir => {
             var buffer = user_bytes(p, r[0], r[1]);
             if buffer.ptr != null {
-                copy(buffer, p.dir[0:min(p.dir_len, buffer.len)]);
+                mem.copy(buffer, p.dir[0:min(p.dir_len, buffer.len)]);
                 result = p.dir_len;
             }
         }
@@ -597,7 +601,7 @@ fn system_call(p: *Process, number: u32) {
         Call.ClipboardSet => {
             var bytes = user_bytes(p, r[0], r[1]);
             if bytes.ptr != null && bytes.len <= clipboard.len {
-                copy(clipboard[:], bytes);
+                mem.copy(clipboard[:], bytes);
                 clipboard_len = bytes.len;
                 result = 0;
             }
@@ -605,7 +609,7 @@ fn system_call(p: *Process, number: u32) {
         Call.ClipboardGet => {
             var buffer = user_bytes(p, r[0], r[1]);
             if buffer.ptr != null {
-                copy(buffer, clipboard[0:min(clipboard_len, buffer.len)]);
+                mem.copy(buffer, clipboard[0:min(clipboard_len, buffer.len)]);
                 result = clipboard_len;
             }
         }
@@ -707,31 +711,31 @@ var trace_text: [256]u8;
 
 // Reports a system call to the tracing pipe, dropping it if the pipe is full.
 fn trace_call(p: *Process, number: u32, result: u32) {
-    var w: Writer;
-    writer_init(&w, STDOUT, trace_text[:]);
-    put(&w, p.name[0:p.name_len]);
-    put(&w, ": ");
-    put(&w, call_name(number));
-    put_byte(&w, '(');
+    var w: io.Writer;
+    io.writer_init(&w, io.STDOUT, trace_text[:]);
+    io.put(&w, p.name[0:p.name_len]);
+    io.put(&w, ": ");
+    io.put(&w, call_name(number));
+    io.put_byte(&w, '(');
     // Calls with a path show it; the rest show their first argument.
     var r = p.regs[:];
     if number == 3 || (number >= 10 && number <= 14) || number == 7 || number == 37 {
         var path = user_bytes(p, r[0], min(r[1], 64));
         if path.ptr != null {
-            put_byte(&w, '"');
-            put(&w, path);
-            put_byte(&w, '"');
+            io.put_byte(&w, '"');
+            io.put(&w, path);
+            io.put_byte(&w, '"');
         }
     } else if number != 5 && number != 9 && number != 16 && number != 20 {
-        put_u32(&w, r[0]);
+        io.put_u32(&w, r[0]);
     }
-    put(&w, ") = ");
-    if result == FAILED {
-        put(&w, "failed");
+    io.put(&w, ") = ");
+    if result == io.FAILED {
+        io.put(&w, "failed");
     } else {
-        put_u32(&w, result);
+        io.put_u32(&w, result);
     }
-    put_byte(&w, '\n');
+    io.put_byte(&w, '\n');
     var pipe = p.trace.pipe;
     if pipe.readers == 0 || pipe.count + w.used > PIPE_SIZE {
         return;
@@ -790,7 +794,7 @@ fn read_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
                 block(p);
                 return 0;
             }
-            if n == FAILED {
+            if n == io.FAILED {
                 return 0;
             }
             return n;
@@ -814,7 +818,7 @@ fn read_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             return n;
         }
     }
-    return FAILED;
+    return io.FAILED;
 }
 
 fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
@@ -827,7 +831,7 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
         }
         ObjectKind.File => {
             if !o.writable {
-                return FAILED;
+                return io.FAILED;
             }
             var n = write_at(&o.open.file, o.position, bytes);
             o.position += n;
@@ -843,7 +847,7 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
         ObjectKind.PipeWriter => {
             var pipe = o.pipe;
             if pipe.readers == 0 {
-                return FAILED;
+                return io.FAILED;
             }
             if pipe.count == PIPE_SIZE {
                 block(p);
@@ -858,19 +862,19 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             return n;
         }
     }
-    return FAILED;
+    return io.FAILED;
 }
 
 // Gives a process a handle for a connection the network device opened.
 fn add_connection(p: *Process, id: u32) -> u32 {
-    if id == FAILED {
-        return FAILED;
+    if id == io.FAILED {
+        return io.FAILED;
     }
     var o = new_object(ObjectKind.Connection);
     if o == null {
         var none: []u8;
         net_command(NET_CLOSE, id, none);
-        return FAILED;
+        return io.FAILED;
     }
     o.connection = id;
     return add_handle(p, o);
@@ -879,15 +883,15 @@ fn add_connection(p: *Process, id: u32) -> u32 {
 fn open_window(p: *Process, title: []u8, width: u32, height: u32) -> u32 {
     var o = new_object(ObjectKind.Window);
     if o == null {
-        return FAILED;
+        return io.FAILED;
     }
     o.window = window_open(p, title, width, height);
     if o.window == null {
         o.kind = ObjectKind.Free;
-        return FAILED;
+        return io.FAILED;
     }
     var handle = add_handle(p, o);
-    if handle != FAILED {
+    if handle != io.FAILED {
         o.window.handle = handle;
     }
     return handle;
@@ -900,18 +904,18 @@ fn event_wait(p: *Process) -> u32 {
     var r = p.regs[:];
     var buffer = user_bytes(p, r[0], size_of(Event));
     if buffer.ptr == null {
-        return FAILED;
+        return io.FAILED;
     }
     var e: Event;
     if take_event(p, &e) {
-        copy(buffer, (&e as *u8)[0:size_of(Event)]);
+        mem.copy(buffer, (&e as *u8)[0:size_of(Event)]);
         p.wake_time = 0;
         return 1;
     }
     if r[1] == 0 {
         return 0;
     }
-    if r[1] != FAILED {
+    if r[1] != io.FAILED {
         if p.wake_time == 0 {
             p.wake_time = clock_ms() + r[1];
         }
@@ -930,13 +934,13 @@ fn available(o: *Object) -> u32 {
     match o.kind {
         ObjectKind.Console => {
             if console_count == 0 && console_closed {
-                return FAILED;
+                return io.FAILED;
             }
             return console_count;
         }
         ObjectKind.PipeReader => {
             if o.pipe.count == 0 && o.pipe.writers == 0 {
-                return FAILED;
+                return io.FAILED;
             }
             return o.pipe.count;
         }
@@ -951,7 +955,7 @@ fn available(o: *Object) -> u32 {
             return net_command(NET_AVAILABLE, o.connection, none);
         }
     }
-    return FAILED;
+    return io.FAILED;
 }
 
 // Files ------------------------------------------------------------------------
@@ -961,23 +965,23 @@ fn open_file(p: *Process, path: []u8, mode: u32) -> u32 {
     var f: FileRef;
     var exists = lookup(path, &f);
     if mode > 2 || (exists && f.kind != KIND_FILE) || (mode == 0 && !exists) {
-        return FAILED;
+        return io.FAILED;
     }
     // Everything that can run out is checked before the disk changes.
     var o = new_object(ObjectKind.File);
     if o == null {
-        return FAILED;
+        return io.FAILED;
     }
     if !has_free_handle(p) || ((!exists || !file_is_open(&f)) && !has_free_record()) {
         o.kind = ObjectKind.Free;
-        return FAILED;
+        return io.FAILED;
     }
     if !exists {
         var dir: FileRef;
         var name = lookup_parent(path, &dir);
         if name.len == 0 || !add_entry(&dir, name, KIND_FILE, &f) {
             o.kind = ObjectKind.Free;
-            return FAILED;
+            return io.FAILED;
         }
     }
     o.open = open_record(&f);
@@ -999,7 +1003,7 @@ fn rename_file(from: []u8, to: []u8) -> bool {
         return false;
     }
     // A directory can't move inside itself.
-    if f.kind == KIND_DIR && to.len > from.len && to[from.len] == '/' && text_equal(to[0:from.len], from) {
+    if f.kind == KIND_DIR && to.len > from.len && to[from.len] == '/' && text.equal(to[0:from.len], from) {
         return false;
     }
     var dir: FileRef;
@@ -1039,8 +1043,8 @@ fn list_directory(dir: *FileRef, buffer: []u8) -> u32 {
         }
         if load_entry(dir, i, &e) && e.file.kind != 0 {
             var record = buffer[n:n + 64];
-            mem_fill(record.ptr, 0, 64);
-            copy(record, e.name[0:e.name_len]);
+            mem.fill(record.ptr, 0, 64);
+            mem.copy(record, e.name[0:e.name_len]);
             set_word(record, 48, e.file.kind);
             set_word(record, 52, e.file.size);
             set_word(record, 56, e.file.time);
@@ -1059,19 +1063,19 @@ fn spawn(p: *Process) -> u32 {
     var path = path_argument(p, r[0], r[1], path_buffer[:]);
     var args = user_bytes(p, r[2], r[3]);
     if path.len == 0 || args.ptr == null {
-        return FAILED;
+        return io.FAILED;
     }
     // A window belongs to the process that opened it, so it can't be handed on.
     var handles: [3]*Object;
     for i in 0..3 {
         handles[i] = handle_object(p, r[4 + i]);
         if handles[i] == null || handles[i].kind == ObjectKind.Window {
-            return FAILED;
+            return io.FAILED;
         }
     }
     var child = spawn_process(p, path, args, handles[:]);
     if child == null {
-        return FAILED;
+        return io.FAILED;
     }
     return child.id;
 }
@@ -1086,16 +1090,16 @@ fn make_pipe(p: *Process) -> u32 {
         }
     }
     if pipe == null {
-        return FAILED;
+        return io.FAILED;
     }
     var reader = new_object(ObjectKind.PipeReader);
     if reader == null {
-        return FAILED;
+        return io.FAILED;
     }
     var writer = new_object(ObjectKind.PipeWriter);
     if writer == null {
         reader.kind = ObjectKind.Free;
-        return FAILED;
+        return io.FAILED;
     }
     pipe.used = true;
     pipe.start = 0;
@@ -1105,15 +1109,15 @@ fn make_pipe(p: *Process) -> u32 {
     reader.pipe = pipe;
     writer.pipe = pipe;
     var read_handle = add_handle(p, reader);
-    if read_handle == FAILED {
+    if read_handle == io.FAILED {
         release_object(writer);
-        return FAILED;
+        return io.FAILED;
     }
     var write_handle = add_handle(p, writer);
-    if write_handle == FAILED {
+    if write_handle == io.FAILED {
         release_object(p.handles[read_handle]);
         p.handles[read_handle] = null;
-        return FAILED;
+        return io.FAILED;
     }
     p.regs[1] = write_handle;
     return read_handle;
@@ -1130,7 +1134,7 @@ fn list_processes(buffer: []u8) -> u32 {
             continue;
         }
         var record = buffer[n:n + 64];
-        mem_fill(record.ptr, 0, 64);
+        mem.fill(record.ptr, 0, 64);
         set_word(record, 0, q.id);
         set_word(record, 4, q.parent);
         set_word(record, 8, q.state as u32);
@@ -1141,7 +1145,7 @@ fn list_processes(buffer: []u8) -> u32 {
         }
         set_word(record, 24, q.bytes_read);
         set_word(record, 28, q.bytes_written);
-        copy(record[32:], q.name[0:min(q.name_len, 32)]);
+        mem.copy(record[32:], q.name[0:min(q.name_len, 32)]);
         n += 64;
     }
     return n;

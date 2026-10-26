@@ -1,6 +1,10 @@
 // The Terrarium kernel: it starts the first program and then runs whichever
 // process is ready, until every process has ended.
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 4 * MiB;
     stack = 64 * KiB;
@@ -39,8 +43,8 @@ fn power_off();
 
 var free_memory: u32;               // set at startup by krt.asm
 var ram_size: u32;
-var arena: Arena;
-var log: Writer;
+var arena: mem.Arena;
+var log: io.Writer;
 var log_buffer: [256]u8;
 
 var console_input: [4096]u8;
@@ -58,17 +62,17 @@ var running: *Process;
 var slice_over: bool;
 
 fn main(memory: []u8) -> u32 {
-    arena_init(&arena, memory);
-    writer_init(&log, STDOUT, log_buffer[:]);
+    mem.arena_init(&arena, memory);
+    io.writer_init(&log, io.STDOUT, log_buffer[:]);
     memory_init(free_memory, ram_size);
     if !fs_init() {
-        panic("the disk has no file system");
+        os.panic("the disk has no file system");
     }
     wm_init();
-    put(&log, "Terrarium: ");
-    put_u32(&log, (ram_size - free_memory) / KiB);
-    put(&log, " KiB for programs\n");
-    flush(&log);
+    io.put(&log, "Terrarium: ");
+    io.put_u32(&log, (ram_size - free_memory) / KiB);
+    io.put(&log, " KiB for programs\n");
+    io.flush(&log);
 
     var console = new_object(ObjectKind.Console);
     console.refs = 0;
@@ -78,7 +82,7 @@ fn main(memory: []u8) -> u32 {
     handles[2] = console;
     var init = spawn_process(null, "/bin/init", "", handles[:]);
     if init == null {
-        panic("can't start /bin/init");
+        os.panic("can't start /bin/init");
     }
     schedule();
     return 0;
@@ -101,8 +105,8 @@ fn schedule() {
             continue;
         }
         if !any_alive() {
-            put(&log, "Terrarium: every process has ended\n");
-            flush(&log);
+            io.put(&log, "Terrarium: every process has ended\n");
+            io.flush(&log);
             power_off();
         }
         var sleep = next_wake();
@@ -212,15 +216,15 @@ fn fault_name(fault: u32) -> []u8 {
 }
 
 fn report_fault(p: *Process, fault: u32, address: u32) {
-    put(&log, p.name[0:p.name_len]);
-    put(&log, ": ");
-    put(&log, fault_name(fault));
-    put(&log, " at 0x");
-    put_hex(&log, p.pc);
+    io.put(&log, p.name[0:p.name_len]);
+    io.put(&log, ": ");
+    io.put(&log, fault_name(fault));
+    io.put(&log, " at 0x");
+    io.put_hex(&log, p.pc);
     if fault == 3 || fault == 4 || fault == 6 {
-        put(&log, ", address 0x");
-        put_hex(&log, address);
+        io.put(&log, ", address 0x");
+        io.put_hex(&log, address);
     }
-    put_byte(&log, '\n');
-    flush(&log);
+    io.put_byte(&log, '\n');
+    io.flush(&log);
 }

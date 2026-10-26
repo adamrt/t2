@@ -1,5 +1,10 @@
 // launch, a window of buttons that start programs.
 
+import gfx;
+import io;
+import os;
+import ui;
+
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
@@ -10,10 +15,10 @@ const WIDTH = 150;
 const BUTTON = 26;
 const COUNT = 13;
 
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var words: [1024]u32;
 var strings: [512]u8;
-var ui: Ui;
+var panel: ui.Panel;
 
 fn label(i: u32) -> []u8 {
     match i {
@@ -52,32 +57,32 @@ fn program(i: u32) -> []u8 {
 }
 
 fn main(memory: []u8) -> u32 {
-    var window = window_open("Programs", WIDTH, COUNT * BUTTON + 8);
-    if window == FAILED {
-        complain("launch", "can't open a window", "");
+    var window = gfx.window_open("Programs", WIDTH, COUNT * BUTTON + 8);
+    if window == io.FAILED {
+        os.complain("launch", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:], strings[:]);
-    ui_init(&ui, &canvas);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
+    ui.init(&panel, &canvas);
     while true {
-        var e: Event;
-        event_wait(&e, FOREVER);
-        if e.kind == EVENT_CLOSE {
+        var e: gfx.Event;
+        gfx.event_wait(&e, gfx.FOREVER);
+        if e.kind == gfx.EVENT_CLOSE {
             return 0;
         }
-        if e.kind == EVENT_MOUSE_MOVE && ui.active == 0 {
+        if e.kind == gfx.EVENT_MOUSE_MOVE && panel.active == 0 {
             continue;
         }
-        ui_event(&ui, &e);
-        draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, UI_BACKGROUND);
+        ui.event(&panel, &e);
+        gfx.draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, ui.BACKGROUND);
         for i in 0..COUNT {
             var y = 4 + (i * BUTTON) as i32;
-            if ui_button(&ui, i + 1, 6, y + 2, WIDTH - 12, BUTTON - 4, label(i)) {
-                spawn(program(i), "", STDIN, STDOUT, STDERR);
+            if ui.button(&panel, i + 1, 6, y + 2, WIDTH - 12, BUTTON - 4, label(i)) {
+                os.spawn(program(i), "", io.STDIN, io.STDOUT, io.STDERR);
             }
         }
-        ui_end(&ui);
-        present(&canvas);
+        ui.end(&panel);
+        gfx.present(&canvas);
     }
     return 0;
 }

@@ -2,8 +2,8 @@
 # itself again and checks the two results are the same, and the same as the
 # compiler the host built. The files are in the order the Makefile uses.
 mkdir /tmp
-tc -o /tmp/tc.asm /lib/core.tr /src/tc/check.tr /src/tc/gen.tr /src/tc/lex.tr /src/tc/main.tr /src/tc/parse.tr /src/tc/types.tr
+tc -o /tmp/tc.asm /src/tc/check.tr /src/tc/gen.tr /src/tc/lex.tr /src/tc/main.tr /src/tc/parse.tr /src/tc/types.tr
 asm -o /tmp/tc /lib/rt.asm /tmp/tc.asm
-/tmp/tc -o /tmp/tc-again.asm /lib/core.tr /src/tc/check.tr /src/tc/gen.tr /src/tc/lex.tr /src/tc/main.tr /src/tc/parse.tr /src/tc/types.tr
+/tmp/tc -o /tmp/tc-again.asm /src/tc/check.tr /src/tc/gen.tr /src/tc/lex.tr /src/tc/main.tr /src/tc/parse.tr /src/tc/types.tr
 cmp /tmp/tc.asm /tmp/tc-again.asm
 cmp /tmp/tc /bin/tc

@@ -1,5 +1,9 @@
 // wc counts the lines, words and bytes of files, or of its input.
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
@@ -9,24 +13,24 @@ manifest {
 var buffer: [16 * KiB]u8;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     if count == 0 {
-        count_file(STDIN, "");
+        count_file(io.STDIN, "");
         return 0;
     }
     var status: u32 = 0;
     for i in 0..count {
-        var file = open(args[i], MODE_READ);
-        if file == FAILED {
-            complain("wc", "can't read", args[i]);
+        var file = io.open(args[i], io.MODE_READ);
+        if file == io.FAILED {
+            os.complain("wc", "can't read", args[i]);
             status = 1;
             continue;
         }
         count_file(file, args[i]);
-        close(file);
+        io.close(file);
     }
     return status;
 }
@@ -37,8 +41,8 @@ fn count_file(file: u32, name: []u8) {
     var bytes: u32 = 0;
     var in_word = false;
     while true {
-        var n = read(file, buffer[:]);
-        if n == 0 || n == FAILED {
+        var n = io.read(file, buffer[:]);
+        if n == 0 || n == io.FAILED {
             break;
         }
         bytes += n;
@@ -54,18 +58,18 @@ fn count_file(file: u32, name: []u8) {
             in_word = !space;
         }
     }
-    var out: Writer;
+    var out: io.Writer;
     var text: [128]u8;
-    writer_init(&out, STDOUT, text[:]);
-    put_u32(&out, lines);
-    put_byte(&out, ' ');
-    put_u32(&out, words);
-    put_byte(&out, ' ');
-    put_u32(&out, bytes);
+    io.writer_init(&out, io.STDOUT, text[:]);
+    io.put_u32(&out, lines);
+    io.put_byte(&out, ' ');
+    io.put_u32(&out, words);
+    io.put_byte(&out, ' ');
+    io.put_u32(&out, bytes);
     if name.len > 0 {
-        put_byte(&out, ' ');
-        put(&out, name);
+        io.put_byte(&out, ' ');
+        io.put(&out, name);
     }
-    put_byte(&out, '\n');
-    flush(&out);
+    io.put_byte(&out, '\n');
+    io.flush(&out);
 }

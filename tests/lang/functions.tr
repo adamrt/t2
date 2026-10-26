@@ -1,5 +1,7 @@
 // Functions as values. Prints "ok", or the number of the first failed check.
 
+import io;
+
 struct Op {
     name: []u8;
     run: fn(u32) -> u32;
@@ -92,7 +94,7 @@ fn main(memory: []u8) -> u32 {
     var p = &ops[0];
     check(p.run(10) == 20, 10);
     if failures == 0 {
-        print("ok\n");
+        io.print("ok\n");
     }
     return failures;
 }

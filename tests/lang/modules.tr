@@ -1,0 +1,66 @@
+// Modules: qualified names of every kind, and names that hide a module.
+// Prints "ok", or the number of the first failed check.
+
+import io;
+import mem;
+import text;
+import gfx;
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+}
+
+const DOUBLE_WAIT = gfx.FOREVER - 1;
+
+struct Holder {
+    writer: io.Writer;
+    event: *gfx.Event;
+}
+
+var failures: u32;
+var arena: mem.Arena;
+
+fn check(ok: bool, number: u32) {
+    if !ok && failures == 0 {
+        failures = number;
+    }
+}
+
+// The program's own equal doesn't clash with text.equal.
+fn equal(a: u32, b: u32) -> bool {
+    return a == b;
+}
+
+// A parameter named like a module hides it, and works as a value.
+fn length(text: []u8) -> u32 {
+    return text.len;
+}
+
+fn main(memory: []u8) -> u32 {
+    mem.arena_init(&arena, memory);
+    check(text.equal("abc", "abc") && !text.equal("abc", "abd"), 1);
+    check(equal(3, 3), 2);
+    check(DOUBLE_WAIT == 0xfffffffe, 3);
+    check(size_of(Holder) == size_of(io.Writer) + 4, 4);
+    var same: fn([]u8, []u8) -> bool = text.equal;
+    check(same("x", "x"), 5);
+    var e = new(&arena, gfx.Event);
+    e.kind = gfx.EVENT_CLOSE;
+    match e.kind {
+        gfx.EVENT_DRAW => { check(false, 6); }
+        gfx.EVENT_CLOSE => { }
+        else => { check(false, 7); }
+    }
+    check(length("four") == 4, 8);
+    var buffer: [16]u8;
+    var h: Holder;
+    io.writer_init(&h.writer, io.STDOUT, buffer[:]);
+    io.put_u32(&h.writer, 42);
+    check(text.equal(buffer[0:h.writer.used], "42"), 9);
+    check(text.parse_u32("123") == 123, 10);
+    if failures == 0 {
+        io.print("ok\n");
+    }
+    return failures;
+}

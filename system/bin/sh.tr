@@ -7,8 +7,13 @@
 // feeds one command's output to the next, "<" reads input from a file, and
 // ">" writes output to one (">>" adds to its end). A line ending in "&"
 // runs in the background. A word with "*" in it, outside quotes, becomes the
-// names it matches, as in "tc -o all.asm /lib/core.tr *.tr". A line starting
+// names it matches, as in "tc -o all.asm *.tr". A line starting
 // with "#" is a comment. Programs without a "/" in their name come from /bin.
+
+import io;
+import mem;
+import os;
+import text;
 
 manifest {
     memory = 256 * KiB;
@@ -28,39 +33,39 @@ struct Stage {
 }
 
 var line: [1024]u8;
-var text: [8192]u8;             // the words, with quotes removed
+var word_bytes: [8192]u8;       // the words, with quotes removed
 var listing: [16384]u8;
-var text_used: u32;
+var word_bytes_used: u32;
 var stages: [MAX_STAGES]Stage;
 var stage_count: u32;
 var read_buffer: [1024]u8;
 var finished: bool;
 var background: bool;
-var records: [32]ProcessInfo;
+var records: [32]os.ProcessInfo;
 
 fn main(memory: []u8) -> u32 {
-    var input = STDIN;
+    var input = io.STDIN;
     var interactive = true;
-    if arg_count() > 0 {
+    if os.arg_count() > 0 {
         var name: [256]u8;
-        var n = arg(0, name[:]);
-        input = open(name[0:min(n, 256)], MODE_READ);
-        if input == FAILED {
-            complain("sh", "can't read", name[0:min(n, 256)]);
+        var n = os.arg(0, name[:]);
+        input = io.open(name[0:min(n, 256)], io.MODE_READ);
+        if input == io.FAILED {
+            os.complain("sh", "can't read", name[0:min(n, 256)]);
             return 1;
         }
         interactive = false;
     }
-    var reader: Reader;
-    reader_init(&reader, input, read_buffer[:]);
+    var reader: io.Reader;
+    io.reader_init(&reader, input, read_buffer[:]);
     var status: u32 = 0;
     while !finished {
         collect_background();
         if interactive {
             prompt();
         }
-        var n = read_line(&reader, line[:]);
-        if n == FAILED {
+        var n = io.read_line(&reader, line[:]);
+        if n == io.FAILED {
             break;
         }
         status = run_line(line[0:n]);
@@ -78,11 +83,11 @@ fn min(a: u32, b: u32) -> u32 {
 // Collects the status of background programs that have ended, so they don't
 // linger.
 fn collect_background() {
-    var n = processes((&records[0] as *u8)[0:size_of(ProcessInfo) * 32]) / size_of(ProcessInfo);
+    var n = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * 32]) / size_of(os.ProcessInfo);
     var me = parent_of_children();
     for i in 0..n {
         if records[i].state == 3 && records[i].parent == me {
-            wait(records[i].id);
+            os.wait(records[i].id);
         }
     }
 }
@@ -96,9 +101,9 @@ fn parent_of_children() -> u32 {
 
 fn prompt() {
     var dir: [256]u8;
-    var n = get_dir(dir[:]);
-    write_all(STDOUT, dir[0:min(n, 256)]);
-    write_all(STDOUT, "> ");
+    var n = os.get_dir(dir[:]);
+    io.write_all(io.STDOUT, dir[0:min(n, 256)]);
+    io.write_all(io.STDOUT, "> ");
 }
 
 fn run_line(input: []u8) -> u32 {
@@ -123,7 +128,7 @@ fn is_special(c: u8) -> bool {
 
 // Splits a line into stages. Returns false, after complaining, if it's malformed.
 fn parse(line_text: []u8) -> bool {
-    text_used = 0;
+    word_bytes_used = 0;
     stage_count = 0;
     background = false;
     var input = line_text;
@@ -151,11 +156,11 @@ fn parse(line_text: []u8) -> bool {
         }
         if c == '|' {
             if stage.count == 0 {
-                complain("sh", "missing command before '|'", "");
+                os.complain("sh", "missing command before '|'", "");
                 return false;
             }
             if stage_count == MAX_STAGES {
-                complain("sh", "too many commands in one line", "");
+                os.complain("sh", "too many commands in one line", "");
                 return false;
             }
             stage = new_stage();
@@ -173,7 +178,7 @@ fn parse(line_text: []u8) -> bool {
                 i += 1;
             }
         }
-        var start = text_used;
+        var start = word_bytes_used;
         var quoted = false;
         while i < input.len && input[i] != ' ' && input[i] != '\t' && !is_special(input[i]) {
             var q = input[i];
@@ -185,7 +190,7 @@ fn parse(line_text: []u8) -> bool {
                     i += 1;
                 }
                 if i == input.len {
-                    complain("sh", "a quote isn't closed", "");
+                    os.complain("sh", "a quote isn't closed", "");
                     return false;
                 }
                 i += 1;
@@ -194,10 +199,10 @@ fn parse(line_text: []u8) -> bool {
                 i += 1;
             }
         }
-        var word = text[start:text_used];
+        var word = word_bytes[start:word_bytes_used];
         if redirect == '<' || redirect == '>' {
             if word.len == 0 {
-                complain("sh", "missing file name after", input[i - 1:i]);
+                os.complain("sh", "missing file name after", input[i - 1:i]);
                 return false;
             }
             if redirect == '<' {
@@ -211,14 +216,14 @@ fn parse(line_text: []u8) -> bool {
             continue;
         }
         if stage.count == MAX_WORDS {
-            complain("sh", "too many words", "");
+            os.complain("sh", "too many words", "");
             return false;
         }
         stage.words[stage.count] = word;
         stage.count += 1;
     }
     if stage.count == 0 {
-        complain("sh", "missing command", "");
+        os.complain("sh", "missing command", "");
         return false;
     }
     return true;
@@ -262,30 +267,30 @@ fn expand(stage: *Stage, word: []u8) -> bool {
     if dir.len > 0 {
         path = dir;
     }
-    var n = list(path, listing[:]);
-    if n == FAILED {
+    var n = os.list(path, listing[:]);
+    if n == io.FAILED {
         return false;
     }
     var first = stage.count;
     var i: u32 = 0;
     while i + 64 <= n {
-        var e = &listing[i] as *ListEntry;
-        var name = entry_name(e);
+        var e = &listing[i] as *os.ListEntry;
+        var name = os.entry_name(e);
         i += 64;
         if !matches(pattern, name) || (name.len > 0 && name[0] == '.' && pattern[0] != '.') {
             continue;
         }
-        if stage.count == MAX_WORDS || text_used + dir.len + name.len > text.len {
+        if stage.count == MAX_WORDS || word_bytes_used + dir.len + name.len > word_bytes.len {
             break;
         }
-        var start = text_used;
+        var start = word_bytes_used;
         for k in 0..dir.len {
             add_text(dir[k]);
         }
         for k in 0..name.len {
             add_text(name[k]);
         }
-        stage.words[stage.count] = text[start:text_used];
+        stage.words[stage.count] = word_bytes[start:word_bytes_used];
         stage.count += 1;
     }
     // Sort the new words.
@@ -316,14 +321,14 @@ fn before(x: []u8, y: []u8) -> bool {
 fn new_stage() -> *Stage {
     var stage = &stages[stage_count];
     stage_count += 1;
-    mem_fill(stage as *u8, 0, size_of(Stage));
+    mem.fill(stage as *u8, 0, size_of(Stage));
     return stage;
 }
 
 fn add_text(c: u8) {
-    if text_used < text.len {
-        text[text_used] = c;
-        text_used += 1;
+    if word_bytes_used < word_bytes.len {
+        word_bytes[word_bytes_used] = c;
+        word_bytes_used += 1;
     }
 }
 
@@ -331,41 +336,41 @@ fn add_text(c: u8) {
 
 fn run_builtin(stage: *Stage) -> bool {
     var name = stage.words[0];
-    if text_equal(name, "cd") {
+    if text.equal(name, "cd") {
         var dir = "/";
         if stage.count > 1 {
             dir = stage.words[1];
         }
-        if set_dir(dir) == FAILED {
-            complain("cd", "no such directory:", dir);
+        if os.set_dir(dir) == io.FAILED {
+            os.complain("cd", "no such directory:", dir);
         }
         return true;
     }
-    if text_equal(name, "exit") {
+    if text.equal(name, "exit") {
         finished = true;
         return true;
     }
-    if text_equal(name, "clear") {
-        print("\x0c");
+    if text.equal(name, "clear") {
+        io.print("\x0c");
         return true;
     }
-    if text_equal(name, "help") {
+    if text.equal(name, "help") {
         if stage.count > 1 {
             show_notes(stage.words[1]);
             return true;
         }
-        print("Commands are programs in /bin:\n  ");
+        io.print("Commands are programs in /bin:\n  ");
         var buffer: [4096]u8;
-        var n = list("/bin", buffer[:]);
+        var n = os.list("/bin", buffer[:]);
         var i: u32 = 0;
         while i + 64 <= n {
-            var e = &buffer[i] as *ListEntry;
-            print(entry_name(e));
-            print(" ");
+            var e = &buffer[i] as *os.ListEntry;
+            io.print(os.entry_name(e));
+            io.print(" ");
             i += 64;
         }
-        print("\nBuilt in: cd, clear, exit, help. 'help name' explains a program.\n");
-        print("'|' connects commands; '<', '>' and '>>' redirect to files.\n");
+        io.print("\nBuilt in: cd, clear, exit, help. 'help name' explains a program.\n");
+        io.print("'|' connects commands; '<', '>' and '>>' redirect to files.\n");
         return true;
     }
     return false;
@@ -374,97 +379,97 @@ fn run_builtin(stage: *Stage) -> bool {
 // Prints the comment at the top of a program's source, which explains it.
 fn show_notes(program: []u8) {
     var path: [128]u8;
-    var file = FAILED;
+    var file = io.FAILED;
     if program.len < 100 {
-        copy(path[:], "/src/bin/");
-        copy(path[9:], program);
-        copy(path[9 + program.len:], ".tr");
-        file = open(path[0:program.len + 12], MODE_READ);
+        mem.copy(path[:], "/src/bin/");
+        mem.copy(path[9:], program);
+        mem.copy(path[9 + program.len:], ".tr");
+        file = io.open(path[0:program.len + 12], io.MODE_READ);
     }
-    if file == FAILED {
-        complain("help", "no notes for", program);
+    if file == io.FAILED {
+        os.complain("help", "no notes for", program);
         return;
     }
     var buffer: [1024]u8;
-    var reader: Reader;
-    reader_init(&reader, file, buffer[:]);
+    var reader: io.Reader;
+    io.reader_init(&reader, file, buffer[:]);
     var line: [256]u8;
     while true {
-        var n = read_line(&reader, line[:]);
-        if n == FAILED || n < 2 || line[0] != '/' || line[1] != '/' {
+        var n = io.read_line(&reader, line[:]);
+        if n == io.FAILED || n < 2 || line[0] != '/' || line[1] != '/' {
             break;
         }
         var text = line[2:n];
         if text.len > 0 && text[0] == ' ' {
             text = text[1:];
         }
-        print(text);
-        print("\n");
+        io.print(text);
+        io.print("\n");
     }
-    close(file);
+    io.close(file);
 }
 
 fn run_pipeline() -> u32 {
     var ids: [MAX_STAGES]u32;
-    var input = STDIN;
+    var input = io.STDIN;
     for s in 0..stage_count {
         var stage = &stages[s];
         if stage.input.len > 0 {
-            if input != STDIN {
-                close(input);
+            if input != io.STDIN {
+                io.close(input);
             }
-            input = open(stage.input, MODE_READ);
-            if input == FAILED {
-                complain("sh", "can't read", stage.input);
+            input = io.open(stage.input, io.MODE_READ);
+            if input == io.FAILED {
+                os.complain("sh", "can't read", stage.input);
                 return wait_all(ids[0:s]);
             }
         }
-        var output = STDOUT;
-        var next_input = STDIN;
+        var output = io.STDOUT;
+        var next_input = io.STDIN;
         if stage.output.len > 0 {
-            var mode = MODE_WRITE;
+            var mode = io.MODE_WRITE;
             if stage.append {
-                mode = MODE_APPEND;
+                mode = io.MODE_APPEND;
             }
-            output = open(stage.output, mode);
-            if output == FAILED {
-                complain("sh", "can't write", stage.output);
-                output = STDOUT;
+            output = io.open(stage.output, mode);
+            if output == io.FAILED {
+                os.complain("sh", "can't write", stage.output);
+                output = io.STDOUT;
             }
         } else if s + 1 < stage_count {
             var write_end: u32;
-            next_input = open_pipe(&write_end);
-            if next_input == FAILED {
-                complain("sh", "can't make a pipe", "");
-                next_input = STDIN;
+            next_input = os.open_pipe(&write_end);
+            if next_input == io.FAILED {
+                os.complain("sh", "can't make a pipe", "");
+                next_input = io.STDIN;
             } else {
                 output = write_end;
             }
         }
 
         ids[s] = start(stage, input, output);
-        if ids[s] != FAILED && my_id == 0 {
+        if ids[s] != io.FAILED && my_id == 0 {
             learn_my_id(ids[s]);
         }
-        if input != STDIN {
-            close(input);
+        if input != io.STDIN {
+            io.close(input);
         }
-        if output != STDOUT {
-            close(output);
+        if output != io.STDOUT {
+            io.close(output);
         }
         input = next_input;
     }
     if background {
-        if ids[stage_count - 1] == FAILED {
+        if ids[stage_count - 1] == io.FAILED {
             return 1;
         }
-        var out: Writer;
+        var out: io.Writer;
         var buffer: [64]u8;
-        writer_init(&out, STDOUT, buffer[:]);
-        put_byte(&out, '[');
-        put_u32(&out, ids[stage_count - 1]);
-        put(&out, "]\n");
-        flush(&out);
+        io.writer_init(&out, io.STDOUT, buffer[:]);
+        io.put_byte(&out, '[');
+        io.put_u32(&out, ids[stage_count - 1]);
+        io.put(&out, "]\n");
+        io.flush(&out);
         return 0;
     }
     return wait_all(ids[0:stage_count]);
@@ -472,7 +477,7 @@ fn run_pipeline() -> u32 {
 
 // Finds the shell's id from the parent of a process it started.
 fn learn_my_id(child: u32) {
-    var n = processes((&records[0] as *u8)[0:size_of(ProcessInfo) * 32]) / size_of(ProcessInfo);
+    var n = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * 32]) / size_of(os.ProcessInfo);
     for i in 0..n {
         if records[i].id == child {
             my_id = records[i].parent;
@@ -486,14 +491,14 @@ fn start(stage: *Stage, input: u32, output: u32) -> u32 {
     var name = stage.words[0];
     var n: u32 = 0;
     if find_slash(name) == name.len {
-        copy(path[:], "/bin/");
+        mem.copy(path[:], "/bin/");
         n = 5;
     }
     if n + name.len > path.len {
-        complain("sh", "name is too long", "");
-        return FAILED;
+        os.complain("sh", "name is too long", "");
+        return io.FAILED;
     }
-    copy(path[n:], name);
+    mem.copy(path[n:], name);
     n += name.len;
 
     var args: [2048]u8;
@@ -501,16 +506,16 @@ fn start(stage: *Stage, input: u32, output: u32) -> u32 {
     for i in 1..stage.count {
         var word = stage.words[i];
         if used + word.len + 1 > args.len {
-            complain("sh", "arguments are too long", "");
-            return FAILED;
+            os.complain("sh", "arguments are too long", "");
+            return io.FAILED;
         }
-        copy(args[used:], word);
+        mem.copy(args[used:], word);
         used += word.len;
         args[used] = 0;
         used += 1;
     }
-    var id = spawn(path[0:n], args[0:used], input, output, STDERR);
-    if id == FAILED {
+    var id = os.spawn(path[0:n], args[0:used], input, output, io.STDERR);
+    if id == io.FAILED {
         explain_failure(name, path[0:n]);
     }
     return id;
@@ -518,51 +523,51 @@ fn start(stage: *Stage, input: u32, output: u32) -> u32 {
 
 // The kernel only says that a program didn't start, so this looks for why.
 fn explain_failure(name: []u8, path: []u8) {
-    var text: [256]u8;
-    var w: Writer;
-    writer_init(&w, STDERR, text[:]);
-    put(&w, "sh: ");
-    var i: FileInfo;
+    var message: [256]u8;
+    var w: io.Writer;
+    io.writer_init(&w, io.STDERR, message[:]);
+    io.put(&w, "sh: ");
+    var i: os.FileInfo;
     var header: [32]u8;
     var free: u32;
-    var file = FAILED;
-    if info(path, &i) == FAILED {
-        put(&w, "no program ");
-        put(&w, name);
+    var file = io.FAILED;
+    if os.info(path, &i) == io.FAILED {
+        io.put(&w, "no program ");
+        io.put(&w, name);
         if find_slash(name) == name.len {
-            put(&w, " in /bin");
-            if info(name, &i) != FAILED {
-                put(&w, "; to run the one here, type ./");
-                put(&w, name);
+            io.put(&w, " in /bin");
+            if os.info(name, &i) != io.FAILED {
+                io.put(&w, "; to run the one here, type ./");
+                io.put(&w, name);
             }
         }
-    } else if i.kind == KIND_DIR {
-        put(&w, name);
-        put(&w, " is a directory");
+    } else if i.kind == os.KIND_DIR {
+        io.put(&w, name);
+        io.put(&w, " is a directory");
     } else {
-        file = open(path, MODE_READ);
+        file = io.open(path, io.MODE_READ);
     }
-    if file != FAILED {
-        var n = read(file, header[:]);
-        close(file);
-        memory_info(&free);
-        if n != header.len || !text_equal(header[0:4], "TRX2") {
-            put(&w, name);
-            put(&w, " isn't a program; asm makes programs from tc's output");
-        } else if read_word(header[:], 24) > free {
-            put(&w, name);
-            put(&w, " asks for ");
-            put_u32(&w, read_word(header[:], 24) / KiB);
-            put(&w, " KiB of memory, and ");
-            put_u32(&w, free / KiB);
-            put(&w, " KiB is free");
+    if file != io.FAILED {
+        var n = io.read(file, header[:]);
+        io.close(file);
+        os.memory_info(&free);
+        if n != header.len || !text.equal(header[0:4], "TRX2") {
+            io.put(&w, name);
+            io.put(&w, " isn't a program; asm makes programs from tc's output");
+        } else if mem.read_word(header[:], 24) > free {
+            io.put(&w, name);
+            io.put(&w, " asks for ");
+            io.put_u32(&w, mem.read_word(header[:], 24) / KiB);
+            io.put(&w, " KiB of memory, and ");
+            io.put_u32(&w, free / KiB);
+            io.put(&w, " KiB is free");
         } else {
-            put(&w, "can't run ");
-            put(&w, name);
+            io.put(&w, "can't run ");
+            io.put(&w, name);
         }
     }
-    put(&w, "\n");
-    flush(&w);
+    io.put(&w, "\n");
+    io.flush(&w);
 }
 
 fn find_slash(name: []u8) -> u32 {
@@ -577,8 +582,8 @@ fn find_slash(name: []u8) -> u32 {
 fn wait_all(ids: []u32) -> u32 {
     var status: u32 = 0;
     for i in 0..ids.len {
-        if ids[i] != FAILED {
-            status = wait(ids[i]);
+        if ids[i] != io.FAILED {
+            status = os.wait(ids[i]);
         } else {
             status = 1;
         }

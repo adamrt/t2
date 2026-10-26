@@ -3,6 +3,10 @@
 //
 //     hex /bin/echo
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
@@ -10,32 +14,32 @@ manifest {
 }
 
 var buffer: [16 * KiB]u8;
-var out: Writer;
+var out: io.Writer;
 var out_buffer: [4096]u8;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [2][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     if count > 1 {
-        complain("hex", "usage: hex [file]", "");
+        os.complain("hex", "usage: hex [file]", "");
         return 2;
     }
-    var file = STDIN;
+    var file = io.STDIN;
     if count == 1 {
-        file = open(args[0], MODE_READ);
-        if file == FAILED {
-            complain("hex", "can't read", args[0]);
+        file = io.open(args[0], io.MODE_READ);
+        if file == io.FAILED {
+            os.complain("hex", "can't read", args[0]);
             return 1;
         }
     }
-    writer_init(&out, STDOUT, out_buffer[:]);
+    io.writer_init(&out, io.STDOUT, out_buffer[:]);
     var offset: u32 = 0;
     var have: u32 = 0;
     while true {
-        var n = read(file, buffer[have:]);
-        if n == 0 || n == FAILED {
+        var n = io.read(file, buffer[have:]);
+        if n == 0 || n == io.FAILED {
             break;
         }
         have += n;
@@ -45,42 +49,42 @@ fn main(memory: []u8) -> u32 {
             offset += 16;
             done += 16;
         }
-        copy(buffer[:], buffer[done:have]);
+        mem.copy(buffer[:], buffer[done:have]);
         have -= done;
     }
     if have > 0 {
         show_line(offset, buffer[0:have]);
     }
-    flush(&out);
+    io.flush(&out);
     return 0;
 }
 
 fn put_digit(value: u32) {
-    put_byte(&out, "0123456789abcdef"[value & 15]);
+    io.put_byte(&out, "0123456789abcdef"[value & 15]);
 }
 
 fn show_line(offset: u32, bytes: []u8) {
-    put_hex(&out, offset);
-    put(&out, "  ");
+    io.put_hex(&out, offset);
+    io.put(&out, "  ");
     for i in 0..16 {
         if i == 8 {
-            put_byte(&out, ' ');
+            io.put_byte(&out, ' ');
         }
         if i < bytes.len {
             put_digit((bytes[i] >> 4) as u32);
             put_digit(bytes[i] as u32);
-            put_byte(&out, ' ');
+            io.put_byte(&out, ' ');
         } else {
-            put(&out, "   ");
+            io.put(&out, "   ");
         }
     }
-    put(&out, " |");
+    io.put(&out, " |");
     for i in 0..bytes.len {
         var c = bytes[i];
         if c < 32 || c > 126 {
             c = '.';
         }
-        put_byte(&out, c);
+        io.put_byte(&out, c);
     }
-    put(&out, "|\n");
+    io.put(&out, "|\n");
 }

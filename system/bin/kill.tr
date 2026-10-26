@@ -1,5 +1,10 @@
 // kill stops processes by id.
 
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
@@ -7,15 +12,15 @@ manifest {
 }
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     var status: u32 = 0;
     for i in 0..count {
-        var id = parse_u32(args[i]);
-        if id == FAILED || kill(id) == FAILED {
-            complain("kill", "no such process:", args[i]);
+        var id = text.parse_u32(args[i]);
+        if id == io.FAILED || os.kill(id) == io.FAILED {
+            os.complain("kill", "no such process:", args[i]);
             status = 1;
         }
     }

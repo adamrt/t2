@@ -1,5 +1,7 @@
 // Constants and conversions. Prints "ok", or the number of the first failed check.
 
+import io;
+
 const SIDE: u32 = 64;
 const AREA: u32 = SIDE * SIDE;
 const MINUS_NINE: i32 = -9;
@@ -50,7 +52,7 @@ fn main(memory: []u8) -> u32 {
     check(300 as u8 == 44, 14);
     check(-1 as u16 == 0xffff, 15);
     if failures == 0 {
-        print("ok\n");
+        io.print("ok\n");
     }
     return failures;
 }

@@ -42,8 +42,8 @@ _wait_interrupt:
 _power_off:
     halt
 
-; fn write(file: u32, bytes: []u8) -> u32;  Everything goes to the console.
-_write:
+; fn io.write(file: u32, bytes: []u8) -> u32;  Everything goes to the console.
+_io.write:
     r1 = [sp + 8]
     r2 = [sp + 12]
     r0 = r2
@@ -59,39 +59,39 @@ console_done:
     return
 
 ; The kernel has no files of its own, so these fail.
-_read:
-_open:
-_close:
-_arg:
+_io.read:
+_io.open:
+_io.close:
+_os.arg:
     r0 = -1
     return
 
-_arg_count:
+_os.arg_count:
     r0 = 0
     return
 
-; fn exit(status: u32);
-_exit:
+; fn os.exit(status: u32);
+_os.exit:
     halt
 
-; fn mem_copy(to: *u8, from: *u8, count: u32);
-_mem_copy:
+; fn mem.move(to: *u8, from: *u8, count: u32);
+_mem.move:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     copy r0, r1, r2
     return
 
-; fn mem_fill(to: *u8, value: u32, count: u32);
-_mem_fill:
+; fn mem.fill(to: *u8, value: u32, count: u32);
+_mem.fill:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     fill r0, r1, r2
     return
 
-; fn stop();  Faults on purpose, so the machine shows where the kernel was.
-_stop:
+; fn os.stop();  Faults on purpose, so the machine shows where the kernel was.
+_os.stop:
     r0 = 0
     r0 = [r0]
 
@@ -102,8 +102,8 @@ _bounds_failed:
     push r0
     r0 = 1
     push r0
-    call _write
-    call _stop
+    call _io.write
+    call _os.stop
 
 .data
 bounds_message:

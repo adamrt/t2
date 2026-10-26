@@ -1,6 +1,10 @@
 // TIM1 images (spec/formats.md): pictures cut into tiles that each decode on
 // their own, so a program can show part of a picture without holding all of it.
 
+import io;
+import mem;
+import text;
+
 const TILE: u32 = 64;
 const TILE_PIXELS: u32 = TILE * TILE;
 
@@ -11,7 +15,7 @@ const OP_RUN: u32 = 0xc0;
 const OP_RGB: u32 = 0xfe;
 const OP_RGBA: u32 = 0xff;
 
-struct ImageHeader {
+struct Header {
     width: u32;
     height: u32;
     tiles_x: u32;
@@ -19,12 +23,12 @@ struct ImageHeader {
 }
 
 // Reads the header at the start of a file. Returns false if it isn't TIM1.
-fn image_header(bytes: []u8, h: *ImageHeader) -> bool {
-    if bytes.len < 16 || !text_equal(bytes[0:4], "TIM1") || read_word(bytes, 12) != TILE {
+fn read_header(bytes: []u8, h: *Header) -> bool {
+    if bytes.len < 16 || !text.equal(bytes[0:4], "TIM1") || mem.read_word(bytes, 12) != TILE {
         return false;
     }
-    h.width = read_word(bytes, 4);
-    h.height = read_word(bytes, 8);
+    h.width = mem.read_word(bytes, 4);
+    h.height = mem.read_word(bytes, 8);
     h.tiles_x = (h.width + TILE - 1) / TILE;
     h.tiles_y = (h.height + TILE - 1) / TILE;
     return h.width > 0 && h.height > 0 && 16 + (h.tiles_x * h.tiles_y + 1) * 4 <= bytes.len;
@@ -32,19 +36,19 @@ fn image_header(bytes: []u8, h: *ImageHeader) -> bool {
 
 // Where tile n's bytes start; tile n ends where tile n + 1 starts.
 fn tile_offset(bytes: []u8, n: u32) -> u32 {
-    return read_word(bytes, 16 + n * 4);
+    return mem.read_word(bytes, 16 + n * 4);
 }
 
 // How many pixels wide and tall a tile is. Tiles at the right and bottom
 // edges can be smaller.
-fn tile_width(h: *ImageHeader, tx: u32) -> u32 {
+fn tile_width(h: *Header, tx: u32) -> u32 {
     if (tx + 1) * TILE > h.width {
         return h.width - tx * TILE;
     }
     return TILE;
 }
 
-fn tile_height(h: *ImageHeader, ty: u32) -> u32 {
+fn tile_height(h: *Header, ty: u32) -> u32 {
     if (ty + 1) * TILE > h.height {
         return h.height - ty * TILE;
     }
@@ -135,7 +139,7 @@ fn encode_tile(pixels: []u32, count: u32, out: []u8) -> u32 {
     var run: u32 = 0;
     for n in 0..count {
         if at + 6 > out.len {
-            return FAILED;
+            return io.FAILED;
         }
         var c = pixels[n];
         if c == p {
@@ -191,7 +195,7 @@ fn encode_tile(pixels: []u32, count: u32, out: []u8) -> u32 {
     }
     if run > 0 {
         if at >= out.len {
-            return FAILED;
+            return io.FAILED;
         }
         out[at] = (OP_RUN | (run - 1)) as u8;
         at += 1;
@@ -201,8 +205,8 @@ fn encode_tile(pixels: []u32, count: u32, out: []u8) -> u32 {
 
 // Writes a whole picture as a TIM1 file. The scratch buffer must hold at
 // least 5 bytes per tile pixel plus a little; 32 KiB is plenty.
-fn save_image(file: u32, width: u32, height: u32, pixels: []u32, scratch: []u8, offsets: []u32) -> bool {
-    var h: ImageHeader;
+fn save(file: u32, width: u32, height: u32, pixels: []u32, scratch: []u8, offsets: []u32) -> bool {
+    var h: Header;
     h.width = width;
     h.height = height;
     h.tiles_x = (width + TILE - 1) / TILE;
@@ -217,17 +221,17 @@ fn save_image(file: u32, width: u32, height: u32, pixels: []u32, scratch: []u8, 
     for pass in 0..2 {
         if pass == 1 {
             var header: [16]u8;
-            copy(header[:], "TIM1");
-            write_word(header[:], 4, width);
-            write_word(header[:], 8, height);
-            write_word(header[:], 12, TILE);
-            if !write_all(file, header[:]) {
+            mem.copy(header[:], "TIM1");
+            mem.write_word(header[:], 4, width);
+            mem.write_word(header[:], 8, height);
+            mem.write_word(header[:], 12, TILE);
+            if !io.write_all(file, header[:]) {
                 return false;
             }
             for i in 0..tiles + 1 {
                 var word: [4]u8;
-                write_word(word[:], 0, offsets[i]);
-                if !write_all(file, word[:]) {
+                mem.write_word(word[:], 0, offsets[i]);
+                if !io.write_all(file, word[:]) {
                     return false;
                 }
             }
@@ -242,13 +246,13 @@ fn save_image(file: u32, width: u32, height: u32, pixels: []u32, scratch: []u8, 
                     }
                 }
                 var n = encode_tile(tile[:], w * th, scratch);
-                if n == FAILED {
+                if n == io.FAILED {
                     return false;
                 }
                 if pass == 0 {
                     offsets[ty * h.tiles_x + tx] = position;
                     position += n;
-                } else if !write_all(file, scratch[0:n]) {
+                } else if !io.write_all(file, scratch[0:n]) {
                     return false;
                 }
             }

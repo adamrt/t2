@@ -7,11 +7,13 @@ Welcome to Terrarium. Type 'help' for help.
 /src> GET /hello.tr HTTP/1.0
 HTTP/1.0 200 OK
 Content-Type: text/plain
-Content-Length: 98
+Content-Length: 113
 Server: Terrarium
 
+import io;
+
 fn main(memory: []u8) -> u32 {
-    print("Hello from the Terrarium language!\n");
+    io.print("Hello from the Terrarium language!\n");
     return 0;
 }
 /src> /src> Terrarium: every process has ended

@@ -1,5 +1,9 @@
 // Exercises the language. Prints "ok", or the number of the first failed check.
 
+import io;
+import mem;
+import text;
+
 manifest {
     memory = 1 * MiB;
     stack = 16 * KiB;
@@ -33,7 +37,7 @@ enum Kind {
 
 var failures: u32;
 var shared: Shape;
-var out: Writer;
+var out: io.Writer;
 var out_buffer: [64]u8;
 
 fn check(ok: bool, number: u32) {
@@ -141,7 +145,7 @@ fn main(memory: []u8) -> u32 {
     check(shared.next.next.points[2].y == 77, 25);
     check(shared.corner.y == 9 && shared.tag == 200 && shared.weight == 1000, 26);
     check(shared.kind == Kind.Star && Kind.Moon as u32 == 11, 27);
-    check(text_equal(shared.next.name, "shared"), 28);
+    check(text.equal(shared.next.name, "shared"), 28);
     check(shared.next != null && shared.points[0].x == 0, 29);
 
     // Arrays and slices.
@@ -155,9 +159,9 @@ fn main(memory: []u8) -> u32 {
     var all = numbers[:];
     all[0] = 50;
     check(numbers[0] == 50, 33);
-    check(text_equal(first_word("hello world"), "hello"), 34);
-    var text = "abc";
-    check(text[1] == 'b' && text.len == 3, 35);
+    check(text.equal(first_word("hello world"), "hello"), 34);
+    var word = "abc";
+    check(word[1] == 'b' && word.len == 3, 35);
 
     // Control flow.
     var count: u32 = 0;
@@ -173,9 +177,9 @@ fn main(memory: []u8) -> u32 {
         count += i;
     }
     check(count == 25, 36);
-    check(text_equal(kind_name(Kind.Circle), "round"), 37);
-    check(text_equal(kind_name(Kind.Moon), "other"), 38);
-    check(text_equal(kind_name(Kind.Square), "square"), 39);
+    check(text.equal(kind_name(Kind.Circle), "round"), 37);
+    check(text.equal(kind_name(Kind.Moon), "other"), 38);
+    check(text.equal(kind_name(Kind.Square), "square"), 39);
     var hits: u32 = 0;
     var zero: u32 = 0;
     if zero != 0 && 10 / zero == 1 {
@@ -195,25 +199,25 @@ fn main(memory: []u8) -> u32 {
     check(down == -3, 42);
 
     // Arenas.
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var shape = new(&arena, Shape);
     var many = new(&arena, Point, 10);
     check(shape.tag == 0 && many.len == 10 && many[9].y == 0, 43);
     many[9].y = 5;
     check(arena.used == 60 + 80, 44);
-    reset(&arena);
+    mem.reset(&arena);
     check(arena.used == 0 && many[9].y == 0, 45);
 
     // Output.
-    writer_init(&out, STDOUT, out_buffer[:]);
+    io.writer_init(&out, io.STDOUT, out_buffer[:]);
     if failures == 0 {
-        put(&out, "ok\n");
+        io.put(&out, "ok\n");
     } else {
-        put(&out, "failed check ");
-        put_u32(&out, failures);
-        put_byte(&out, '\n');
+        io.put(&out, "failed check ");
+        io.put_u32(&out, failures);
+        io.put_byte(&out, '\n');
     }
-    flush(&out);
+    io.flush(&out);
     return failures;
 }

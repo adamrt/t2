@@ -1,6 +1,9 @@
 // Checking function bodies: every expression gets a type, every name finds
 // what it refers to, and every local gets a place in the stack frame.
 
+import io;
+import text;
+
 struct Local {
     name: []u8;         // empty for hidden locals
     ty: *Type;
@@ -39,7 +42,7 @@ fn add_local(n: *Node, name: []u8, ty: *Type, offset: i32) -> *Local {
     if name.len > 0 {
         var other = scope;
         while other != block_start {
-            if text_equal(other.name, name) {
+            if text.equal(other.name, name) {
                 fail_name(n, "already defined:", name);
             }
             other = other.next;
@@ -249,14 +252,14 @@ fn coerce(e: *Node, t: *Type, want: *Type) {
         }
         if !is_int(want) {
             error_start(e.file, e.line);
-            put(&errors, "a number can't be a ");
+            io.put(&errors, "a number can't be a ");
             put_type(&errors, want);
             error_end();
         }
         if (want.size == 1 && e.value > 255) || (want.size == 2 && e.value > 65535) {
             error_start(e.file, e.line);
-            put_u32(&errors, e.value);
-            put(&errors, " doesn't fit in ");
+            io.put_u32(&errors, e.value);
+            io.put(&errors, " doesn't fit in ");
             put_type(&errors, want);
             error_end();
         }
@@ -293,17 +296,17 @@ fn check(e: *Node, want: *Type) -> *Type {
 fn lookup(e: *Node) -> *Type {
     var local = scope;
     while local != null {
-        if text_equal(local.name, e.name) {
+        if text.equal(local.name, e.name) {
             e.local = local;
             return local.ty;
         }
         local = local.next;
     }
-    if e.module == 0 && text_equal(e.name, "KiB") {
+    if e.module == 0 && text.equal(e.name, "KiB") {
         set_const(e, 1024);
         return t_untyped;
     }
-    if e.module == 0 && text_equal(e.name, "MiB") {
+    if e.module == 0 && text.equal(e.name, "MiB") {
         set_const(e, 1048576);
         return t_untyped;
     }
@@ -334,25 +337,25 @@ fn lookup(e: *Node) -> *Type {
 fn unknown_name(e: *Node, message: []u8) {
     error_start(e.file, e.line);
     if e.module != 0 {
-        put(&errors, "no '");
-        put(&errors, e.name);
-        put(&errors, "' in module ");
-        put(&errors, modules[e.module]);
+        io.put(&errors, "no '");
+        io.put(&errors, e.name);
+        io.put(&errors, "' in module ");
+        io.put(&errors, modules[e.module]);
         error_end();
     }
-    put(&errors, message);
-    put(&errors, " '");
-    put(&errors, e.name);
-    put(&errors, "'");
+    io.put(&errors, message);
+    io.put(&errors, " '");
+    io.put(&errors, e.name);
+    io.put(&errors, "'");
     var f = &files[e.file];
     for i in 0..f.import_count {
         var m = f.imports[i];
         if find_sym(m, e.name) != null {
-            put(&errors, "; did you mean '");
-            put(&errors, modules[m]);
-            put_byte(&errors, '.');
-            put(&errors, e.name);
-            put(&errors, "'?");
+            io.put(&errors, "; did you mean '");
+            io.put(&errors, modules[m]);
+            io.put_byte(&errors, '.');
+            io.put(&errors, e.name);
+            io.put(&errors, "'?");
             break;
         }
     }
@@ -475,8 +478,9 @@ fn check_expr(e: *Node, want: *Type) -> *Type {
         }
         N.New => {
             var arena_type = check(e.a, null);
-            var alloc = find_sym(module_named("mem"), "alloc");
-            if alloc == null || alloc.kind != SymKind.Fn {
+            var mem_module = module_named("mem");
+            var alloc = find_sym(mem_module, "alloc");
+            if mem_module == 0 || alloc == null || alloc.kind != SymKind.Fn {
                 fail(e, "'new' needs mem.alloc, from the module mem");
             }
             declare(alloc);
@@ -505,7 +509,7 @@ fn check_member(e: *Node) -> *Type {
         declare(s);
         var item = s.node.list;
         while item != null {
-            if text_equal(item.name, e.name) {
+            if text.equal(item.name, e.name) {
                 set_const(e, item.value);
                 return s.ty;
             }
@@ -514,13 +518,13 @@ fn check_member(e: *Node) -> *Type {
         fail_name(e, "not in the enum:", e.name);
     }
     var t = check(e.a, null);
-    if (t.kind == TypeKind.Slice || t.kind == TypeKind.Array) && text_equal(e.name, "len") {
+    if (t.kind == TypeKind.Slice || t.kind == TypeKind.Array) && text.equal(e.name, "len") {
         if t.kind == TypeKind.Array {
             set_const(e, t.length);
         }
         return t_u32;
     }
-    if t.kind == TypeKind.Slice && text_equal(e.name, "ptr") {
+    if t.kind == TypeKind.Slice && text.equal(e.name, "ptr") {
         return ptr_to(t.elem);
     }
     var st = t;
@@ -528,7 +532,7 @@ fn check_member(e: *Node) -> *Type {
         st = t.elem;
     }
     if st.kind != TypeKind.Struct {
-        if e.a.kind == N.Name && e.a.local != null && imported(e.a.file, e.a.name) != 0 {
+        if e.a.kind == N.Name && e.a.module == 0 && imported(e.a.file, e.a.name) != 0 {
             fail_name(e.a, "this variable hides the module", e.a.name);
         }
         fail_name(e, "no such field:", e.name);
@@ -536,7 +540,7 @@ fn check_member(e: *Node) -> *Type {
     complete(st);
     var f = st.fields;
     while f != null {
-        if text_equal(f.name, e.name) {
+        if text.equal(f.name, e.name) {
             e.value = f.offset;
             return f.ty;
         }
@@ -588,7 +592,7 @@ fn check_call(e: *Node) -> *Type {
 fn is_local(name: []u8) -> bool {
     var local = scope;
     while local != null {
-        if text_equal(local.name, name) {
+        if text.equal(local.name, name) {
             return true;
         }
         local = local.next;
@@ -705,9 +709,9 @@ fn check_binary(e: *Node) -> *Type {
                 ty = rt;
             } else {
                 error_start(e.file, e.line);
-                put(&errors, "can't combine ");
+                io.put(&errors, "can't combine ");
                 put_type(&errors, lt);
-                put(&errors, " and ");
+                io.put(&errors, " and ");
                 put_type(&errors, rt);
                 error_end();
             }
@@ -816,7 +820,7 @@ fn check_cast(e: *Node) -> *Type {
             return target;
         }
         error_start(e.file, e.line);
-        put(&errors, "can't convert a number to ");
+        io.put(&errors, "can't convert a number to ");
         put_type(&errors, target);
         error_end();
     }
@@ -838,9 +842,9 @@ fn check_cast(e: *Node) -> *Type {
     }
     if !ok {
         error_start(e.file, e.line);
-        put(&errors, "can't convert ");
+        io.put(&errors, "can't convert ");
         put_type(&errors, t);
-        put(&errors, " to ");
+        io.put(&errors, " to ");
         put_type(&errors, target);
         error_end();
     }

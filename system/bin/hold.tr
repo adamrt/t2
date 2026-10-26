@@ -1,27 +1,31 @@
 // hold reserves 10 MiB, waits a number of milliseconds, and says so. It's for
 // testing how the kernel manages memory.
 
+import io;
+import os;
+import text;
+
 manifest {
     memory = 10 * MiB;
     stack = 16 * KiB;
 }
 
 fn main(memory: []u8) -> u32 {
-    var text: [16]u8;
-    var n = arg(0, text[:]);
-    var ms = parse_u32(text[0:min(n, 16)]);
-    if ms == FAILED {
+    var word: [16]u8;
+    var n = os.arg(0, word[:]);
+    var ms = text.parse_u32(word[0:min(n, 16)]);
+    if ms == io.FAILED {
         ms = 1000;
     }
     // Touch the first and last of the memory, then check it after waiting.
     memory[0] = 42;
     memory[memory.len - 1] = 43;
-    sleep(ms);
+    os.sleep(ms);
     if memory[0] != 42 || memory[memory.len - 1] != 43 {
-        print("hold: memory changed!\n");
+        io.print("hold: memory changed!\n");
         return 1;
     }
-    print("hold done\n");
+    io.print("hold done\n");
     return 0;
 }
 

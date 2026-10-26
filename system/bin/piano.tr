@@ -3,6 +3,11 @@
 // triangle wave that fades out, and up to eight sound at once. R starts and
 // stops recording to piano.tsn in the current directory.
 
+import gfx;
+import io;
+import os;
+import sound;
+
 manifest {
     memory = 256 * KiB;
     stack = 32 * KiB;
@@ -25,14 +30,14 @@ struct Voice {
     note: u32;
 }
 
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var words: [2048]u32;
 var strings: [256]u8;
 var voices: [VOICES]Voice;
 var samples: [CHUNK]u16;
 var rate: u32;
 var lit: [17]u32;               // frames each key stays highlighted
-var recorder: SoundWriter;
+var recorder: sound.Writer;
 var recording: bool;
 
 // Notes from middle C up, in semitones.
@@ -95,7 +100,7 @@ fn play(note: u32) {
 }
 
 fn fill_sound() {
-    var queued = audio_status(&rate);
+    var queued = sound.status(&rate);
     while queued < AHEAD {
         for s in 0..CHUNK {
             var mix: i32 = 0;
@@ -122,11 +127,11 @@ fn fill_sound() {
         for i in 0..VOICES {
             voices[i].level = voices[i].level * 15 / 16;
         }
-        if audio_play((&samples[0] as *u8)[0:CHUNK * 2]) == FAILED {
+        if sound.play((&samples[0] as *u8)[0:CHUNK * 2]) == io.FAILED {
             return;
         }
         if recording {
-            sound_writer_add(&recorder, samples[:]);
+            sound.writer_add(&recorder, samples[:]);
         }
         queued += CHUNK * 2;
     }
@@ -149,31 +154,31 @@ fn key_note(c: u32) -> u32 {
 }
 
 fn main(memory: []u8) -> u32 {
-    var window = window_open("Piano", WIDTH, HEIGHT);
-    if window == FAILED {
-        complain("piano", "can't open a window", "");
+    var window = gfx.window_open("Piano", WIDTH, HEIGHT);
+    if window == io.FAILED {
+        os.complain("piano", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:], strings[:]);
-    audio_status(&rate);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
+    sound.status(&rate);
     if rate == 0 {
         rate = 22050;
     }
     while true {
-        var e: Event;
+        var e: gfx.Event;
         var redraw = false;
-        while event_wait(&e, 15) == 1 {
-            if e.kind == EVENT_CLOSE {
+        while gfx.event_wait(&e, 15) == 1 {
+            if e.kind == gfx.EVENT_CLOSE {
                 if recording {
                     record();
                 }
                 return 0;
             }
-            if e.kind == EVENT_TEXT && (e.key == 'r' || e.key == 'R') {
+            if e.kind == gfx.EVENT_TEXT && (e.key == 'r' || e.key == 'R') {
                 record();
-            } else if e.kind == EVENT_TEXT {
+            } else if e.kind == gfx.EVENT_TEXT {
                 play(key_note(e.key));
-            } else if e.kind == EVENT_MOUSE_DOWN {
+            } else if e.kind == gfx.EVENT_MOUSE_DOWN {
                 play(note_at(e.x, e.y));
             }
             redraw = true;
@@ -195,23 +200,23 @@ fn main(memory: []u8) -> u32 {
 // Starts recording, or stops and finishes the file.
 fn record() {
     if !recording {
-        var file = open("piano.tsn", MODE_WRITE);
-        if file == FAILED {
-            complain("piano", "can't write piano.tsn", "");
+        var file = io.open("piano.tsn", io.MODE_WRITE);
+        if file == io.FAILED {
+            os.complain("piano", "can't write piano.tsn", "");
             return;
         }
-        sound_writer_start(&recorder, file, rate, 0);
+        sound.writer_start(&recorder, file, rate, 0);
         recording = true;
         return;
     }
     recording = false;
     // Only now is the length known, so the header is written again.
-    var header: [SOUND_HEADER]u8;
-    write_sound_header(header[:], rate, recorder.total + recorder.count);
-    var ok = sound_writer_finish(&recorder) && seek(recorder.file, 0) == 0 && write_all(recorder.file, header[:]);
-    close(recorder.file);
+    var header: [sound.HEADER]u8;
+    sound.write_header(header[:], rate, recorder.total + recorder.count);
+    var ok = sound.writer_finish(&recorder) && io.seek(recorder.file, 0) == 0 && io.write_all(recorder.file, header[:]);
+    io.close(recorder.file);
     if !ok {
-        complain("piano", "can't write piano.tsn", "");
+        os.complain("piano", "can't write piano.tsn", "");
     }
 }
 
@@ -234,30 +239,30 @@ fn note_at(x: i32, y: i32) -> u32 {
 }
 
 fn draw() {
-    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, rgb(30, 30, 36));
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36));
     for i in 0..WHITE_KEYS {
-        var face = rgb(242, 239, 230);
+        var face = gfx.rgb(242, 239, 230);
         if lit[white_note(i)] > 0 {
-            face = rgb(232, 195, 90);
+            face = gfx.rgb(232, 195, 90);
         }
-        draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face);
+        gfx.draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face);
     }
     for i in 0..WHITE_KEYS {
         var note = black_note(i);
         if note == 99 {
             continue;
         }
-        var face = rgb(30, 30, 36);
+        var face = gfx.rgb(30, 30, 36);
         if lit[note] > 0 {
-            face = rgb(232, 195, 90);
+            face = gfx.rgb(232, 195, 90);
         }
-        draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face);
+        gfx.draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face);
     }
     if recording {
-        draw_fill(&canvas, 8, KEY_H + 11, 8, 8, rgb(220, 70, 60));
-        draw_text(&canvas, 22, KEY_H + 7, rgb(216, 212, 200), "recording: R stops");
+        gfx.draw_fill(&canvas, 8, KEY_H + 11, 8, 8, gfx.rgb(220, 70, 60));
+        gfx.draw_text(&canvas, 22, KEY_H + 7, gfx.rgb(216, 212, 200), "recording: R stops");
     } else {
-        draw_text(&canvas, 8, KEY_H + 7, rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record");
+        gfx.draw_text(&canvas, 8, KEY_H + 7, gfx.rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record");
     }
-    present(&canvas);
+    gfx.present(&canvas);
 }

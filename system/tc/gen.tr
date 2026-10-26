@@ -8,6 +8,9 @@
 // call or use of a function as a value puts it in the queue. Likewise only
 // the globals those functions use get space.
 
+import io;
+import text;
+
 struct StringData {
     node: *Node;
     next: *StringData;
@@ -15,7 +18,7 @@ struct StringData {
 
 const MAX_LOOPS = 64;
 
-var out: Writer;
+var out: io.Writer;
 var labels: u32;
 var return_label: u32;
 var bounds_label: u32;
@@ -31,7 +34,7 @@ var queue_start: u32;
 var queue_end: u32;
 
 fn generate() {
-    put(&out, ".code\n");
+    io.put(&out, ".code\n");
     var functions: u32 = 0;
     var s = first_sym;
     while s != null {
@@ -50,34 +53,34 @@ fn generate() {
         }
     }
 
-    put(&out, "\n.data\n");
+    io.put(&out, "\n.data\n");
     var d = first_string;
     while d != null {
-        put_byte(&out, 'S');
-        put_u32(&out, d.node.value);
-        put(&out, ":\n");
+        io.put_byte(&out, 'S');
+        io.put_u32(&out, d.node.value);
+        io.put(&out, ":\n");
         var bytes = d.node.name;
         for i in 0..bytes.len {
             if i % 16 == 0 {
-                put(&out, "    .byte ");
+                io.put(&out, "    .byte ");
             } else {
-                put(&out, ", ");
+                io.put(&out, ", ");
             }
-            put_u32(&out, bytes[i]);
+            io.put_u32(&out, bytes[i]);
             if i % 16 == 15 || i == bytes.len - 1 {
-                put_byte(&out, '\n');
+                io.put_byte(&out, '\n');
             }
         }
         d = d.next;
     }
 
-    put(&out, "\n.bss\n");
+    io.put(&out, "\n.bss\n");
     s = first_sym;
     while s != null {
         if s.kind == SymKind.Global && s.used {
             emit(".align 4");
             put_symbol(s);
-            put(&out, ":\n");
+            io.put(&out, ":\n");
             var size = (s.ty.size + 3) & ~3;
             if size < 4 {
                 size = 4;
@@ -86,7 +89,7 @@ fn generate() {
         }
         s = s.after;
     }
-    put_byte(&out, '\n');
+    io.put_byte(&out, '\n');
     if manifest_memory != null {
         emit_value(".memory ", manifest_memory.value);
     }
@@ -103,9 +106,9 @@ fn gen_function(s: *Sym) {
     return_label = new_label();
     bounds_label = 0;
     loop_depth = 0;
-    put_byte(&out, '\n');
+    io.put_byte(&out, '\n');
     put_symbol(s);
-    put(&out, ":\n");
+    io.put(&out, ":\n");
     emit("push r7");
     emit("r7 = sp");
     if n.value > 0 {
@@ -140,42 +143,42 @@ fn bounds() -> u32 {
 }
 
 fn emit(text: []u8) {
-    put(&out, "    ");
-    put(&out, text);
-    put_byte(&out, '\n');
+    io.put(&out, "    ");
+    io.put(&out, text);
+    io.put_byte(&out, '\n');
 }
 
 fn start_line() {
-    put(&out, "    ");
+    io.put(&out, "    ");
 }
 
 fn end_line() {
-    put_byte(&out, '\n');
+    io.put_byte(&out, '\n');
 }
 
 fn emit_value(text: []u8, value: u32) {
     start_line();
-    put(&out, text);
-    put_u32(&out, value);
+    io.put(&out, text);
+    io.put_u32(&out, value);
     end_line();
 }
 
 fn place(label: u32) {
-    put_byte(&out, 'L');
-    put_u32(&out, label);
-    put(&out, ":\n");
+    io.put_byte(&out, 'L');
+    io.put_u32(&out, label);
+    io.put(&out, ":\n");
 }
 
 fn emit_goto(label: u32) {
     start_line();
-    put(&out, "goto L");
-    put_u32(&out, label);
+    io.put(&out, "goto L");
+    io.put_u32(&out, label);
     end_line();
 }
 
 fn put_label(label: u32) {
-    put_byte(&out, 'L');
-    put_u32(&out, label);
+    io.put_byte(&out, 'L');
+    io.put_u32(&out, label);
 }
 
 fn size_prefix(t: *Type) -> []u8 {
@@ -191,25 +194,25 @@ fn size_prefix(t: *Type) -> []u8 {
 // "[r7 - 12]" or "[r7 + 8]"
 fn put_frame(offset: i32) {
     if offset < 0 {
-        put(&out, "[r7 - ");
-        put_u32(&out, (0 - offset) as u32);
+        io.put(&out, "[r7 - ");
+        io.put_u32(&out, (0 - offset) as u32);
     } else {
-        put(&out, "[r7 + ");
-        put_u32(&out, offset as u32);
+        io.put(&out, "[r7 + ");
+        io.put_u32(&out, offset as u32);
     }
-    put_byte(&out, ']');
+    io.put_byte(&out, ']');
 }
 
 // "reg = r7 - 12"
 fn emit_frame_address(reg: []u8, offset: i32) {
     start_line();
-    put(&out, reg);
+    io.put(&out, reg);
     if offset < 0 {
-        put(&out, " = r7 - ");
-        put_u32(&out, (0 - offset) as u32);
+        io.put(&out, " = r7 - ");
+        io.put_u32(&out, (0 - offset) as u32);
     } else {
-        put(&out, " = r7 + ");
-        put_u32(&out, offset as u32);
+        io.put(&out, " = r7 + ");
+        io.put_u32(&out, offset as u32);
     }
     end_line();
 }
@@ -290,9 +293,9 @@ fn gen_statement(st: *Node) {
             load_local(st.local2, "r1");
             start_line();
             if st.local.ty.signed {
-                put(&out, "if r0 >=s r1 goto ");
+                io.put(&out, "if r0 >=s r1 goto ");
             } else {
-                put(&out, "if r0 >= r1 goto ");
+                io.put(&out, "if r0 >= r1 goto ");
             }
             put_label(end);
             end_line();
@@ -319,7 +322,7 @@ fn gen_statement(st: *Node) {
                     load_local(st.local, "r0");
                     emit_value("r1 = ", v.value);
                     start_line();
-                    put(&out, "if r0 == r1 goto ");
+                    io.put(&out, "if r0 == r1 goto ");
                     put_label(body);
                     end_line();
                     v = v.next;
@@ -411,18 +414,18 @@ fn load_local(local: *Local, reg: []u8) {
         emit_frame_address(reg, local.offset);
     } else if t.kind == TypeKind.Slice {
         start_line();
-        put(&out, "r1 = ");
+        io.put(&out, "r1 = ");
         put_frame(local.offset + 4);
         end_line();
         start_line();
-        put(&out, "r0 = ");
+        io.put(&out, "r0 = ");
         put_frame(local.offset);
         end_line();
     } else {
         start_line();
-        put(&out, reg);
-        put(&out, " = ");
-        put(&out, size_prefix(t));
+        io.put(&out, reg);
+        io.put(&out, " = ");
+        io.put(&out, size_prefix(t));
         put_frame(local.offset);
         end_line();
     }
@@ -437,17 +440,17 @@ fn store_local(local: *Local, t: *Type) {
     } else if t.kind == TypeKind.Slice {
         start_line();
         put_frame(local.offset);
-        put(&out, " = r0");
+        io.put(&out, " = r0");
         end_line();
         start_line();
         put_frame(local.offset + 4);
-        put(&out, " = r1");
+        io.put(&out, " = r1");
         end_line();
     } else {
         start_line();
-        put(&out, size_prefix(t));
+        io.put(&out, size_prefix(t));
         put_frame(local.offset);
-        put(&out, " = r0");
+        io.put(&out, " = r0");
         end_line();
     }
 }
@@ -471,30 +474,30 @@ fn zero_local(local: *Local) {
 // Loads a value of type t from the address in reg into r0 (and r1).
 fn load(reg: []u8, t: *Type) {
     if is_aggregate(t) {
-        if !text_equal(reg, "r0") {
+        if !text.equal(reg, "r0") {
             start_line();
-            put(&out, "r0 = ");
-            put(&out, reg);
+            io.put(&out, "r0 = ");
+            io.put(&out, reg);
             end_line();
         }
     } else if t.kind == TypeKind.Slice {
         start_line();
-        put(&out, "r1 = [");
-        put(&out, reg);
-        put(&out, " + 4]");
+        io.put(&out, "r1 = [");
+        io.put(&out, reg);
+        io.put(&out, " + 4]");
         end_line();
         start_line();
-        put(&out, "r0 = [");
-        put(&out, reg);
-        put_byte(&out, ']');
+        io.put(&out, "r0 = [");
+        io.put(&out, reg);
+        io.put_byte(&out, ']');
         end_line();
     } else {
         start_line();
-        put(&out, "r0 = ");
-        put(&out, size_prefix(t));
-        put_byte(&out, '[');
-        put(&out, reg);
-        put_byte(&out, ']');
+        io.put(&out, "r0 = ");
+        io.put(&out, size_prefix(t));
+        io.put_byte(&out, '[');
+        io.put(&out, reg);
+        io.put_byte(&out, ']');
         end_line();
     }
 }
@@ -503,21 +506,21 @@ fn load(reg: []u8, t: *Type) {
 fn store(reg: []u8, t: *Type) {
     if t.kind == TypeKind.Slice {
         start_line();
-        put_byte(&out, '[');
-        put(&out, reg);
-        put(&out, "] = r0");
+        io.put_byte(&out, '[');
+        io.put(&out, reg);
+        io.put(&out, "] = r0");
         end_line();
         start_line();
-        put_byte(&out, '[');
-        put(&out, reg);
-        put(&out, " + 4] = r1");
+        io.put_byte(&out, '[');
+        io.put(&out, reg);
+        io.put(&out, " + 4] = r1");
         end_line();
     } else {
         start_line();
-        put(&out, size_prefix(t));
-        put_byte(&out, '[');
-        put(&out, reg);
-        put(&out, "] = r0");
+        io.put(&out, size_prefix(t));
+        io.put_byte(&out, '[');
+        io.put(&out, reg);
+        io.put(&out, "] = r0");
         end_line();
     }
 }
@@ -576,7 +579,7 @@ fn gen_value(e: *Node) {
         N.Member => {
             if e.a.ty.kind == TypeKind.Slice {
                 gen_expr(e.a);
-                if text_equal(e.name, "len") {
+                if text.equal(e.name, "len") {
                     emit("r0 = r1");
                 }
             } else {
@@ -669,12 +672,12 @@ fn use_function(s: *Sym) {
 
 // A name's label: write is _write, and write in the module io is _io.write.
 fn put_symbol(s: *Sym) {
-    put_byte(&out, '_');
+    io.put_byte(&out, '_');
     if s.module != 0 {
-        put(&out, modules[s.module]);
-        put_byte(&out, '.');
+        io.put(&out, modules[s.module]);
+        io.put_byte(&out, '.');
     }
-    put(&out, s.name);
+    io.put(&out, s.name);
 }
 
 // Puts the address of a global or function in r0, and marks it used.
@@ -685,7 +688,7 @@ fn emit_symbol(s: *Sym) {
         s.used = true;
     }
     start_line();
-    put(&out, "r0 = ");
+    io.put(&out, "r0 = ");
     put_symbol(s);
     end_line();
 }
@@ -693,7 +696,7 @@ fn emit_symbol(s: *Sym) {
 fn emit_call(s: *Sym) {
     use_function(s);
     start_line();
-    put(&out, "call ");
+    io.put(&out, "call ");
     put_symbol(s);
     end_line();
 }
@@ -704,21 +707,21 @@ fn scale(reg: []u8, size: u32) {
         return;
     }
     start_line();
-    put(&out, reg);
+    io.put(&out, reg);
     if size == 0 {
-        put(&out, " = 0");
+        io.put(&out, " = 0");
     } else if size & (size - 1) == 0 {
-        put(&out, " <<= ");
+        io.put(&out, " <<= ");
         var shift: u32 = 0;
         var bit: u32 = 1;
         while bit != size {
             bit <<= 1;
             shift += 1;
         }
-        put_u32(&out, shift);
+        io.put_u32(&out, shift);
     } else {
-        put(&out, " *= ");
-        put_u32(&out, size);
+        io.put(&out, " *= ");
+        io.put_u32(&out, size);
     }
     end_line();
 }
@@ -802,7 +805,7 @@ fn gen_address(e: *Node) {
                 emit("pop r2");
             }
             start_line();
-            put(&out, "if r1 >= r2 goto ");
+            io.put(&out, "if r1 >= r2 goto ");
             put_label(bounds());
             end_line();
             scale("r1", elem.size);
@@ -848,13 +851,13 @@ fn gen_slice(e: *Node) {
     if base.kind != TypeKind.Ptr {
         emit("pop r3");
         start_line();
-        put(&out, "if r1 > r3 goto ");
+        io.put(&out, "if r1 > r3 goto ");
         put_label(bounds());
         end_line();
     }
     emit("pop r0");
     start_line();
-    put(&out, "if r2 > r1 goto ");
+    io.put(&out, "if r2 > r1 goto ");
     put_label(bounds());
     end_line();
     emit("r1 -= r2");
@@ -895,24 +898,24 @@ fn operate(op: Tok, ty: *Type, use_immediate: bool) {
     var signed = ty.signed;
     var fixed = is_fixed(ty);
     start_line();
-    put(&out, "r0 = r0 ");
+    io.put(&out, "r0 = r0 ");
     match op {
-        Tok.Plus => { put(&out, "+"); }
-        Tok.Minus => { put(&out, "-"); }
-        Tok.Star => { if fixed { put(&out, "*f"); } else { put(&out, "*"); } }
-        Tok.Amp => { put(&out, "&"); }
-        Tok.Pipe => { put(&out, "|"); }
-        Tok.Caret => { put(&out, "^"); }
-        Tok.Shl => { put(&out, "<<"); }
-        Tok.Slash => { if fixed { put(&out, "/f"); } else if signed { put(&out, "/s"); } else { put(&out, "/"); } }
-        Tok.Percent => { if signed { put(&out, "%s"); } else { put(&out, "%"); } }
-        Tok.Shr => { if signed { put(&out, ">>s"); } else { put(&out, ">>"); } }
+        Tok.Plus => { io.put(&out, "+"); }
+        Tok.Minus => { io.put(&out, "-"); }
+        Tok.Star => { if fixed { io.put(&out, "*f"); } else { io.put(&out, "*"); } }
+        Tok.Amp => { io.put(&out, "&"); }
+        Tok.Pipe => { io.put(&out, "|"); }
+        Tok.Caret => { io.put(&out, "^"); }
+        Tok.Shl => { io.put(&out, "<<"); }
+        Tok.Slash => { if fixed { io.put(&out, "/f"); } else if signed { io.put(&out, "/s"); } else { io.put(&out, "/"); } }
+        Tok.Percent => { if signed { io.put(&out, "%s"); } else { io.put(&out, "%"); } }
+        Tok.Shr => { if signed { io.put(&out, ">>s"); } else { io.put(&out, ">>"); } }
     }
     if use_immediate {
-        put_byte(&out, ' ');
-        put_i32(&out, immediate);
+        io.put_byte(&out, ' ');
+        io.put_i32(&out, immediate);
     } else {
-        put(&out, " r1");
+        io.put(&out, " r1");
     }
     end_line();
 }
@@ -985,9 +988,9 @@ fn gen_cond(e: *Node, label: u32, when: bool) {
         var signed = e.operand.signed;
         gen_operands(e, false);
         start_line();
-        put(&out, "if r0 ");
-        put(&out, compare_text(op, signed));
-        put(&out, " r1 goto ");
+        io.put(&out, "if r0 ");
+        io.put(&out, compare_text(op, signed));
+        io.put(&out, " r1 goto ");
         put_label(label);
         end_line();
         return;
@@ -995,9 +998,9 @@ fn gen_cond(e: *Node, label: u32, when: bool) {
     gen_expr(e);
     start_line();
     if when {
-        put(&out, "if r0 != 0 goto ");
+        io.put(&out, "if r0 != 0 goto ");
     } else {
-        put(&out, "if r0 == 0 goto ");
+        io.put(&out, "if r0 == 0 goto ");
     }
     put_label(label);
     end_line();

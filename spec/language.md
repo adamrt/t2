@@ -13,10 +13,11 @@ fn sum(values: []u32) -> u32 {
 }
 ```
 
-A program is a set of files compiled together. Every top-level name is
-visible in every file, and declarations can appear in any order. Only the
-functions `main` can reach, and the globals they use, end up in the
-program, so a library costs only what a program uses of it.
+A program is a set of files compiled together, along with the
+[modules](#modules) they import. Every top-level name of the program is
+visible in all of its files, and declarations can appear in any order. Only
+the functions `main` can reach, and the globals they use, end up in the
+program, so a module costs only what a program uses of it.
 
 ## Types
 
@@ -169,6 +170,43 @@ its exit status:
 fn main(memory: []u8) -> u32 { ... }
 ```
 
+## Modules
+
+A module is one file in the library, named after its file: `/lib/io.tr` is
+the module `io`. A file imports the modules it uses at its top, before
+anything else:
+
+```
+import io;
+import gfx;
+```
+
+Outside a module, its names are qualified with the module's name:
+`io.print("hi\n")`, `var w: io.Writer;`, `gfx.EVENT_CLOSE`. Inside the
+module they're written plainly. Each module has names of its own, so
+`text.equal` and a program's own `equal` don't clash.
+
+A local variable, a parameter, or a top-level name of the file's own
+module hides a module with the same name. A parameter called `text` works
+as usual in a file that imports `text`, but `text.equal` can't be used
+where it's visible.
+
+`tc` finds modules in `/lib`, or in the directory `-L` names, and reads
+each one once, however many files import it. The library has these:
+
+| Module  | What it has                                                    |
+| ------- | -------------------------------------------------------------- |
+| `io`    | files and streams: `open`, `read`, `write`, `Writer`, `Reader`, `print` |
+| `mem`   | arenas, and copying and filling memory                         |
+| `text`  | comparing text, numbers in text, and UTF-8                     |
+| `os`    | arguments, `exit`, starting programs, directories, processes, time |
+| `net`   | TCP connections                                                |
+| `gfx`   | windows, events and drawing                                    |
+| `ui`    | buttons, check boxes and text fields                           |
+| `math`  | fixed-point vectors and matrices, `sin` and `cos`              |
+| `image` | TIM1 images                                                    |
+| `sound` | TSN1 sounds, and playing samples                               |
+
 ## Statements
 
 ```
@@ -217,9 +255,8 @@ Arithmetic wraps. Division by zero stops the program.
 `size_of(T)` is the size of a type in bytes.
 
 `new(arena, T)` takes a zeroed `T` from an arena and returns a `*T`;
-`new(arena, T, n)` returns a `[]T` of `n` elements. It calls the program's
-`fn alloc(arena: *Arena, size: u32) -> *u8`, which the standard library
-provides.
+`new(arena, T, n)` returns a `[]T` of `n` elements. It calls `mem.alloc`,
+so a program that uses `new` needs the module `mem`.
 
 ## Calling convention
 
@@ -230,5 +267,6 @@ Compiled code is plain assembly, so assembly can call it and be called.
   the lower address, then the length.
 - The result is in r0, or for a slice the pointer in r0 and length in r1.
 - A function may change r0–r6. It keeps r7 (the frame pointer) and sp.
-- A name `foo` in the language is `_foo` in assembly. A function value is
-  its code address, and calling one is `call` with a register.
+- A name `foo` in the language is `_foo` in assembly, and `foo` in the
+  module `io` is `_io.foo`. A function value is its code address, and
+  calling one is `call` with a register.

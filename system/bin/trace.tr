@@ -3,6 +3,10 @@
 //
 //     trace ls /bin
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
@@ -12,14 +16,14 @@ manifest {
 var buffer: [4096]u8;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
-    if arg_count() == 0 {
-        complain("trace", "usage: trace program [arguments...]", "");
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
+    if os.arg_count() == 0 {
+        os.complain("trace", "usage: trace program [arguments...]", "");
         return 2;
     }
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     var path: [256]u8;
     var n: u32 = 0;
     var name = args[0];
@@ -30,36 +34,36 @@ fn main(memory: []u8) -> u32 {
         }
     }
     if !slash {
-        copy(path[:], "/bin/");
+        mem.copy(path[:], "/bin/");
         n = 5;
     }
-    copy(path[n:], name);
+    mem.copy(path[n:], name);
     n += name.len;
     var rest: [2048]u8;
     var used: u32 = 0;
     for i in 1..count {
-        copy(rest[used:], args[i]);
+        mem.copy(rest[used:], args[i]);
         used += args[i].len;
         rest[used] = 0;
         used += 1;
     }
 
     var write_end: u32;
-    var read_end = open_pipe(&write_end);
-    trace_spawns(write_end);
-    var child = spawn(path[0:n], rest[0:used], STDIN, STDOUT, STDERR);
-    trace_spawns(FAILED);
-    close(write_end);
-    if child == FAILED {
-        complain("trace", "can't run", name);
+    var read_end = os.open_pipe(&write_end);
+    os.trace_spawns(write_end);
+    var child = os.spawn(path[0:n], rest[0:used], io.STDIN, io.STDOUT, io.STDERR);
+    os.trace_spawns(io.FAILED);
+    io.close(write_end);
+    if child == io.FAILED {
+        os.complain("trace", "can't run", name);
         return 1;
     }
     while true {
-        var got = read(read_end, buffer[:]);
-        if got == 0 || got == FAILED {
+        var got = io.read(read_end, buffer[:]);
+        if got == 0 || got == io.FAILED {
             break;
         }
-        write_all(STDERR, buffer[0:got]);
+        io.write_all(io.STDERR, buffer[0:got]);
     }
-    return wait(child);
+    return os.wait(child);
 }

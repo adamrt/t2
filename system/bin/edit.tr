@@ -14,6 +14,12 @@
 // cursor, so typing only ever touches the gap. Every change is remembered
 // with the bytes it added or removed, so it can be undone.
 
+import gfx;
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 2 * MiB;
     stack = 32 * KiB;
@@ -37,7 +43,7 @@ const NONE: u32 = 0xffffffff;
 const STATUS: u32 = 0xff1e1e24;
 const STATUS_TEXT: u32 = 0xfff2efe6;
 
-var text: [CAPACITY]u8;
+var content: [CAPACITY]u8;
 var gap_start: u32;
 var gap_end: u32;
 var cursor: u32;            // a position in the text, gap not counted
@@ -84,7 +90,7 @@ var action: u32;
 var typing: bool;               // the last action was typing, which can go on
 var saved_at: u32;              // change_count when the file was last saved
 
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var strings: [8192]u8;
 var words: [8192]u32;
 var row_text: [MAX_COLUMNS * 4]u8;    // a row's characters, as UTF-8
@@ -101,13 +107,13 @@ fn main(memory: []u8) -> u32 {
     anchor = NONE;
     gap_start = 0;
     gap_end = CAPACITY;
-    if arg_count() > 0 {
-        path_len = min(arg(0, path[:]), path.len);
+    if os.arg_count() > 0 {
+        path_len = min(os.arg(0, path[:]), path.len);
         load();
     }
-    var screen: ScreenInfo;
-    if screen_info(&screen) == FAILED {
-        complain("edit", "there is no screen", "");
+    var screen: gfx.ScreenInfo;
+    if gfx.screen_info(&screen) == io.FAILED {
+        os.complain("edit", "there is no screen", "");
         return 1;
     }
     font_width = screen.font_width as i32;
@@ -120,21 +126,21 @@ fn main(memory: []u8) -> u32 {
     rows = 32;
     window_width = columns as i32 * font_width + 2 * MARGIN;
     window_height = (rows + 1) as i32 * font_height + 2 * MARGIN;
-    window = window_open(title, window_width as u32, window_height as u32);
-    if window == FAILED {
-        complain("edit", "can't open a window", "");
+    window = gfx.window_open(title, window_width as u32, window_height as u32);
+    if window == io.FAILED {
+        os.complain("edit", "can't open a window", "");
         return 1;
     }
-    window_resizable(window, 30 * screen.font_width, 6 * screen.font_height);
-    canvas_init(&canvas, window, words[:], strings[:]);
+    gfx.window_resizable(window, 30 * screen.font_width, 6 * screen.font_height);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
 
     while true {
-        var e: Event;
-        event_wait(&e, FOREVER);
-        if e.kind == EVENT_CLOSE {
+        var e: gfx.Event;
+        gfx.event_wait(&e, gfx.FOREVER);
+        if e.kind == gfx.EVENT_CLOSE {
             return 0;
         }
-        if e.kind == EVENT_RESIZE {
+        if e.kind == gfx.EVENT_RESIZE {
             window_width = e.x;
             window_height = e.y;
             columns = min(((window_width - 2 * MARGIN) / font_width) as u32, MAX_COLUMNS);
@@ -144,7 +150,7 @@ fn main(memory: []u8) -> u32 {
             continue;
         }
         handle(&e);
-        if e.kind != EVENT_KEY_UP && (e.kind != EVENT_MOUSE_MOVE || dragging) && e.kind != EVENT_MOUSE_UP {
+        if e.kind != gfx.EVENT_KEY_UP && (e.kind != gfx.EVENT_MOUSE_MOVE || dragging) && e.kind != gfx.EVENT_MOUSE_UP {
             draw();
         }
     }
@@ -166,21 +172,21 @@ fn length() -> u32 {
 
 fn char_at(i: u32) -> u8 {
     if i < gap_start {
-        return text[i];
+        return content[i];
     }
-    return text[i + gap_end - gap_start];
+    return content[i + gap_end - gap_start];
 }
 
 // Moves the gap to a position in the text.
 fn move_gap(position: u32) {
     if position < gap_start {
         var n = gap_start - position;
-        mem_copy(&text[gap_end - n], &text[position], n);
+        mem.move(&content[gap_end - n], &content[position], n);
         gap_start -= n;
         gap_end -= n;
     } else if position > gap_start {
         var n = position - gap_start;
-        mem_copy(&text[gap_start], &text[gap_end], n);
+        mem.move(&content[gap_start], &content[gap_end], n);
         gap_start += n;
         gap_end += n;
     }
@@ -188,7 +194,7 @@ fn move_gap(position: u32) {
 
 fn insert_char(c: u32) {
     var bytes: [4]u8;
-    var n = encode_char(c, bytes[:]);
+    var n = text.encode_char(c, bytes[:]);
     for i in 0..n {
         insert(bytes[i]);
     }
@@ -201,7 +207,7 @@ fn insert(c: u8) {
     }
     remember_insert(c);
     move_gap(cursor);
-    text[gap_start] = c;
+    content[gap_start] = c;
     gap_start += 1;
     cursor += 1;
     modified = true;
@@ -296,7 +302,7 @@ fn remember_delete(start: u32, end: u32) {
 
 fn put_back(c: *Change) {
     move_gap(c.position);
-    copy(text[gap_start:], history[c.start:c.start + c.length]);
+    mem.copy(content[gap_start:], history[c.start:c.start + c.length]);
     gap_start += c.length;
     cursor = c.position + c.length;
 }
@@ -356,7 +362,7 @@ fn next_char(position: u32) -> u32 {
     for i in 0..n {
         bytes[i] = char_at(position + i);
     }
-    return position + char_length(bytes[0:n], 0);
+    return position + text.char_length(bytes[0:n], 0);
 }
 
 fn previous_char(position: u32) -> u32 {
@@ -365,7 +371,7 @@ fn previous_char(position: u32) -> u32 {
     for i in 0..n {
         bytes[i] = char_at(position - n + i);
     }
-    return position - n + char_start(bytes[0:n], n);
+    return position - n + text.char_start(bytes[0:n], n);
 }
 
 // The column of a position on the line that starts at start.
@@ -442,23 +448,23 @@ fn lines() -> u32 {
 // Files ------------------------------------------------------------------------
 
 fn load() {
-    var file = open(path[0:path_len], MODE_READ);
-    if file == FAILED {
+    var file = io.open(path[0:path_len], io.MODE_READ);
+    if file == io.FAILED {
         message = "new file";
         return;
     }
     while gap_start < CAPACITY {
-        var n = read(file, text[gap_start:]);
-        if n == 0 || n == FAILED {
+        var n = io.read(file, content[gap_start:]);
+        if n == 0 || n == io.FAILED {
             break;
         }
         gap_start += n;
     }
-    close(file);
+    io.close(file);
     // Keep the gap after the text, with the cursor at the start.
     var n = gap_start;
     if n > 0 {
-        mem_copy(&text[CAPACITY - n], &text[0], n);
+        mem.move(&content[CAPACITY - n], &content[0], n);
     }
     gap_start = 0;
     gap_end = CAPACITY - n;
@@ -469,13 +475,13 @@ fn save() {
         message = "no file name";
         return;
     }
-    var file = open(path[0:path_len], MODE_WRITE);
-    if file == FAILED {
+    var file = io.open(path[0:path_len], io.MODE_WRITE);
+    if file == io.FAILED {
         message = "can't save";
         return;
     }
-    var ok = write_all(file, text[0:gap_start]) && write_all(file, text[gap_end:CAPACITY]);
-    close(file);
+    var ok = io.write_all(file, content[0:gap_start]) && io.write_all(file, content[gap_end:CAPACITY]);
+    io.close(file);
     if ok {
         modified = false;
         saved_at = change_count;
@@ -487,7 +493,7 @@ fn save() {
 
 // Input ------------------------------------------------------------------------
 
-fn handle(e: *Event) {
+fn handle(e: *gfx.Event) {
     message = "";
     // Typing in one place is one action, undone all together.
     var last = &changes[0];
@@ -496,39 +502,39 @@ fn handle(e: *Event) {
     }
     // A key that types something also sends its character as text, which is
     // what counts; its key down changes nothing.
-    var typing_key = e.kind == EVENT_KEY_DOWN && e.key >= 32 && e.key < 127 && (e.modifiers & (MOD_CTRL | MOD_SUPER)) == 0;
-    var goes_on = e.kind == EVENT_TEXT && typing && !has_selection() && change_count > 0 && last.inserted && last.position + last.length == cursor;
-    if !goes_on && (e.kind == EVENT_TEXT || (e.kind == EVENT_KEY_DOWN && !typing_key)) {
+    var typing_key = e.kind == gfx.EVENT_KEY_DOWN && e.key >= 32 && e.key < 127 && (e.modifiers & (gfx.MOD_CTRL | gfx.MOD_SUPER)) == 0;
+    var goes_on = e.kind == gfx.EVENT_TEXT && typing && !has_selection() && change_count > 0 && last.inserted && last.position + last.length == cursor;
+    if !goes_on && (e.kind == gfx.EVENT_TEXT || (e.kind == gfx.EVENT_KEY_DOWN && !typing_key)) {
         action += 1;
     }
-    if e.kind == EVENT_TEXT {
+    if e.kind == gfx.EVENT_TEXT {
         typing = true;
-    } else if (e.kind == EVENT_KEY_DOWN && !typing_key) || e.kind == EVENT_MOUSE_DOWN {
+    } else if (e.kind == gfx.EVENT_KEY_DOWN && !typing_key) || e.kind == gfx.EVENT_MOUSE_DOWN {
         typing = false;
     }
-    if asking != Ask.Nothing && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {
+    if asking != Ask.Nothing && (e.kind == gfx.EVENT_TEXT || e.kind == gfx.EVENT_KEY_DOWN) {
         handle_answer(e);
         keep_cursor_visible();
         return;
     }
-    if e.kind == EVENT_TEXT {
+    if e.kind == gfx.EVENT_TEXT {
         delete_selection();
         insert_char(e.key);
-    } else if e.kind == EVENT_KEY_DOWN {
+    } else if e.kind == gfx.EVENT_KEY_DOWN {
         key(e.key, e.modifiers);
-    } else if e.kind == EVENT_MOUSE_DOWN && e.buttons == 1 {
+    } else if e.kind == gfx.EVENT_MOUSE_DOWN && e.buttons == 1 {
         place_cursor(e.x, e.y);
         anchor = cursor;
         dragging = true;
-    } else if e.kind == EVENT_MOUSE_MOVE && dragging {
+    } else if e.kind == gfx.EVENT_MOUSE_MOVE && dragging {
         place_cursor(e.x, e.y);
-    } else if e.kind == EVENT_MOUSE_UP {
+    } else if e.kind == gfx.EVENT_MOUSE_UP {
         dragging = false;
         if anchor == cursor {
             anchor = NONE;
         }
         return;
-    } else if e.kind == EVENT_WHEEL {
+    } else if e.kind == gfx.EVENT_WHEEL {
         if e.y > 0 {
             top = min(top + 3, lines() - 1);
         } else if e.y < 0 && top > 0 {
@@ -556,11 +562,11 @@ fn place_cursor(x: i32, y: i32) {
 }
 
 fn is_movement(code: u32) -> bool {
-    return code == KEY_LEFT || code == KEY_RIGHT || code == KEY_UP || code == KEY_DOWN || code == KEY_HOME || code == KEY_END || code == KEY_PAGE_UP || code == KEY_PAGE_DOWN;
+    return code == gfx.KEY_LEFT || code == gfx.KEY_RIGHT || code == gfx.KEY_UP || code == gfx.KEY_DOWN || code == gfx.KEY_HOME || code == gfx.KEY_END || code == gfx.KEY_PAGE_UP || code == gfx.KEY_PAGE_DOWN;
 }
 
 fn key(code: u32, modifiers: u32) {
-    if (modifiers & (MOD_CTRL | MOD_SUPER)) != 0 {
+    if (modifiers & (gfx.MOD_CTRL | gfx.MOD_SUPER)) != 0 {
         if code == 's' && path_len == 0 {
             asking = Ask.SaveAs;
             name_len = 0;
@@ -572,7 +578,7 @@ fn key(code: u32, modifiers: u32) {
         } else if code == 'a' {
             anchor = 0;
             cursor = length();
-        } else if code == 'z' && (modifiers & MOD_SHIFT) == 0 {
+        } else if code == 'z' && (modifiers & gfx.MOD_SHIFT) == 0 {
             undo();
         } else if code == 'y' || code == 'z' {
             redo();
@@ -587,7 +593,7 @@ fn key(code: u32, modifiers: u32) {
     }
     if is_movement(code) {
         // Shift keeps the selection's other end where it was.
-        if (modifiers & MOD_SHIFT) == 0 {
+        if (modifiers & gfx.MOD_SHIFT) == 0 {
             anchor = NONE;
         } else if anchor == NONE {
             anchor = cursor;
@@ -596,54 +602,54 @@ fn key(code: u32, modifiers: u32) {
     var start = line_start(cursor);
     var column = column_of(start, cursor);
     match code {
-        KEY_ENTER => {
+        gfx.KEY_ENTER => {
             delete_selection();
             insert('\n');
         }
-        KEY_TAB => {
+        gfx.KEY_TAB => {
             delete_selection();
             for i in 0..4 {
                 insert(' ');
             }
         }
-        KEY_BACKSPACE => {
+        gfx.KEY_BACKSPACE => {
             if !delete_selection() {
                 delete_before();
             }
         }
-        KEY_DELETE => {
+        gfx.KEY_DELETE => {
             if !delete_selection() {
                 delete_after();
             }
         }
-        KEY_LEFT => {
+        gfx.KEY_LEFT => {
             if cursor > 0 {
                 cursor = previous_char(cursor);
             }
         }
-        KEY_RIGHT => {
+        gfx.KEY_RIGHT => {
             if cursor < length() {
                 cursor = next_char(cursor);
             }
         }
-        KEY_HOME => { cursor = start; }
-        KEY_END => { cursor = line_end(cursor); }
-        KEY_UP => {
+        gfx.KEY_HOME => { cursor = start; }
+        gfx.KEY_END => { cursor = line_end(cursor); }
+        gfx.KEY_UP => {
             if start > 0 {
                 move_to_column(line_start(start - 1), column);
             }
         }
-        KEY_DOWN => {
+        gfx.KEY_DOWN => {
             var end = line_end(cursor);
             if end < length() {
                 move_to_column(end + 1, column);
             }
         }
-        KEY_PAGE_UP => {
+        gfx.KEY_PAGE_UP => {
             var line = line_of(cursor);
             move_to_column(start_of_line(line - min(line, rows - 1)), column);
         }
-        KEY_PAGE_DOWN => {
+        gfx.KEY_PAGE_DOWN => {
             var line = line_of(cursor) + rows - 1;
             var target = start_of_line(line);
             move_to_column(line_start(target), column);
@@ -696,7 +702,7 @@ fn copy_text(cut: bool) {
     for i in 0..n {
         clip[i] = char_at(start + i);
     }
-    clipboard_set(clip[0:n]);
+    gfx.clipboard_set(clip[0:n]);
     if cut {
         delete_range(start, start + n);
         anchor = NONE;
@@ -717,7 +723,7 @@ fn copy_text(cut: bool) {
 // Pastes at the cursor, or over the selection. Whole lines go in above the
 // cursor's line.
 fn paste() {
-    var n = min(clipboard_get(clip[:]), clip.len);
+    var n = min(gfx.clipboard_get(clip[:]), clip.len);
     if !delete_selection() && n > 0 && clip[n - 1] == '\n' {
         cursor = line_start(cursor);
     }
@@ -729,31 +735,31 @@ fn paste() {
 }
 
 // Takes typing for the status line's question.
-fn handle_answer(e: *Event) {
-    var text = name_text[:];
+fn handle_answer(e: *gfx.Event) {
+    var answer = name_text[:];
     var used = &name_len;
     if asking == Ask.Find {
-        text = find_text[:];
+        answer = find_text[:];
         used = &find_len;
     }
-    if e.kind == EVENT_TEXT {
-        *used += encode_char(e.key, text[*used:]);
+    if e.kind == gfx.EVENT_TEXT {
+        *used += text.encode_char(e.key, answer[*used:]);
         return;
     }
-    if e.key == KEY_ESCAPE {
+    if e.key == gfx.KEY_ESCAPE {
         asking = Ask.Nothing;
-    } else if e.key == KEY_BACKSPACE && *used > 0 {
-        *used = char_start(text, *used);
-    } else if e.key == KEY_ENTER && asking == Ask.Find {
+    } else if e.key == gfx.KEY_BACKSPACE && *used > 0 {
+        *used = text.char_start(answer, *used);
+    } else if e.key == gfx.KEY_ENTER && asking == Ask.Find {
         find_next();
-    } else if e.key == KEY_ENTER && name_len > 0 {
+    } else if e.key == gfx.KEY_ENTER && name_len > 0 {
         if asking == Ask.Open {
             open_file();
         } else {
-            copy(path[:], name_text[0:name_len]);
+            mem.copy(path[:], name_text[0:name_len]);
             path_len = name_len;
             save();
-            window_title(window, path[0:path_len]);
+            gfx.window_title(window, path[0:path_len]);
         }
         asking = Ask.Nothing;
     }
@@ -761,7 +767,7 @@ fn handle_answer(e: *Event) {
 
 // Replaces the text with the file named in name_text.
 fn open_file() {
-    copy(path[:], name_text[0:name_len]);
+    mem.copy(path[:], name_text[0:name_len]);
     path_len = name_len;
     gap_start = 0;
     gap_end = CAPACITY;
@@ -775,7 +781,7 @@ fn open_file() {
     history_used = 0;
     saved_at = 0;
     load();
-    window_title(window, path[0:path_len]);
+    gfx.window_title(window, path[0:path_len]);
 }
 
 // Moves the cursor to the next place the text appears, wrapping around.
@@ -826,7 +832,7 @@ fn keep_cursor_visible() {
 
 fn draw() {
     var width = window_width;
-    draw_fill(&canvas, 0, 0, width, window_height, BACKGROUND);
+    gfx.draw_fill(&canvas, 0, 0, width, window_height, BACKGROUND);
     var p = start_of_line(top);
     var n = length();
     var cursor_row: i32 = -1;
@@ -870,8 +876,8 @@ fn draw() {
         var x = MARGIN + GUTTER as i32 * font_width;
         draw_selection(start, end, x, y);
         if comment < used {
-            draw_text(&canvas, x, y, FOREGROUND, row_text[0:comment]);
-            draw_text(&canvas, x + comment_column as i32 * font_width, y, COMMENT, row_text[comment:used]);
+            gfx.draw_text(&canvas, x, y, FOREGROUND, row_text[0:comment]);
+            gfx.draw_text(&canvas, x + comment_column as i32 * font_width, y, COMMENT, row_text[comment:used]);
         } else {
             draw_strings(x, y, row_text[0:used]);
         }
@@ -883,10 +889,10 @@ fn draw() {
     }
     if cursor_row >= 0 {
         var x = MARGIN + (GUTTER as i32 + cursor_column) * font_width;
-        draw_fill(&canvas, x, MARGIN + cursor_row * font_height, 2, font_height, CURSOR);
+        gfx.draw_fill(&canvas, x, MARGIN + cursor_row * font_height, 2, font_height, CURSOR);
     }
     draw_status(width);
-    present(&canvas);
+    gfx.present(&canvas);
 }
 
 // Shades the selected part of the line from start to end, and one more
@@ -909,7 +915,7 @@ fn draw_selection(start: u32, end: u32, x: i32, y: i32) {
     first = min(max_u32(first, left) - left, width);
     last = min(max_u32(last, left) - left, width);
     if last > first {
-        draw_fill(&canvas, x + first as i32 * font_width, y, (last - first) as i32 * font_width, font_height, SELECTION);
+        gfx.draw_fill(&canvas, x + first as i32 * font_width, y, (last - first) as i32 * font_width, font_height, SELECTION);
     }
 }
 
@@ -926,65 +932,65 @@ fn draw_strings(x: i32, y: i32, line: []u8) {
     var i: u32 = 0;
     while i < line.len {
         if line[i] == '"' {
-            draw_text(&canvas, x + char_count(line[0:start]) as i32 * font_width, y, FOREGROUND, line[start:i]);
+            gfx.draw_text(&canvas, x + text.char_count(line[0:start]) as i32 * font_width, y, FOREGROUND, line[start:i]);
             var end = i + 1;
             while end < line.len && line[end] != '"' {
                 if line[end] == '\\' && end + 1 < line.len {
                     end += 1;
                 }
-                end += char_length(line, end);
+                end += text.char_length(line, end);
             }
             end = min(end + 1, line.len);
-            draw_text(&canvas, x + char_count(line[0:i]) as i32 * font_width, y, STRING, line[i:end]);
+            gfx.draw_text(&canvas, x + text.char_count(line[0:i]) as i32 * font_width, y, STRING, line[i:end]);
             start = end;
             i = end;
             continue;
         }
         i += 1;
     }
-    draw_text(&canvas, x + char_count(line[0:start]) as i32 * font_width, y, FOREGROUND, line[start:]);
+    gfx.draw_text(&canvas, x + text.char_count(line[0:start]) as i32 * font_width, y, FOREGROUND, line[start:]);
 }
 
 fn draw_number(n: u32, y: i32) {
-    var w: Writer;
-    writer_init(&w, STDOUT, number_text[:]);
-    put_u32(&w, n);
+    var w: io.Writer;
+    io.writer_init(&w, io.STDOUT, number_text[:]);
+    io.put_u32(&w, n);
     var x = MARGIN + (GUTTER as i32 - 1 - w.used as i32) * font_width;
-    draw_text(&canvas, x, y, NUMBERS, number_text[0:w.used]);
+    gfx.draw_text(&canvas, x, y, NUMBERS, number_text[0:w.used]);
 }
 
 fn draw_status(width: i32) {
     var y = window_height - font_height - MARGIN;
-    draw_fill(&canvas, 0, y, width, font_height + MARGIN, STATUS);
-    var w: Writer;
-    writer_init(&w, STDOUT, status_text[:]);
+    gfx.draw_fill(&canvas, 0, y, width, font_height + MARGIN, STATUS);
+    var w: io.Writer;
+    io.writer_init(&w, io.STDOUT, status_text[:]);
     if path_len > 0 {
-        put(&w, path[0:path_len]);
+        io.put(&w, path[0:path_len]);
     } else {
-        put(&w, "(no name)");
+        io.put(&w, "(no name)");
     }
     if modified {
-        put(&w, " *");
+        io.put(&w, " *");
     }
-    put(&w, "  line ");
-    put_u32(&w, line_of(cursor) + 1);
-    put(&w, ", column ");
-    put_u32(&w, column_of(line_start(cursor), cursor) + 1);
+    io.put(&w, "  line ");
+    io.put_u32(&w, line_of(cursor) + 1);
+    io.put(&w, ", column ");
+    io.put_u32(&w, column_of(line_start(cursor), cursor) + 1);
     if asking == Ask.Find {
-        put(&w, "  find: ");
-        put(&w, find_text[0:find_len]);
+        io.put(&w, "  find: ");
+        io.put(&w, find_text[0:find_len]);
     } else if asking == Ask.SaveAs {
-        put(&w, "  save as: ");
-        put(&w, name_text[0:name_len]);
+        io.put(&w, "  save as: ");
+        io.put(&w, name_text[0:name_len]);
     } else if asking == Ask.Open && modified {
-        put(&w, "  open, losing changes: ");
-        put(&w, name_text[0:name_len]);
+        io.put(&w, "  open, losing changes: ");
+        io.put(&w, name_text[0:name_len]);
     } else if asking == Ask.Open {
-        put(&w, "  open: ");
-        put(&w, name_text[0:name_len]);
+        io.put(&w, "  open: ");
+        io.put(&w, name_text[0:name_len]);
     } else if message.len > 0 {
-        put(&w, "  ");
-        put(&w, message);
+        io.put(&w, "  ");
+        io.put(&w, message);
     }
-    draw_text(&canvas, MARGIN, y + 1, STATUS_TEXT, status_text[0:w.used]);
+    gfx.draw_text(&canvas, MARGIN, y + 1, STATUS_TEXT, status_text[0:w.used]);
 }

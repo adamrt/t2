@@ -48,7 +48,7 @@ done
 
 for t in tests/lang/*.tr; do
     name=$(basename $t .tr)
-    if ! $VM build/tc.bin -o $OUT/$name.asm system/lib/core.tr $t; then
+    if ! $VM build/tc.bin -L system/lib -o $OUT/$name.asm $t; then
         report "compile failed" $t
         continue
     fi
@@ -61,10 +61,10 @@ for t in tests/lang/*.tr; do
     if [ $status -eq 0 ] && [ "$got" = ok ]; then report ok $t; else report "exit $status: $got" $t; fi
 done
 
-# Each library test is compiled with the library it's named after.
+# Each library test tests the module it's named after.
 for t in tests/lib/*.tr; do
     name=$(basename $t .tr)
-    if ! $VM build/tc.bin -o $OUT/lib-$name.asm system/lib/core.tr system/lib/$name.tr $t; then
+    if ! $VM build/tc.bin -L system/lib -o $OUT/lib-$name.asm $t; then
         report "compile failed" $t
         continue
     fi

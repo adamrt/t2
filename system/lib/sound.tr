@@ -1,13 +1,17 @@
 // TSN1 sounds (spec/formats.md): 16-bit samples squeezed to 4 bits each with
 // IMA ADPCM, in blocks that each decode on their own.
 
-const SOUND_HEADER: u32 = 16;
-const SOUND_BLOCK: u32 = 256;          // the bytes in a full block
-const BLOCK_SAMPLES: u32 = 505;        // the samples in a full block
-const SOUND_STEPS: u32 = 89;
-const MAX_SOUND_RATE: u32 = 192000;
+import io;
+import mem;
+import text;
 
-struct SoundHeader {
+const HEADER: u32 = 16;
+const BLOCK: u32 = 256;          // the bytes in a full block
+const BLOCK_SAMPLES: u32 = 505;        // the samples in a full block
+const STEPS: u32 = 89;
+const MAX_RATE: u32 = 192000;
+
+struct Header {
     rate: u32;
     samples: u32;
 }
@@ -19,27 +23,33 @@ struct Adpcm {
 }
 
 // Collects samples and writes them to a file as blocks.
-struct SoundWriter {
+struct Writer {
     file: u32;
     rate: u32;
     total: u32;
     state: Adpcm;
     pending: [BLOCK_SAMPLES]u16;
     count: u32;
-    block: [SOUND_BLOCK]u8;
+    block: [BLOCK]u8;
     failed: bool;
 }
 
-var sound_steps: [SOUND_STEPS]u32;
+var steps: [STEPS]u32;
+
+// Queues signed 16-bit mono samples to play. Fails if more than two
+// seconds would be waiting.
+fn play(samples: []u8) -> u32;
+// Bytes of sound waiting to be played; the samples per second go in rate.
+fn status(rate: *u32) -> u32;
 
 // Each step is the last one times 1.1, but at least one more.
-fn make_sound_steps() {
-    if sound_steps[0] != 0 {
+fn make_steps() {
+    if steps[0] != 0 {
         return;
     }
     var step: u32 = 7;
-    for i in 0..SOUND_STEPS {
-        sound_steps[i] = step;
+    for i in 0..STEPS {
+        steps[i] = step;
         var next = step * 11 / 10;
         if next <= step {
             next = step + 1;
@@ -51,25 +61,25 @@ fn make_sound_steps() {
     }
 }
 
-fn sound_header(bytes: []u8, h: *SoundHeader) -> bool {
-    if bytes.len < SOUND_HEADER || !text_equal(bytes[0:4], "TSN1") || read_word(bytes, 12) != SOUND_BLOCK {
+fn read_header(bytes: []u8, h: *Header) -> bool {
+    if bytes.len < HEADER || !text.equal(bytes[0:4], "TSN1") || mem.read_word(bytes, 12) != BLOCK {
         return false;
     }
-    h.rate = read_word(bytes, 4);
-    h.samples = read_word(bytes, 8);
-    return h.rate > 0 && h.rate <= MAX_SOUND_RATE;
+    h.rate = mem.read_word(bytes, 4);
+    h.samples = mem.read_word(bytes, 8);
+    return h.rate > 0 && h.rate <= MAX_RATE;
 }
 
-fn write_sound_header(bytes: []u8, rate: u32, samples: u32) {
-    copy(bytes, "TSN1");
-    write_word(bytes, 4, rate);
-    write_word(bytes, 8, samples);
-    write_word(bytes, 12, SOUND_BLOCK);
+fn write_header(bytes: []u8, rate: u32, samples: u32) {
+    mem.copy(bytes, "TSN1");
+    mem.write_word(bytes, 4, rate);
+    mem.write_word(bytes, 8, samples);
+    mem.write_word(bytes, 12, BLOCK);
 }
 
 // Applies one 4-bit code to the state, giving the next sample.
 fn adpcm_next(s: *Adpcm, code: u32) -> i32 {
-    var step = sound_steps[s.index] as i32;
+    var step = steps[s.index] as i32;
     var diff = step >> 3;
     if code & 1 != 0 {
         diff += step >> 2;
@@ -97,8 +107,8 @@ fn adpcm_next(s: *Adpcm, code: u32) -> i32 {
         }
     } else {
         s.index += 2 * (size - 3);
-        if s.index > SOUND_STEPS - 1 {
-            s.index = SOUND_STEPS - 1;
+        if s.index > STEPS - 1 {
+            s.index = STEPS - 1;
         }
     }
     return s.predictor;
@@ -116,16 +126,16 @@ fn from_sample(sample: u16) -> i32 {
 }
 
 // Decodes a block into out, up to out's length. Returns the samples made.
-fn decode_sound_block(block: []u8, out: []u16) -> u32 {
-    make_sound_steps();
+fn decode_block(block: []u8, out: []u16) -> u32 {
+    make_steps();
     if block.len < 4 || out.len == 0 {
         return 0;
     }
     var s: Adpcm;
     s.predictor = from_sample((block[0] as u32 | (block[1] as u32 << 8)) as u16);
     s.index = block[2] as u32;
-    if s.index >= SOUND_STEPS {
-        s.index = SOUND_STEPS - 1;
+    if s.index >= STEPS {
+        s.index = STEPS - 1;
     }
     out[0] = to_sample(s.predictor);
     var n: u32 = 1;
@@ -142,11 +152,11 @@ fn decode_sound_block(block: []u8, out: []u16) -> u32 {
     return n;
 }
 
-// Encodes up to BLOCK_SAMPLES samples into out, which must hold SOUND_BLOCK
+// Encodes up to BLOCK_SAMPLES samples into out, which must hold BLOCK
 // bytes. The state's step index carries on from the block before. Returns
 // the bytes used.
-fn encode_sound_block(samples: []u16, s: *Adpcm, out: []u8) -> u32 {
-    make_sound_steps();
+fn encode_block(samples: []u16, s: *Adpcm, out: []u8) -> u32 {
+    make_steps();
     s.predictor = from_sample(samples[0]);
     out[0] = (samples[0] & 255) as u8;
     out[1] = (samples[0] >> 8) as u8;
@@ -160,7 +170,7 @@ fn encode_sound_block(samples: []u16, s: *Adpcm, out: []u8) -> u32 {
             code = 8;
             delta = 0 - delta;
         }
-        var step = sound_steps[s.index] as i32;
+        var step = steps[s.index] as i32;
         if delta >= step {
             code |= 4;
             delta -= step;
@@ -185,40 +195,40 @@ fn encode_sound_block(samples: []u16, s: *Adpcm, out: []u8) -> u32 {
 
 // Starts a sound file. If the number of samples isn't known yet, give 0
 // and write the header again at the end.
-fn sound_writer_start(w: *SoundWriter, file: u32, rate: u32, samples: u32) {
+fn writer_start(w: *Writer, file: u32, rate: u32, samples: u32) {
     w.file = file;
     w.rate = rate;
     w.total = 0;
     w.count = 0;
     w.state.index = 0;
-    write_sound_header(w.block[:], rate, samples);
-    w.failed = !write_all(file, w.block[0:SOUND_HEADER]);
+    write_header(w.block[:], rate, samples);
+    w.failed = !io.write_all(file, w.block[0:HEADER]);
 }
 
-fn sound_writer_flush(w: *SoundWriter) {
+fn writer_flush(w: *Writer) {
     if w.count == 0 {
         return;
     }
-    var n = encode_sound_block(w.pending[0:w.count], &w.state, w.block[:]);
-    if !write_all(w.file, w.block[0:n]) {
+    var n = encode_block(w.pending[0:w.count], &w.state, w.block[:]);
+    if !io.write_all(w.file, w.block[0:n]) {
         w.failed = true;
     }
     w.total += w.count;
     w.count = 0;
 }
 
-fn sound_writer_add(w: *SoundWriter, samples: []u16) {
+fn writer_add(w: *Writer, samples: []u16) {
     for i in 0..samples.len {
         w.pending[w.count] = samples[i];
         w.count += 1;
         if w.count == BLOCK_SAMPLES {
-            sound_writer_flush(w);
+            writer_flush(w);
         }
     }
 }
 
 // Writes the last block. Returns false if any write failed.
-fn sound_writer_finish(w: *SoundWriter) -> bool {
-    sound_writer_flush(w);
+fn writer_finish(w: *Writer) -> bool {
+    writer_flush(w);
     return !w.failed;
 }

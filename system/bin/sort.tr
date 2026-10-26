@@ -1,5 +1,9 @@
 // sort prints the lines of files, or of its input, in byte order.
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 640 * KiB;
     stack = 16 * KiB;
@@ -13,24 +17,24 @@ var text: []u8;
 var used: u32;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
-    text = alloc_bytes(&arena, MAX_TEXT);
+    var count = os.get_args(&arena, args[:]);
+    text = mem.alloc_bytes(&arena, MAX_TEXT);
     if count == 0 {
-        if !read_all(STDIN) {
+        if !read_all(io.STDIN) {
             return 1;
         }
     }
     for i in 0..count {
-        var file = open(args[i], MODE_READ);
-        if file == FAILED {
-            complain("sort", "can't read", args[i]);
+        var file = io.open(args[i], io.MODE_READ);
+        if file == io.FAILED {
+            os.complain("sort", "can't read", args[i]);
             return 1;
         }
         var ok = read_all(file);
-        close(file);
+        io.close(file);
         if !ok {
             return 1;
         }
@@ -43,7 +47,7 @@ fn main(memory: []u8) -> u32 {
     for i in 0..used {
         if text[i] == '\n' {
             if n == lines.len {
-                complain("sort", "there are too many lines", "");
+                os.complain("sort", "there are too many lines", "");
                 return 1;
             }
             lines[n] = text[start:i + 1];
@@ -53,13 +57,13 @@ fn main(memory: []u8) -> u32 {
     }
     merge_sort(lines[0:n], spare);
 
-    var out: Writer;
+    var out: io.Writer;
     var buffer: [4096]u8;
-    writer_init(&out, STDOUT, buffer[:]);
+    io.writer_init(&out, io.STDOUT, buffer[:]);
     for i in 0..n {
-        put(&out, lines[i]);
+        io.put(&out, lines[i]);
     }
-    flush(&out);
+    io.flush(&out);
     return 0;
 }
 
@@ -68,18 +72,18 @@ fn read_all(file: u32) -> bool {
     var start = used;
     while true {
         if used == text.len {
-            complain("sort", "the text is too long", "");
+            os.complain("sort", "the text is too long", "");
             return false;
         }
-        var n = read(file, text[used:]);
-        if n == 0 || n == FAILED {
+        var n = io.read(file, text[used:]);
+        if n == 0 || n == io.FAILED {
             break;
         }
         used += n;
     }
     if used > start && text[used - 1] != '\n' {
         if used == text.len {
-            complain("sort", "the text is too long", "");
+            os.complain("sort", "the text is too long", "");
             return false;
         }
         text[used] = '\n';

@@ -25,18 +25,18 @@ window instead.
 | ----------------------------- | ---------- | ----- |
 | The machine (`src/`)          | C11        | 3,000 |
 | The assembler (`system/asm/`) | assembly   | 2,500 |
-| The compiler (`system/tc/`)   | the language | 3,400 |
+| The compiler (`system/tc/`)   | the language | 3,800 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
-| Libraries (`system/lib/`)     | both       | 1,800 |
-| 41 programs (`system/bin/`)   | the language | 5,800 |
+| Library modules (`system/lib/`) | both     | 1,900 |
+| 41 programs (`system/bin/`)   | the language | 6,100 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
   program gets one contiguous block of memory, with null pointers and stack
   overflows caught by the hardware.
 - **The language** is small and C-like: explicit types, structs, enums,
-  bounds-checked slices, `fixed`, and arenas instead of a heap. A program
-  declares all its memory up front, and what it's allowed to do.
+  bounds-checked slices, `fixed`, modules, and arenas instead of a heap. A
+  program declares all its memory up front, and what it's allowed to do.
 - **The kernel** runs programs with preemptive multitasking, pipes, a file
   system, windows, sound and networking. It enforces each program's
   permissions, keeps memory back for recovery tools, and slides programs
@@ -52,20 +52,22 @@ window instead.
 ## Inside Terrarium
 
 The desktop starts with a launcher and a terminal. Programs live in `/bin`
-(`help` lists them, and `help edit` explains one), libraries in `/lib`, the documentation in `/docs`, and
-the whole system's source in `/src`.
+(`help` lists them, and `help edit` explains one), the library's modules in
+`/lib`, the documentation in `/docs`, and the whole system's source in
+`/src`.
 
 ```
 /> cd /src
-/src> tc -o hello.asm /lib/core.tr hello.tr
+/src> tc -o hello.asm hello.tr
 /src> asm -o hello /lib/rt.asm hello.asm
 /src> ./hello
 Hello from the Terrarium language!
 /src> sh /src/scripts/build-tc
 ```
 
-`tc` writes assembly, and `asm` turns it into a program, with the runtime
-`/lib/rt.asm` first. A program in the current directory runs as `./name`;
+`tc` writes assembly, finding the modules a program imports, like `io`, in
+`/lib`. `asm` turns it into a program, with the runtime `/lib/rt.asm`
+first. A program in the current directory runs as `./name`;
 without a `/`, the shell looks in `/bin`. `clear` clears the terminal.
 
 The last line rebuilds the compiler inside Terrarium and checks that the
@@ -93,7 +95,7 @@ The tools are Terrarium programs too. On the host they run on the
 development monitor, which runs one program and lends it the host's files:
 
 ```sh
-build/terrarium build/tc.bin -o build/hello.asm system/lib/core.tr examples/hello.tr
+build/terrarium build/tc.bin -L system/lib -o build/hello.asm examples/hello.tr
 build/terrarium build/asm.bin -o build/hello.bin system/lib/rt.asm build/hello.asm
 build/terrarium build/hello.bin
 build/terrarium build/mkimage.bin -o picture.tim picture.bmp    # BMP to TIM1

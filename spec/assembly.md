@@ -21,7 +21,8 @@ message:
 
 ## Names and values
 
-A name starts with a letter or `_`, followed by letters, digits and `_`.
+A name starts with a letter or `_`, followed by letters, digits, `_` and
+`.`, as in `_io.write`.
 Register names (`r0`–`r7`, `sp`) and keywords (`if`, `goto`, `call`,
 `return`, `push`, `pop`, `copy`, `fill`, `sys`, `halt`, `io`, `resume`,
 `wait`, `u8`, `u16`, `u32`) can't be used as names.

@@ -1,6 +1,10 @@
 // init is the first program. It starts the shell, and when the shell ends,
 // so does Terrarium.
 
+import gfx;
+import io;
+import os;
+
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
@@ -8,16 +12,16 @@ manifest {
 }
 
 fn main(memory: []u8) -> u32 {
-    var screen: ScreenInfo;
-    if screen_info(&screen) != FAILED {
-        spawn("/bin/launch", "", STDIN, STDOUT, STDERR);
-        spawn("/bin/term", "", STDIN, STDOUT, STDERR);
+    var screen: gfx.ScreenInfo;
+    if gfx.screen_info(&screen) != io.FAILED {
+        os.spawn("/bin/launch", "", io.STDIN, io.STDOUT, io.STDERR);
+        os.spawn("/bin/term", "", io.STDIN, io.STDOUT, io.STDERR);
     }
-    print("\nWelcome to Terrarium. Type 'help' for help.\n\n");
-    var shell = spawn("/bin/sh", "", STDIN, STDOUT, STDERR);
-    if shell == FAILED {
-        print("init: can't start /bin/sh\n");
+    io.print("\nWelcome to Terrarium. Type 'help' for help.\n\n");
+    var shell = os.spawn("/bin/sh", "", io.STDIN, io.STDOUT, io.STDERR);
+    if shell == io.FAILED {
+        io.print("init: can't start /bin/sh\n");
         return 1;
     }
-    return wait(shell);
+    return os.wait(shell);
 }

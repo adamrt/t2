@@ -6,7 +6,7 @@ cat notes.txt
 cat notes.txt | wc
 ls -l
 cd /src
-tc -o hello.asm /lib/core.tr hello.tr
+tc -o hello.asm hello.tr
 asm -o hello /lib/rt.asm hello.asm
 ./hello
 rm hello.asm

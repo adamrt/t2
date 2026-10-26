@@ -4,6 +4,12 @@
 // lines, Ctrl-C stops whatever the shell is running, and dragging the strip
 // under the window resizes it. Printing a form feed ('\x0c') clears it.
 
+import gfx;
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 512 * KiB;
     stack = 32 * KiB;
@@ -31,7 +37,7 @@ var cursor_x: u32;
 var cursor_y: u32;
 var typed: [256]u8;
 var typed_len: u32;
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var strings: [8192]u8;
 var words: [4096]u32;
 var buffer: [4096]u8;
@@ -44,12 +50,12 @@ var history: [16][256]u8;
 var history_len: [16]u32;
 var history_count: u32;
 var history_at: u32;                // which line Up and Down have reached
-var records: [32]ProcessInfo;
+var records: [32]os.ProcessInfo;
 
 fn main(memory: []u8) -> u32 {
-    var screen: ScreenInfo;
-    if screen_info(&screen) == FAILED {
-        complain("term", "there is no screen", "");
+    var screen: gfx.ScreenInfo;
+    if gfx.screen_info(&screen) == io.FAILED {
+        os.complain("term", "there is no screen", "");
         return 1;
     }
     font_width = screen.font_width as i32;
@@ -58,55 +64,55 @@ fn main(memory: []u8) -> u32 {
     rows = 30;
     width = columns as i32 * font_width + 2 * MARGIN;
     height = rows as i32 * font_height + 2 * MARGIN;
-    var window = window_open("Terminal", width as u32, height as u32);
-    if window == FAILED {
-        complain("term", "can't open a window", "");
+    var window = gfx.window_open("Terminal", width as u32, height as u32);
+    if window == io.FAILED {
+        os.complain("term", "can't open a window", "");
         return 1;
     }
-    window_resizable(window, 20 * screen.font_width + 2 * MARGIN, 4 * screen.font_height + 2 * MARGIN);
-    canvas_init(&canvas, window, words[:], strings[:]);
-    mem_fill(&cells[0], ' ', cells.len);
+    gfx.window_resizable(window, 20 * screen.font_width + 2 * MARGIN, 4 * screen.font_height + 2 * MARGIN);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
+    mem.fill(&cells[0], ' ', cells.len);
 
     var shell_input: u32;
     var shell_output: u32;
-    var input_end = open_pipe(&to_shell);
-    from_shell = open_pipe(&shell_output);
+    var input_end = os.open_pipe(&to_shell);
+    from_shell = os.open_pipe(&shell_output);
     shell_input = input_end;
-    shell = spawn("/bin/sh", "", shell_input, shell_output, shell_output);
-    close(shell_input);
-    close(shell_output);
-    if shell == FAILED {
-        complain("term", "can't start /bin/sh", "");
+    shell = os.spawn("/bin/sh", "", shell_input, shell_output, shell_output);
+    io.close(shell_input);
+    io.close(shell_output);
+    if shell == io.FAILED {
+        os.complain("term", "can't start /bin/sh", "");
         return 1;
     }
 
     while true {
         var changed = false;
         while true {
-            var n = available(from_shell);
-            if n == FAILED {
+            var n = io.available(from_shell);
+            if n == io.FAILED {
                 return 0;
             }
             if n == 0 {
                 break;
             }
-            var got = read(from_shell, buffer[0:min(n, buffer.len)]);
+            var got = io.read(from_shell, buffer[0:min(n, buffer.len)]);
             for i in 0..got {
                 receive(buffer[i]);
             }
             changed = true;
         }
-        var e: Event;
-        if event_wait(&e, 20) == 1 {
-            if e.kind == EVENT_CLOSE {
-                kill(shell);
+        var e: gfx.Event;
+        if gfx.event_wait(&e, 20) == 1 {
+            if e.kind == gfx.EVENT_CLOSE {
+                os.kill(shell);
                 return 0;
             }
-            if e.kind == EVENT_RESIZE {
+            if e.kind == gfx.EVENT_RESIZE {
                 resize(e.x, e.y);
                 changed = true;
             }
-            if e.kind == EVENT_DRAW || handle_key(&e) {
+            if e.kind == gfx.EVENT_DRAW || handle_key(&e) {
                 changed = true;
             }
         }
@@ -125,40 +131,40 @@ fn min(a: u32, b: u32) -> u32 {
 }
 
 // Returns true if the screen changed.
-fn handle_key(e: *Event) -> bool {
-    if e.kind == EVENT_TEXT {
-        typed_len += encode_char(e.key, typed[typed_len:typed.len - 1]);
+fn handle_key(e: *gfx.Event) -> bool {
+    if e.kind == gfx.EVENT_TEXT {
+        typed_len += text.encode_char(e.key, typed[typed_len:typed.len - 1]);
         return true;
     }
-    if e.kind != EVENT_KEY_DOWN {
+    if e.kind != gfx.EVENT_KEY_DOWN {
         return false;
     }
-    if (e.modifiers & MOD_CTRL) != 0 && e.key == 'c' {
+    if (e.modifiers & gfx.MOD_CTRL) != 0 && e.key == 'c' {
         stop_programs();
         typed_len = 0;
         return true;
     }
-    if (e.modifiers & (MOD_CTRL | MOD_SUPER)) != 0 && e.key == 'v' {
+    if (e.modifiers & (gfx.MOD_CTRL | gfx.MOD_SUPER)) != 0 && e.key == 'v' {
         paste();
         return true;
     }
-    if e.key == KEY_UP || e.key == KEY_DOWN {
-        recall(e.key == KEY_UP);
+    if e.key == gfx.KEY_UP || e.key == gfx.KEY_DOWN {
+        recall(e.key == gfx.KEY_UP);
         return true;
     }
-    if e.key == KEY_ENTER {
+    if e.key == gfx.KEY_ENTER {
         remember();
         typed[typed_len] = '\n';
         typed_len += 1;
         for i in 0..typed_len {
             receive(typed[i]);
         }
-        write_all(to_shell, typed[0:typed_len]);
+        io.write_all(to_shell, typed[0:typed_len]);
         typed_len = 0;
         return true;
     }
-    if e.key == KEY_BACKSPACE && typed_len > 0 {
-        typed_len = char_start(typed[:], typed_len);
+    if e.key == gfx.KEY_BACKSPACE && typed_len > 0 {
+        typed_len = text.char_start(typed[:], typed_len);
         return true;
     }
     return false;
@@ -166,19 +172,19 @@ fn handle_key(e: *Event) -> bool {
 
 // Adds the clipboard to the typed line, up to its first line break.
 fn paste() {
-    var text: [256]u8;
-    var n = min(clipboard_get(text[:]), text.len);
+    var pasted: [256]u8;
+    var n = min(gfx.clipboard_get(pasted[:]), pasted.len);
     var i: u32 = 0;
-    while i < n && text[i] != '\n' {
+    while i < n && pasted[i] != '\n' {
         var next = i + 1;
-        while next < n && is_continuation(text[next]) {
+        while next < n && text.is_continuation(pasted[next]) {
             next += 1;
         }
         if typed_len + (next - i) >= typed.len {
             return;
         }
-        if text[i] >= 32 && text[i] != 127 {
-            copy(typed[typed_len:], text[i:next]);
+        if pasted[i] >= 32 && pasted[i] != 127 {
+            mem.copy(typed[typed_len:], pasted[i:next]);
             typed_len += next - i;
         }
         i = next;
@@ -192,13 +198,13 @@ fn remember() {
     }
     if history_count > 0 {
         var last = (history_count - 1) % 16;
-        if history_len[last] == typed_len && text_equal(history[last][0:typed_len], typed[0:typed_len]) {
+        if history_len[last] == typed_len && text.equal(history[last][0:typed_len], typed[0:typed_len]) {
             history_at = history_count;
             return;
         }
     }
     var slot = history_count % 16;
-    copy(history[slot][:], typed[0:typed_len]);
+    mem.copy(history[slot][:], typed[0:typed_len]);
     history_len[slot] = typed_len;
     history_count += 1;
     history_at = history_count;
@@ -220,15 +226,15 @@ fn recall(older: bool) {
     }
     var slot = history_at % 16;
     typed_len = history_len[slot];
-    copy(typed[:], history[slot][0:typed_len]);
+    mem.copy(typed[:], history[slot][0:typed_len]);
 }
 
 // Stops every program the shell started.
 fn stop_programs() {
-    var n = processes((&records[0] as *u8)[0:size_of(ProcessInfo) * 32]) / size_of(ProcessInfo);
+    var n = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * 32]) / size_of(os.ProcessInfo);
     for i in 0..n {
         if records[i].parent == shell && records[i].state != 3 {
-            kill(records[i].id);
+            os.kill(records[i].id);
         }
     }
     receive('^');
@@ -253,14 +259,14 @@ fn resize(new_width: i32, new_height: i32) {
 }
 
 fn scroll() {
-    copy(cells[:], cells[MAX_COLUMNS:]);
-    mem_fill(&cells[(MAX_ROWS - 1) * MAX_COLUMNS], ' ', MAX_COLUMNS);
+    mem.copy(cells[:], cells[MAX_COLUMNS:]);
+    mem.fill(&cells[(MAX_ROWS - 1) * MAX_COLUMNS], ' ', MAX_COLUMNS);
 }
 
 // Takes the shell's output a byte at a time, putting together the
 // characters that take more than one.
 fn receive(b: u8) {
-    if partial_left > 0 && is_continuation(b) {
+    if partial_left > 0 && text.is_continuation(b) {
         partial = partial << 6 | (b & 0x3f) as u32;
         partial_left -= 1;
         if partial_left == 0 {
@@ -295,7 +301,7 @@ fn put_char(c: u32) {
         return;
     }
     if c == 12 {
-        mem_fill(&cells[0], ' ', cells.len);
+        mem.fill(&cells[0], ' ', cells.len);
         cursor_x = 0;
         cursor_y = 0;
         return;
@@ -328,13 +334,13 @@ fn new_line() {
     }
     // Clear what's below the visible rows, then move everything up one.
     for r in rows..MAX_ROWS {
-        mem_fill(&cells[r * MAX_COLUMNS], ' ', MAX_COLUMNS);
+        mem.fill(&cells[r * MAX_COLUMNS], ' ', MAX_COLUMNS);
     }
     scroll();
 }
 
 fn draw() {
-    draw_fill(&canvas, 0, 0, width, height, BACKGROUND);
+    gfx.draw_fill(&canvas, 0, 0, width, height, BACKGROUND);
     for row in 0..rows {
         var line = cells[row * MAX_COLUMNS:row * MAX_COLUMNS + columns];
         var end = columns;
@@ -343,16 +349,16 @@ fn draw() {
         }
         var n: u32 = 0;
         for i in 0..end {
-            n += encode_char(line[i] as u32, row_text[n:]);
+            n += text.encode_char(line[i] as u32, row_text[n:]);
         }
         if n > 0 {
-            draw_text(&canvas, MARGIN, MARGIN + row as i32 * font_height, FOREGROUND, row_text[0:n]);
+            gfx.draw_text(&canvas, MARGIN, MARGIN + row as i32 * font_height, FOREGROUND, row_text[0:n]);
         }
     }
     var x = MARGIN + cursor_x as i32 * font_width;
     var y = MARGIN + cursor_y as i32 * font_height;
-    draw_text(&canvas, x, y, FOREGROUND, typed[0:typed_len]);
-    x += char_count(typed[0:typed_len]) as i32 * font_width;
-    draw_fill(&canvas, x, y, font_width, font_height, CURSOR);
-    present(&canvas);
+    gfx.draw_text(&canvas, x, y, FOREGROUND, typed[0:typed_len]);
+    x += text.char_count(typed[0:typed_len]) as i32 * font_width;
+    gfx.draw_fill(&canvas, x, y, font_width, font_height, CURSOR);
+    gfx.present(&canvas);
 }

@@ -1,6 +1,11 @@
 // demo shows what the GPU can draw: shaded triangles, lines, text and a
 // textured square, moving until you close the window.
 
+import gfx;
+import io;
+import math;
+import os;
+
 manifest {
     memory = 256 * KiB;
     stack = 16 * KiB;
@@ -10,24 +15,24 @@ manifest {
 const WIDTH = 360;
 const HEIGHT = 280;
 
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var strings: [1024]u8;
 var words: [2048]u32;
 var checker_pixels: [32 * 32]u32;
-var checker: Image;
+var checker: gfx.Image;
 
 fn main(memory: []u8) -> u32 {
-    var window = window_open("GPU demo", WIDTH, HEIGHT);
-    if window == FAILED {
-        complain("demo", "can't open a window", "");
+    var window = gfx.window_open("GPU demo", WIDTH, HEIGHT);
+    if window == io.FAILED {
+        os.complain("demo", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:], strings[:]);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
     for y in 0..32 {
         for x in 0..32 {
-            var color = rgb(232, 195, 90);
+            var color = gfx.rgb(232, 195, 90);
             if (x / 8 + y / 8) % 2 == 0 {
-                color = rgb(45, 90, 80);
+                color = gfx.rgb(45, 90, 80);
             }
             checker_pixels[y * 32 + x] = color;
         }
@@ -38,15 +43,15 @@ fn main(memory: []u8) -> u32 {
 
     var angle: u32 = 0;
     while true {
-        var e: Event;
-        while event_wait(&e, 0) == 1 {
-            if e.kind == EVENT_CLOSE {
+        var e: gfx.Event;
+        while gfx.event_wait(&e, 0) == 1 {
+            if e.kind == gfx.EVENT_CLOSE {
                 return 0;
             }
         }
         draw(angle);
         angle += 23;
-        sleep(16);
+        os.sleep(16);
     }
     return 0;
 }
@@ -57,36 +62,36 @@ fn around(center: i32, radius: fixed, wave: fixed) -> i32 {
 }
 
 fn draw(angle: u32) {
-    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, rgb(30, 30, 36));
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36));
     for i in 0..12 {
         var y = (i * 24) as i32;
-        draw_line(&canvas, 0, y, WIDTH, y, rgb(48, 48, 56));
+        gfx.draw_line(&canvas, 0, y, WIDTH, y, gfx.rgb(48, 48, 56));
     }
     // A spinning triangle with a color at each corner.
-    var third = TURN / 3;
-    var x0 = around(110, 80, cos(angle));
-    var y0 = around(130, 80, sin(angle));
-    var x1 = around(110, 80, cos(angle + third));
-    var y1 = around(130, 80, sin(angle + third));
-    var x2 = around(110, 80, cos(angle + 2 * third));
-    var y2 = around(130, 80, sin(angle + 2 * third));
-    draw_triangle(&canvas, x0, y0, rgb(232, 90, 80), x1, y1, rgb(90, 200, 120), x2, y2, rgb(80, 140, 232));
+    var third = math.TURN / 3;
+    var x0 = around(110, 80, math.cos(angle));
+    var y0 = around(130, 80, math.sin(angle));
+    var x1 = around(110, 80, math.cos(angle + third));
+    var y1 = around(130, 80, math.sin(angle + third));
+    var x2 = around(110, 80, math.cos(angle + 2 * third));
+    var y2 = around(130, 80, math.sin(angle + 2 * third));
+    gfx.draw_triangle(&canvas, x0, y0, gfx.rgb(232, 90, 80), x1, y1, gfx.rgb(90, 200, 120), x2, y2, gfx.rgb(80, 140, 232));
 
     // A textured square, as two triangles.
     var a = angle * 3 / 2;
-    var quarter = TURN / 4;
-    var px0 = around(260, 60, cos(a));
-    var py0 = around(130, 60, sin(a));
-    var px1 = around(260, 60, cos(a + quarter));
-    var py1 = around(130, 60, sin(a + quarter));
-    var px2 = around(260, 60, cos(a + 2 * quarter));
-    var py2 = around(130, 60, sin(a + 2 * quarter));
-    var px3 = around(260, 60, cos(a + 3 * quarter));
-    var py3 = around(130, 60, sin(a + 3 * quarter));
-    draw_textured(&canvas, &checker, px0, py0, 0, 0, px1, py1, 64, 0, px2, py2, 64, 64, 0xffffffff);
-    draw_textured(&canvas, &checker, px0, py0, 0, 0, px2, py2, 64, 64, px3, py3, 0, 64, 0xffffffff);
+    var quarter = math.TURN / 4;
+    var px0 = around(260, 60, math.cos(a));
+    var py0 = around(130, 60, math.sin(a));
+    var px1 = around(260, 60, math.cos(a + quarter));
+    var py1 = around(130, 60, math.sin(a + quarter));
+    var px2 = around(260, 60, math.cos(a + 2 * quarter));
+    var py2 = around(130, 60, math.sin(a + 2 * quarter));
+    var px3 = around(260, 60, math.cos(a + 3 * quarter));
+    var py3 = around(130, 60, math.sin(a + 3 * quarter));
+    gfx.draw_textured(&canvas, &checker, px0, py0, 0, 0, px1, py1, 64, 0, px2, py2, 64, 64, 0xffffffff);
+    gfx.draw_textured(&canvas, &checker, px0, py0, 0, 0, px2, py2, 64, 64, px3, py3, 0, 64, 0xffffffff);
 
-    draw_text_scaled(&canvas, 16, 16, rgb(232, 195, 90), "Terrarium", 2);
-    draw_text(&canvas, 16, HEIGHT - 28, rgb(216, 212, 200), "Gouraud and textured triangles");
-    present(&canvas);
+    gfx.draw_text_scaled(&canvas, 16, 16, gfx.rgb(232, 195, 90), "Terrarium", 2);
+    gfx.draw_text(&canvas, 16, HEIGHT - 28, gfx.rgb(216, 212, 200), "Gouraud and textured triangles");
+    gfx.present(&canvas);
 }

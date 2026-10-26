@@ -6,6 +6,11 @@
 // The layout is described in spec/filesystem.md. Every file lands in one
 // unbroken run of blocks.
 
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 48 * MiB;
     allow = "read write";
@@ -29,7 +34,7 @@ struct Entry {
     size: u32;
 }
 
-var arena: Arena;
+var arena: mem.Arena;
 var image: []u8;
 var blocks: u32;
 var next_block: u32;
@@ -37,34 +42,34 @@ var root: Entry;
 var kernel: *Entry;
 
 fn main(memory: []u8) -> u32 {
-    arena_init(&arena, memory);
+    mem.arena_init(&arena, memory);
     root.kind = KIND_DIR;
 
     var output: []u8;
     var megabytes: u32 = 32;
     var i: u32 = 0;
-    while i < arg_count() {
-        var text = argument(i);
+    while i < os.arg_count() {
+        var word = argument(i);
         i += 1;
-        if text_equal(text, "-o") || text_equal(text, "-m") || text_equal(text, "-k") {
-            if i == arg_count() {
+        if text.equal(word, "-o") || text.equal(word, "-m") || text.equal(word, "-k") {
+            if i == os.arg_count() {
                 usage();
             }
             var value = argument(i);
             i += 1;
-            if text_equal(text, "-o") {
+            if text.equal(word, "-o") {
                 output = value;
-            } else if text_equal(text, "-m") {
+            } else if text.equal(word, "-m") {
                 megabytes = parse_number(value);
             } else {
                 kernel = add_file(value, "/system/kernel");
             }
         } else {
-            var colon = find_byte(text, ':');
-            if colon == text.len {
+            var colon = find_byte(word, ':');
+            if colon == word.len {
                 usage();
             }
-            add_file(text[0:colon], text[colon + 1:]);
+            add_file(word[0:colon], word[colon + 1:]);
         }
     }
     if output.len == 0 || megabytes == 0 || megabytes > 64 {
@@ -72,7 +77,7 @@ fn main(memory: []u8) -> u32 {
     }
 
     blocks = megabytes * (MiB / BLOCK);
-    image = alloc_bytes(&arena, blocks * BLOCK);
+    image = mem.alloc_bytes(&arena, blocks * BLOCK);
     var table_blocks = (blocks * 4 + BLOCK - 1) / BLOCK;
     for b in 0..table_blocks + 1 {
         set_next(b, RESERVED);
@@ -81,7 +86,7 @@ fn main(memory: []u8) -> u32 {
     lay_out(&root);
 
     var header = image[0:BLOCK];
-    copy(header, "TFS1");
+    mem.copy(header, "TFS1");
     set_word(header, 4, BLOCK);
     set_word(header, 8, blocks);
     set_word(header, 12, 1);
@@ -93,52 +98,52 @@ fn main(memory: []u8) -> u32 {
         set_word(header, 32, kernel.size);
     }
 
-    var file = open(output, 1);
-    if file == FAILED {
+    var file = io.open(output, 1);
+    if file == io.FAILED {
         fail("can't write", output);
     }
     var done: u32 = 0;
     while done < image.len {
-        var n = write(file, image[done:]);
-        if n == 0 || n == FAILED {
+        var n = io.write(file, image[done:]);
+        if n == 0 || n == io.FAILED {
             fail("can't write", output);
         }
         done += n;
     }
-    close(file);
+    io.close(file);
     return 0;
 }
 
 fn usage() {
-    write(STDERR, "usage: mkdisk -o disk.img [-m megabytes] [-k kernel.bin] host-file:/disk/path...\n");
-    exit(2);
+    io.write(io.STDERR, "usage: mkdisk -o disk.img [-m megabytes] [-k kernel.bin] host-file:/disk/path...\n");
+    os.exit(2);
 }
 
 fn fail(message: []u8, name: []u8) {
-    write(STDERR, "mkdisk: ");
-    write(STDERR, message);
-    write(STDERR, " ");
-    write(STDERR, name);
-    write(STDERR, "\n");
-    exit(1);
+    io.write(io.STDERR, "mkdisk: ");
+    io.write(io.STDERR, message);
+    io.write(io.STDERR, " ");
+    io.write(io.STDERR, name);
+    io.write(io.STDERR, "\n");
+    os.exit(1);
 }
 
 fn argument(index: u32) -> []u8 {
-    var buffer = alloc_bytes(&arena, 256);
-    var n = arg(index, buffer);
+    var buffer = mem.alloc_bytes(&arena, 256);
+    var n = os.arg(index, buffer);
     if n > buffer.len {
         fail("argument is too long:", buffer);
     }
     return buffer[0:n];
 }
 
-fn parse_number(text: []u8) -> u32 {
+fn parse_number(digits: []u8) -> u32 {
     var value: u32 = 0;
-    for i in 0..text.len {
-        if !is_digit(text[i]) {
+    for i in 0..digits.len {
+        if !text.is_digit(digits[i]) {
             usage();
         }
-        value = value * 10 + (text[i] - '0');
+        value = value * 10 + (digits[i] - '0');
     }
     return value;
 }
@@ -153,16 +158,16 @@ fn find_byte(text: []u8, c: u8) -> u32 {
 }
 
 fn read_host_file(path: []u8) -> []u8 {
-    var file = open(path, 0);
-    if file == FAILED {
+    var file = io.open(path, 0);
+    if file == io.FAILED {
         fail("can't read", path);
     }
     var start = (arena.used + 3) & ~3;
     var free = arena.memory[start:];
     var n: u32 = 0;
     while true {
-        var got = read(file, free[n:]);
-        if got == FAILED {
+        var got = io.read(file, free[n:]);
+        if got == io.FAILED {
             fail("can't read", path);
         }
         if got == 0 {
@@ -170,7 +175,7 @@ fn read_host_file(path: []u8) -> []u8 {
         }
         n += got;
     }
-    close(file);
+    io.close(file);
     arena.used = start + n;
     return free[0:n];
 }
@@ -186,7 +191,7 @@ fn add_file(host: []u8, path: []u8) -> *Entry {
         var end = find_byte(rest, '/');
         var name = rest[0:end];
         rest = rest[end:];
-        if name.len == 0 || name.len > NAME_SIZE || text_equal(name, ".") || text_equal(name, "..") {
+        if name.len == 0 || name.len > NAME_SIZE || text.equal(name, ".") || text.equal(name, "..") {
             fail("bad path", path);
         }
         var existing = find_child(dir, name);
@@ -211,7 +216,7 @@ fn add_file(host: []u8, path: []u8) -> *Entry {
 fn find_child(dir: *Entry, name: []u8) -> *Entry {
     var e = dir.children;
     while e != null {
-        if text_equal(e.name, name) {
+        if text.equal(e.name, name) {
             return e;
         }
         e = e.next;
@@ -249,12 +254,12 @@ fn store(bytes: []u8) -> u32 {
     }
     var count = (bytes.len + BLOCK - 1) / BLOCK;
     if next_block + count > blocks {
-        write(STDERR, "mkdisk: the disk is full\n");
-        exit(1);
+        io.write(io.STDERR, "mkdisk: the disk is full\n");
+        os.exit(1);
     }
     var first = next_block;
     next_block += count;
-    copy(image[first * BLOCK:], bytes);
+    mem.copy(image[first * BLOCK:], bytes);
     for i in 0..count {
         if i == count - 1 {
             set_next(first + i, END);
@@ -278,11 +283,11 @@ fn lay_out(e: *Entry) {
         count += 1;
         child = child.next;
     }
-    var listing = alloc_bytes(&arena, count * ENTRY_SIZE);
+    var listing = mem.alloc_bytes(&arena, count * ENTRY_SIZE);
     var offset: u32 = 0;
     child = e.children;
     while child != null {
-        copy(listing[offset:], child.name);
+        mem.copy(listing[offset:], child.name);
         set_word(listing, offset + 48, child.kind);
         set_word(listing, offset + 52, child.first);
         set_word(listing, offset + 56, child.size);

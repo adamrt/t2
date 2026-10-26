@@ -3,9 +3,14 @@
 //     tc [-L library] -o program.asm file.tr...
 //
 // Reads every file, and the modules they import from the library (/lib
-// unless -L says otherwise), checks the whole program, and writes assembly
+// unless -L names another), checks the whole program, and writes assembly
 // for the Terrarium assembler. The language is described in
 // spec/language.md.
+
+import io;
+import mem;
+import os;
+import text;
 
 manifest {
     memory = 32 * MiB;
@@ -25,38 +30,38 @@ struct SourceFile {
     import_count: u32;
 }
 
-var arena: Arena;
+var arena: mem.Arena;
 var files: [MAX_FILES]SourceFile;
 var file_count: u32;
 var modules: [MAX_MODULES][]u8;     // their names; module 0 is the program
 var module_count: u32;
 var library: []u8;
-var errors: Writer;
+var errors: io.Writer;
 var error_buffer: [512]u8;
 
 fn main(memory: []u8) -> u32 {
-    arena_init(&arena, memory);
-    writer_init(&errors, STDERR, error_buffer[:]);
+    mem.arena_init(&arena, memory);
+    io.writer_init(&errors, io.STDERR, error_buffer[:]);
 
     var output: []u8;
     library = "/lib";
     module_count = 1;
     var i: u32 = 0;
-    while i < arg_count() {
-        var text = argument(i);
+    while i < os.arg_count() {
+        var word = argument(i);
         i += 1;
-        if text_equal(text, "-o") || text_equal(text, "-L") {
-            if i == arg_count() {
+        if text.equal(word, "-o") || text.equal(word, "-L") {
+            if i == os.arg_count() {
                 usage();
             }
-            if text_equal(text, "-o") {
+            if text.equal(word, "-o") {
                 output = argument(i);
             } else {
                 library = argument(i);
             }
             i += 1;
         } else {
-            add_file(text, 0);
+            add_file(word, 0);
         }
     }
     if output.len == 0 || file_count == 0 {
@@ -71,15 +76,15 @@ fn main(memory: []u8) -> u32 {
     }
     check_program();
 
-    var file = open(output, 1);
-    if file == FAILED {
+    var file = io.open(output, 1);
+    if file == io.FAILED {
         fail_path("can't write", output);
     }
-    var buffer = alloc_bytes(&arena, 64 * KiB);
-    writer_init(&out, file, buffer);
+    var buffer = mem.alloc_bytes(&arena, 64 * KiB);
+    io.writer_init(&out, file, buffer);
     generate();
-    flush(&out);
-    close(file);
+    io.flush(&out);
+    io.close(file);
     return 0;
 }
 
@@ -107,21 +112,15 @@ fn load_module(name: []u8) -> u32 {
     if module_count == MAX_MODULES {
         parse_fail("too many modules");
     }
-    var path = alloc_bytes(&arena, library.len + name.len + 4);
-    copy(path, library);
-    path[library.len] = '/';
-    copy(path[library.len + 1:], name);
-    copy(path[library.len + 1 + name.len:], ".tr");
-    var file = open(path, 0);
-    if file == FAILED {
+    var path = module_path(name);
+    if path.len == 0 {
         error_start(tok.file, tok.line);
-        put(&errors, "no module '");
-        put(&errors, name);
-        put(&errors, "' in ");
-        put(&errors, library);
+        io.put(&errors, "no module '");
+        io.put(&errors, name);
+        io.put(&errors, "' in ");
+        io.put(&errors, library);
         error_end();
     }
-    close(file);
     m = module_count;
     modules[m] = name;
     module_count += 1;
@@ -129,10 +128,25 @@ fn load_module(name: []u8) -> u32 {
     return m;
 }
 
+// The path of a module's file in the library, or nothing if it isn't there.
+fn module_path(name: []u8) -> []u8 {
+    var path = mem.alloc_bytes(&arena, library.len + name.len + 4);
+    mem.copy(path, library);
+    path[library.len] = '/';
+    mem.copy(path[library.len + 1:], name);
+    mem.copy(path[library.len + 1 + name.len:], ".tr");
+    var file = io.open(path, io.MODE_READ);
+    if file == io.FAILED {
+        return path[0:0];
+    }
+    io.close(file);
+    return path;
+}
+
 // The loaded module with this name, or 0.
 fn module_named(name: []u8) -> u32 {
     for m in 1..module_count {
-        if text_equal(modules[m], name) {
+        if text.equal(modules[m], name) {
             return m;
         }
     }
@@ -143,7 +157,7 @@ fn module_named(name: []u8) -> u32 {
 fn imported(file: u32, name: []u8) -> u32 {
     var f = &files[file];
     for i in 0..f.import_count {
-        if text_equal(modules[f.imports[i]], name) {
+        if text.equal(modules[f.imports[i]], name) {
             return f.imports[i];
         }
     }
@@ -151,8 +165,8 @@ fn imported(file: u32, name: []u8) -> u32 {
 }
 
 fn argument(index: u32) -> []u8 {
-    var buffer = alloc_bytes(&arena, 256);
-    var n = arg(index, buffer);
+    var buffer = mem.alloc_bytes(&arena, 256);
+    var n = os.arg(index, buffer);
     if n > buffer.len {
         fail_plain("argument is too long");
     }
@@ -161,8 +175,8 @@ fn argument(index: u32) -> []u8 {
 
 // Reads a whole file into the arena.
 fn read_source(path: []u8) -> []u8 {
-    var file = open(path, 0);
-    if file == FAILED {
+    var file = io.open(path, 0);
+    if file == io.FAILED {
         fail_path("can't read", path);
     }
     var start = (arena.used + 3) & ~3;
@@ -172,8 +186,8 @@ fn read_source(path: []u8) -> []u8 {
         if n == free.len {
             fail_path("out of memory reading", path);
         }
-        var got = read(file, free[n:]);
-        if got == FAILED {
+        var got = io.read(file, free[n:]);
+        if got == io.FAILED {
             fail_path("can't read", path);
         }
         if got == 0 {
@@ -181,7 +195,7 @@ fn read_source(path: []u8) -> []u8 {
         }
         n += got;
     }
-    close(file);
+    io.close(file);
     arena.used = start + n;
     return free[0:n];
 }
@@ -190,43 +204,43 @@ fn read_source(path: []u8) -> []u8 {
 
 // Starts an error message at a place in the source. Finish it with error_end().
 fn error_start(file: u32, line: u32) {
-    put(&errors, files[file].name);
-    put_byte(&errors, ':');
-    put_u32(&errors, line);
-    put(&errors, ": ");
+    io.put(&errors, files[file].name);
+    io.put_byte(&errors, ':');
+    io.put_u32(&errors, line);
+    io.put(&errors, ": ");
 }
 
 fn error_end() {
-    put_byte(&errors, '\n');
-    flush(&errors);
-    exit(1);
+    io.put_byte(&errors, '\n');
+    io.flush(&errors);
+    os.exit(1);
 }
 
 fn fail(n: *Node, message: []u8) {
     error_start(n.file, n.line);
-    put(&errors, message);
+    io.put(&errors, message);
     error_end();
 }
 
 fn fail_name(n: *Node, message: []u8, name: []u8) {
     error_start(n.file, n.line);
-    put(&errors, message);
-    put(&errors, " '");
-    put(&errors, name);
-    put(&errors, "'");
+    io.put(&errors, message);
+    io.put(&errors, " '");
+    io.put(&errors, name);
+    io.put(&errors, "'");
     error_end();
 }
 
 fn fail_plain(message: []u8) {
-    put(&errors, "tc: ");
-    put(&errors, message);
+    io.put(&errors, "tc: ");
+    io.put(&errors, message);
     error_end();
 }
 
 fn fail_path(message: []u8, path: []u8) {
-    put(&errors, "tc: ");
-    put(&errors, message);
-    put(&errors, " ");
-    put(&errors, path);
+    io.put(&errors, "tc: ");
+    io.put(&errors, message);
+    io.put(&errors, " ");
+    io.put(&errors, path);
     error_end();
 }

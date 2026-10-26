@@ -5,6 +5,10 @@
 // other window covers. Windows keep no pixels of their own: when part of one
 // comes into view, its program gets a draw event and paints it again.
 
+import mem;
+import os;
+import text;
+
 const PORT_VIDEO_WIDTH: u32 = 0x40;
 const PORT_VIDEO_HEIGHT: u32 = 0x41;
 const PORT_VIDEO_PRESENT: u32 = 0x42;
@@ -130,9 +134,9 @@ fn wm_init() {
     }
     var f: FileRef;
     if !lookup("/system/font", &f) || f.size < 20 {
-        panic("no /system/font");
+        os.panic("no /system/font");
     }
-    var font = alloc_bytes(&arena, f.size);
+    var font = mem.alloc_bytes(&arena, f.size);
     read_at(&f, 0, font);
     font_width = get_word(font, 4);
     font_height = get_word(font, 8);
@@ -164,11 +168,11 @@ fn frame_of(w: *Window, r: *Rect) {
 // Keeps as much of a title as fits, without cutting a character in two.
 fn set_title(w: *Window, title: []u8) {
     var n = min(title.len, w.title.len);
-    while n < title.len && n > 0 && is_continuation(title[n]) {
+    while n < title.len && n > 0 && text.is_continuation(title[n]) {
         n -= 1;
     }
     w.title_len = n;
-    copy(w.title[:], title[0:n]);
+    mem.copy(w.title[:], title[0:n]);
 }
 
 fn window_title(w: *Window, title: []u8) {
@@ -396,7 +400,7 @@ fn window_open(p: *Process, title: []u8, width: u32, height: u32) -> *Window {
     if w == null {
         return null;
     }
-    mem_fill(w as *u8, 0, size_of(Window));
+    mem.fill(w as *u8, 0, size_of(Window));
     w.used = true;
     w.owner = p;
     set_title(w, title);

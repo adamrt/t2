@@ -1,5 +1,7 @@
 // Fixed-point arithmetic. Prints "ok", or the number of the first failed check.
 
+import io;
+
 var failures: u32;
 
 fn check(ok: bool, number: u32) {
@@ -36,15 +38,15 @@ fn main(memory: []u8) -> u32 {
     var big: fixed = 100.25;
     check(big * big > 10050 && big * big < 10051, 13);
     if failures == 0 {
-        print("ok\n");
+        io.print("ok\n");
     } else {
-        var out: Writer;
+        var out: io.Writer;
         var buffer: [32]u8;
-        writer_init(&out, STDOUT, buffer[:]);
-        put(&out, "failed check ");
-        put_u32(&out, failures);
-        put_byte(&out, '\n');
-        flush(&out);
+        io.writer_init(&out, io.STDOUT, buffer[:]);
+        io.put(&out, "failed check ");
+        io.put_u32(&out, failures);
+        io.put_byte(&out, '\n');
+        io.flush(&out);
     }
     return failures;
 }

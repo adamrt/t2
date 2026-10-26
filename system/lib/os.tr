@@ -1,16 +1,30 @@
-// Terrarium's system calls beyond the basic ones in core.tr. They're
-// described in spec/system.md.
+// The program and the system around it: arguments, stopping, starting
+// other programs, directories, processes and the time. The system calls are
+// in spec/system.md.
+
+import io;
+import mem;
 
 const KIND_FILE: u32 = 1;
 const KIND_DIR: u32 = 2;
-const MODE_READ: u32 = 0;
-const MODE_WRITE: u32 = 1;
-const MODE_APPEND: u32 = 2;
 
 struct FileInfo {
     kind: u32;
     size: u32;
     time: u32;          // when it last changed, as from date()
+}
+
+fn exit(status: u32);
+fn arg_count() -> u32;
+fn arg(index: u32, buffer: []u8) -> u32;
+// Stops the program with a fault, so the machine shows where it was.
+fn stop();
+
+fn panic(message: []u8) {
+    io.write(io.STDERR, "panic: ");
+    io.write(io.STDERR, message);
+    io.write(io.STDERR, "\n");
+    stop();
 }
 
 fn spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
@@ -28,21 +42,9 @@ fn sleep(milliseconds: u32);
 fn processes(buffer: []u8) -> u32;
 fn kill(process: u32) -> u32;
 fn memory_info(free: *u32) -> u32;
-fn seek(handle: u32, position: u32) -> u32;
 fn trace_spawns(handle: u32) -> u32;
 // The local time, in seconds since the start of 1970.
 fn date() -> u32;
-// Queues signed 16-bit mono samples to play. Fails if more than two
-// seconds would be waiting.
-fn audio_play(samples: []u8) -> u32;
-// Bytes of sound waiting to be played; the samples per second go in rate.
-fn audio_status(rate: *u32) -> u32;
-// Opens a TCP connection; read and write it like a file.
-fn connect(host: []u8, port: u32) -> u32;
-// Listens for connections on the host's own address.
-fn listen(port: u32) -> u32;
-// Waits for the next connection to a listening handle.
-fn accept(listener: u32) -> u32;
 
 // A directory listing record, as list() returns them.
 struct ListEntry {
@@ -118,36 +120,36 @@ fn date_parts(seconds: u32, out: *DateTime) {
     }
 }
 
-fn put_two(w: *Writer, n: u32) {
-    put_byte(w, (n / 10 % 10 + '0') as u8);
-    put_byte(w, (n % 10 + '0') as u8);
+fn put_two(w: *io.Writer, n: u32) {
+    io.put_byte(w, (n / 10 % 10 + '0') as u8);
+    io.put_byte(w, (n % 10 + '0') as u8);
 }
 
 // Writes a time like "2026-10-26 14:05".
-fn put_date(w: *Writer, seconds: u32) {
+fn put_date(w: *io.Writer, seconds: u32) {
     var d: DateTime;
     date_parts(seconds, &d);
-    put_u32(w, d.year);
-    put_byte(w, '-');
+    io.put_u32(w, d.year);
+    io.put_byte(w, '-');
     put_two(w, d.month);
-    put_byte(w, '-');
+    io.put_byte(w, '-');
     put_two(w, d.day);
-    put_byte(w, ' ');
+    io.put_byte(w, ' ');
     put_two(w, d.hour);
-    put_byte(w, ':');
+    io.put_byte(w, ':');
     put_two(w, d.minute);
 }
 
 // Fills args with the program's arguments and returns how many there are. A
 // program given more than args can hold stops, rather than miss some.
-fn get_args(arena: *Arena, args: [][]u8) -> u32 {
+fn get_args(arena: *mem.Arena, args: [][]u8) -> u32 {
     var count = arg_count();
     if count > args.len {
-        write_all(STDERR, "too many arguments\n");
+        io.write_all(io.STDERR, "too many arguments\n");
         exit(2);
     }
     for i in 0..count {
-        var buffer = alloc_bytes(arena, 256);
+        var buffer = mem.alloc_bytes(arena, 256);
         var n = arg(i, buffer);
         if n > 256 {
             n = 256;
@@ -160,15 +162,15 @@ fn get_args(arena: *Arena, args: [][]u8) -> u32 {
 // Prints "program: message detail" to standard error, in one piece.
 fn complain(program: []u8, message: []u8, detail: []u8) {
     var text: [512]u8;
-    var w: Writer;
-    writer_init(&w, STDERR, text[:]);
-    put(&w, program);
-    put(&w, ": ");
-    put(&w, message);
+    var w: io.Writer;
+    io.writer_init(&w, io.STDERR, text[:]);
+    io.put(&w, program);
+    io.put(&w, ": ");
+    io.put(&w, message);
     if detail.len > 0 {
-        put(&w, " ");
-        put(&w, detail);
+        io.put(&w, " ");
+        io.put(&w, detail);
     }
-    put(&w, "\n");
-    flush(&w);
+    io.put(&w, "\n");
+    io.flush(&w);
 }

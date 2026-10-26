@@ -1,0 +1,165 @@
+// Files and streams: opening, reading and writing them, with buffered output
+// and line-by-line input on top. The system calls are in spec/system.md.
+
+import mem;
+
+const STDIN: u32 = 0;
+const STDOUT: u32 = 1;
+const STDERR: u32 = 2;
+const FAILED: u32 = 0xffffffff;
+const MODE_READ: u32 = 0;
+const MODE_WRITE: u32 = 1;
+const MODE_APPEND: u32 = 2;
+
+fn read(file: u32, buffer: []u8) -> u32;
+fn write(file: u32, bytes: []u8) -> u32;
+fn open(path: []u8, mode: u32) -> u32;
+fn close(file: u32) -> u32;
+fn seek(handle: u32, position: u32) -> u32;
+// Bytes ready to read from a pipe or connection, or FAILED once nothing
+// more will come.
+fn available(handle: u32) -> u32;
+
+// Output ---------------------------------------------------------------------
+
+// Collects output in a buffer and writes it in large pieces.
+struct Writer {
+    file: u32;
+    buffer: []u8;
+    used: u32;
+}
+
+fn writer_init(w: *Writer, file: u32, buffer: []u8) {
+    w.file = file;
+    w.buffer = buffer;
+    w.used = 0;
+}
+
+// Writes all the bytes, unless the file fails.
+fn write_all(file: u32, bytes: []u8) -> bool {
+    var done: u32 = 0;
+    while done < bytes.len {
+        var n = write(file, bytes[done:]);
+        if n == 0 || n == FAILED {
+            return false;
+        }
+        done += n;
+    }
+    return true;
+}
+
+fn flush(w: *Writer) {
+    if w.used > 0 {
+        write_all(w.file, w.buffer[0:w.used]);
+        w.used = 0;
+    }
+}
+
+fn put(w: *Writer, text: []u8) {
+    if text.len > w.buffer.len - w.used {
+        flush(w);
+        if text.len > w.buffer.len {
+            write_all(w.file, text);
+            return;
+        }
+    }
+    mem.copy(w.buffer[w.used:], text);
+    w.used += text.len;
+}
+
+fn put_byte(w: *Writer, c: u8) {
+    if w.used == w.buffer.len {
+        flush(w);
+    }
+    w.buffer[w.used] = c;
+    w.used += 1;
+}
+
+fn put_u32(w: *Writer, value: u32) {
+    var digits: [10]u8;
+    var n: u32 = 10;
+    var v = value;
+    while true {
+        n -= 1;
+        digits[n] = (v % 10 + '0') as u8;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    put(w, digits[n:]);
+}
+
+fn put_i32(w: *Writer, value: i32) {
+    if value < 0 {
+        put_byte(w, '-');
+        put_u32(w, (0 - value) as u32);
+        return;
+    }
+    put_u32(w, value as u32);
+}
+
+fn put_hex(w: *Writer, value: u32) {
+    var shift: u32 = 32;
+    while shift > 0 {
+        shift -= 4;
+        put_byte(w, "0123456789abcdef"[(value >> shift) & 15]);
+    }
+}
+
+// Writes text straight to standard output.
+fn print(text: []u8) {
+    write_all(STDOUT, text);
+}
+
+// Input ------------------------------------------------------------------------
+
+// Reads a file a buffer at a time and hands out lines.
+struct Reader {
+    file: u32;
+    buffer: []u8;
+    start: u32;
+    end: u32;
+    done: bool;
+}
+
+fn reader_init(r: *Reader, file: u32, buffer: []u8) {
+    r.file = file;
+    r.buffer = buffer;
+    r.start = 0;
+    r.end = 0;
+    r.done = false;
+}
+
+// Copies the next line, without its newline, into out and returns its
+// length. A line longer than out is cut short. Returns FAILED at the end.
+fn read_line(r: *Reader, out: []u8) -> u32 {
+    var n: u32 = 0;
+    while true {
+        if r.start == r.end {
+            if r.done {
+                if n == 0 {
+                    return FAILED;
+                }
+                return n;
+            }
+            r.start = 0;
+            r.end = read(r.file, r.buffer);
+            if r.end == 0 || r.end == FAILED {
+                r.end = 0;
+                r.done = true;
+            }
+            continue;
+        }
+        var c = r.buffer[r.start];
+        r.start += 1;
+        if c == '\n' {
+            return n;
+        }
+        if n < out.len {
+            out[n] = c;
+            n += 1;
+        }
+    }
+    return n;
+}

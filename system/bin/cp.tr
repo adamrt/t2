@@ -2,6 +2,10 @@
 //
 //     cp from to
 
+import io;
+import mem;
+import os;
+
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
@@ -11,35 +15,35 @@ manifest {
 var buffer: [32 * KiB]u8;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [2][]u8;
-    if arg_count() != 2 {
-        complain("cp", "usage: cp from to", "");
+    if os.arg_count() != 2 {
+        os.complain("cp", "usage: cp from to", "");
         return 2;
     }
-    get_args(&arena, args[:]);
-    var from = open(args[0], MODE_READ);
-    if from == FAILED {
-        complain("cp", "can't read", args[0]);
+    os.get_args(&arena, args[:]);
+    var from = io.open(args[0], io.MODE_READ);
+    if from == io.FAILED {
+        os.complain("cp", "can't read", args[0]);
         return 1;
     }
-    var to = open(args[1], MODE_WRITE);
-    if to == FAILED {
-        complain("cp", "can't write", args[1]);
+    var to = io.open(args[1], io.MODE_WRITE);
+    if to == io.FAILED {
+        os.complain("cp", "can't write", args[1]);
         return 1;
     }
     while true {
-        var n = read(from, buffer[:]);
-        if n == 0 || n == FAILED {
+        var n = io.read(from, buffer[:]);
+        if n == 0 || n == io.FAILED {
             break;
         }
-        if !write_all(to, buffer[0:n]) {
-            complain("cp", "can't write", args[1]);
+        if !io.write_all(to, buffer[0:n]) {
+            os.complain("cp", "can't write", args[1]);
             return 1;
         }
     }
-    close(from);
-    close(to);
+    io.close(from);
+    io.close(to);
     return 0;
 }

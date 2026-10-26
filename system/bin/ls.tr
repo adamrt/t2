@@ -5,32 +5,37 @@
 // With -l it also shows each file's size and when it last changed.
 // Directories end with "/".
 
+import io;
+import mem;
+import os;
+import text;
+
 manifest {
     memory = 256 * KiB;
     stack = 16 * KiB;
     allow = "read";
 }
 
-var arena: Arena;
-var out: Writer;
+var arena: mem.Arena;
+var out: io.Writer;
 var out_buffer: [1024]u8;
 var listing: [64 * KiB]u8;
 var long: bool;
 
 fn main(memory: []u8) -> u32 {
-    arena_init(&arena, memory);
-    writer_init(&out, STDOUT, out_buffer[:]);
+    mem.arena_init(&arena, memory);
+    io.writer_init(&out, io.STDOUT, out_buffer[:]);
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     var paths: u32 = 0;
     var status: u32 = 0;
     for i in 0..count {
-        if text_equal(args[i], "-l") {
+        if text.equal(args[i], "-l") {
             long = true;
         }
     }
     for i in 0..count {
-        if !text_equal(args[i], "-l") {
+        if !text.equal(args[i], "-l") {
             if !show(args[i]) {
                 status = 1;
             }
@@ -40,24 +45,24 @@ fn main(memory: []u8) -> u32 {
     if paths == 0 && !show(".") {
         status = 1;
     }
-    flush(&out);
+    io.flush(&out);
     return status;
 }
 
 fn show(path: []u8) -> bool {
-    var f: FileInfo;
-    if info(path, &f) == FAILED {
-        flush(&out);
-        complain("ls", "not found:", path);
+    var f: os.FileInfo;
+    if os.info(path, &f) == io.FAILED {
+        io.flush(&out);
+        os.complain("ls", "not found:", path);
         return false;
     }
-    if f.kind != KIND_DIR {
+    if f.kind != os.KIND_DIR {
         line(path, f.kind, f.size, f.time);
         return true;
     }
-    var n = list(path, listing[:]);
+    var n = os.list(path, listing[:]);
     var count = n / 64;
-    var entries = (&listing[0] as *ListEntry)[0:count];
+    var entries = (&listing[0] as *os.ListEntry)[0:count];
     // Insertion sort by name.
     for i in 1..count {
         var j = i;
@@ -69,14 +74,14 @@ fn show(path: []u8) -> bool {
         }
     }
     for i in 0..count {
-        line(entry_name(&entries[i]), entries[i].kind, entries[i].size, entries[i].time);
+        line(os.entry_name(&entries[i]), entries[i].kind, entries[i].size, entries[i].time);
     }
     return true;
 }
 
-fn before(a: *ListEntry, b: *ListEntry) -> bool {
-    var x = entry_name(a);
-    var y = entry_name(b);
+fn before(a: *os.ListEntry, b: *os.ListEntry) -> bool {
+    var x = os.entry_name(a);
+    var y = os.entry_name(b);
     for i in 0..x.len {
         if i == y.len {
             return false;
@@ -91,23 +96,23 @@ fn before(a: *ListEntry, b: *ListEntry) -> bool {
 fn line(name: []u8, kind: u32, size: u32, time: u32) {
     if long {
         if time == 0 {
-            put(&out, "                ");
+            io.put(&out, "                ");
         } else {
-            put_date(&out, time);
+            os.put_date(&out, time);
         }
         var digits: [12]u8;
-        var w: Writer;
-        writer_init(&w, STDOUT, digits[:]);
-        put_u32(&w, size);
+        var w: io.Writer;
+        io.writer_init(&w, io.STDOUT, digits[:]);
+        io.put_u32(&w, size);
         for i in w.used..10 {
-            put_byte(&out, ' ');
+            io.put_byte(&out, ' ');
         }
-        put(&out, digits[0:w.used]);
-        put(&out, "  ");
+        io.put(&out, digits[0:w.used]);
+        io.put(&out, "  ");
     }
-    put(&out, name);
-    if kind == KIND_DIR {
-        put_byte(&out, '/');
+    io.put(&out, name);
+    if kind == os.KIND_DIR {
+        io.put_byte(&out, '/');
     }
-    put_byte(&out, '\n');
+    io.put_byte(&out, '\n');
 }

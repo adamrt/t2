@@ -4,6 +4,13 @@
 //
 //     paint [picture.tim]
 
+import gfx;
+import image;
+import io;
+import mem;
+import os;
+import ui;
+
 manifest {
     memory = 2 * MiB;
     stack = 64 * KiB;
@@ -20,17 +27,17 @@ const SWATCH = 24;
 
 var picture: [W * H]u32;
 var zoomed: [W * ZOOM * H * ZOOM]u32;
-var view_image: Image;
+var view_image: gfx.Image;
 var palette: [16]u32;
 var color: u32;
 var filling: bool;
 var drawing: bool;
 var last_x: i32;                // the picture pixel the pen was last on
 var last_y: i32;
-var canvas: Canvas;
+var canvas: gfx.Canvas;
 var words: [2048]u32;
 var strings: [512]u8;
-var ui: Ui;
+var panel: ui.Panel;
 var path: [256]u8;
 var path_len: u32;
 var message: []u8;
@@ -49,8 +56,8 @@ fn main(memory: []u8) -> u32 {
         picture[i] = palette[1];
     }
     color = 0;
-    if arg_count() > 0 {
-        path_len = min(arg(0, path[:]), path.len);
+    if os.arg_count() > 0 {
+        path_len = min(os.arg(0, path[:]), path.len);
         load();
     }
     view_image.width = W * ZOOM;
@@ -61,21 +68,21 @@ fn main(memory: []u8) -> u32 {
             show_pixel(x, y);
         }
     }
-    var window = window_open("Paint", WIDTH, HEIGHT);
-    if window == FAILED {
-        complain("paint", "can't open a window", "");
+    var window = gfx.window_open("Paint", WIDTH, HEIGHT);
+    if window == io.FAILED {
+        os.complain("paint", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:], strings[:]);
-    ui_init(&ui, &canvas);
+    gfx.canvas_init(&canvas, window, words[:], strings[:]);
+    ui.init(&panel, &canvas);
     while true {
-        var e: Event;
-        event_wait(&e, FOREVER);
-        if e.kind == EVENT_CLOSE {
+        var e: gfx.Event;
+        gfx.event_wait(&e, gfx.FOREVER);
+        if e.kind == gfx.EVENT_CLOSE {
             return 0;
         }
-        ui_event(&ui, &e);
-        if e.kind == EVENT_MOUSE_DOWN && e.x < W * ZOOM {
+        ui.event(&panel, &e);
+        if e.kind == gfx.EVENT_MOUSE_DOWN && e.x < W * ZOOM {
             if filling {
                 flood((e.x / ZOOM) as u32, (e.y / ZOOM) as u32);
             } else {
@@ -84,15 +91,15 @@ fn main(memory: []u8) -> u32 {
                 last_y = e.y / ZOOM;
                 stroke(e.x, e.y);
             }
-        } else if e.kind == EVENT_MOUSE_MOVE && drawing {
+        } else if e.kind == gfx.EVENT_MOUSE_MOVE && drawing {
             stroke(e.x, e.y);
-        } else if e.kind == EVENT_MOUSE_UP {
+        } else if e.kind == gfx.EVENT_MOUSE_UP {
             drawing = false;
-        } else if e.kind == EVENT_KEY_DOWN && (e.modifiers & (MOD_CTRL | MOD_SUPER)) != 0 && e.key == 's' {
+        } else if e.kind == gfx.EVENT_KEY_DOWN && (e.modifiers & (gfx.MOD_CTRL | gfx.MOD_SUPER)) != 0 && e.key == 's' {
             save();
         }
         draw();
-        ui_end(&ui);
+        ui.end(&panel);
     }
     return 0;
 }
@@ -202,33 +209,33 @@ fn flood(x0: u32, y0: u32) {
 }
 
 fn load() {
-    var file = open(path[0:path_len], MODE_READ);
-    if file == FAILED {
+    var file = io.open(path[0:path_len], io.MODE_READ);
+    if file == io.FAILED {
         message = "new picture";
         return;
     }
-    var n = read(file, file_bytes[:]);
-    close(file);
-    var h: ImageHeader;
-    if n == FAILED || !image_header(file_bytes[0:n], &h) || h.width > W || h.height > H {
+    var n = io.read(file, file_bytes[:]);
+    io.close(file);
+    var h: image.Header;
+    if n == io.FAILED || !image.read_header(file_bytes[0:n], &h) || h.width > W || h.height > H {
         message = "can't open that picture";
         return;
     }
-    var tile: [TILE_PIXELS]u32;
+    var tile: [image.TILE_PIXELS]u32;
     for ty in 0..h.tiles_y {
         for tx in 0..h.tiles_x {
             var t = ty * h.tiles_x + tx;
-            var tw = tile_width(&h, tx);
-            var th = tile_height(&h, ty);
-            var start = tile_offset(file_bytes[:], t);
-            var end = tile_offset(file_bytes[:], t + 1);
-            if end > n || start > end || !decode_tile(file_bytes[start:end], tile[:], tw * th) {
+            var tw = image.tile_width(&h, tx);
+            var th = image.tile_height(&h, ty);
+            var start = image.tile_offset(file_bytes[:], t);
+            var end = image.tile_offset(file_bytes[:], t + 1);
+            if end > n || start > end || !image.decode_tile(file_bytes[start:end], tile[:], tw * th) {
                 message = "the picture is damaged";
                 return;
             }
             for y in 0..th {
                 for x in 0..tw {
-                    picture[(ty * TILE + y) * W + tx * TILE + x] = tile[y * tw + x];
+                    picture[(ty * image.TILE + y) * W + tx * image.TILE + x] = tile[y * tw + x];
                 }
             }
         }
@@ -237,47 +244,47 @@ fn load() {
 
 fn save() {
     if path_len == 0 {
-        copy(path[:], "picture.tim");
+        mem.copy(path[:], "picture.tim");
         path_len = 11;
     }
-    var file = open(path[0:path_len], MODE_WRITE);
-    if file == FAILED || !save_image(file, W, H, picture[:], scratch[:], offsets[:]) {
+    var file = io.open(path[0:path_len], io.MODE_WRITE);
+    if file == io.FAILED || !image.save(file, W, H, picture[:], scratch[:], offsets[:]) {
         message = "can't save";
     } else {
         message = "saved";
     }
-    close(file);
+    io.close(file);
 }
 
 fn draw() {
-    draw_image(&canvas, &view_image, 0, 0, W * ZOOM, H * ZOOM, 0, 0, false);
+    gfx.draw_image(&canvas, &view_image, 0, 0, W * ZOOM, H * ZOOM, 0, 0, false);
     var x0: i32 = W * ZOOM;
-    draw_fill(&canvas, x0, 0, SIDE, HEIGHT, UI_BACKGROUND);
+    gfx.draw_fill(&canvas, x0, 0, SIDE, HEIGHT, ui.BACKGROUND);
     for i in 0..16 {
         var x = x0 + 6 + (i % 2) as i32 * (SWATCH + 4);
         var y = 6 + (i / 2) as i32 * (SWATCH + 4);
-        if ui.pressed && ui_inside(&ui, x, y, SWATCH, SWATCH) {
+        if panel.pressed && ui.inside(&panel, x, y, SWATCH, SWATCH) {
             color = i;
         }
-        var edge = UI_EDGE;
+        var edge = ui.EDGE;
         if color == i {
-            draw_fill(&canvas, x - 3, y - 3, SWATCH + 6, SWATCH + 6, UI_PRESSED);
+            gfx.draw_fill(&canvas, x - 3, y - 3, SWATCH + 6, SWATCH + 6, ui.PRESSED);
         }
-        draw_fill(&canvas, x - 1, y - 1, SWATCH + 2, SWATCH + 2, edge);
-        draw_fill(&canvas, x, y, SWATCH, SWATCH, palette[i]);
+        gfx.draw_fill(&canvas, x - 1, y - 1, SWATCH + 2, SWATCH + 2, edge);
+        gfx.draw_fill(&canvas, x, y, SWATCH, SWATCH, palette[i]);
     }
     var tool = "Pen";
     if filling {
         tool = "Fill";
     }
-    if ui_button(&ui, 100, x0 + 6, HEIGHT - 84, SIDE - 12, 24, tool) {
+    if ui.button(&panel, 100, x0 + 6, HEIGHT - 84, SIDE - 12, 24, tool) {
         filling = !filling;
     }
-    if ui_button(&ui, 101, x0 + 6, HEIGHT - 56, SIDE - 12, 24, "Save") {
+    if ui.button(&panel, 101, x0 + 6, HEIGHT - 56, SIDE - 12, 24, "Save") {
         save();
     }
     if message.len > 0 {
-        draw_text(&canvas, x0 + 4, HEIGHT - 24, UI_TEXT, message[0:min(message.len, 7)]);
+        gfx.draw_text(&canvas, x0 + 4, HEIGHT - 24, ui.TEXT, message[0:min(message.len, 7)]);
     }
-    present(&canvas);
+    gfx.present(&canvas);
 }

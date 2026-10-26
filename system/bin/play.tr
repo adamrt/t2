@@ -2,24 +2,29 @@
 //
 //     play piano.tsn
 
+import io;
+import mem;
+import os;
+import sound;
+
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
     allow = "read audio";
 }
 
-var block: [SOUND_BLOCK]u8;
-var decoded: [BLOCK_SAMPLES]u16;
+var block: [sound.BLOCK]u8;
+var decoded: [sound.BLOCK_SAMPLES]u16;
 var out: [2048]u16;
 var out_count: u32;
 
 fn main(memory: []u8) -> u32 {
-    var arena: Arena;
-    arena_init(&arena, memory);
+    var arena: mem.Arena;
+    mem.arena_init(&arena, memory);
     var args: [64][]u8;
-    var count = get_args(&arena, args[:]);
+    var count = os.get_args(&arena, args[:]);
     if count == 0 {
-        complain("play", "usage: play file.tsn...", "");
+        os.complain("play", "usage: play file.tsn...", "");
         return 2;
     }
     var status: u32 = 0;
@@ -30,8 +35,8 @@ fn main(memory: []u8) -> u32 {
     }
     // Let the last of it play out.
     var rate: u32;
-    while audio_status(&rate) > 0 {
-        sleep(50);
+    while sound.status(&rate) > 0 {
+        os.sleep(50);
     }
     return status;
 }
@@ -39,8 +44,8 @@ fn main(memory: []u8) -> u32 {
 fn read_fully(file: u32, buffer: []u8) -> u32 {
     var n: u32 = 0;
     while n < buffer.len {
-        var got = read(file, buffer[n:]);
-        if got == 0 || got == FAILED {
+        var got = io.read(file, buffer[n:]);
+        if got == 0 || got == io.FAILED {
             break;
         }
         n += got;
@@ -49,33 +54,33 @@ fn read_fully(file: u32, buffer: []u8) -> u32 {
 }
 
 fn play_file(name: []u8) -> bool {
-    var file = open(name, MODE_READ);
-    if file == FAILED {
-        complain("play", "can't read", name);
+    var file = io.open(name, io.MODE_READ);
+    if file == io.FAILED {
+        os.complain("play", "can't read", name);
         return false;
     }
-    var h: SoundHeader;
-    if read_fully(file, block[0:SOUND_HEADER]) != SOUND_HEADER || !sound_header(block[0:SOUND_HEADER], &h) {
-        complain("play", "not a TSN1 sound:", name);
-        close(file);
+    var h: sound.Header;
+    if read_fully(file, block[0:sound.HEADER]) != sound.HEADER || !sound.read_header(block[0:sound.HEADER], &h) {
+        os.complain("play", "not a TSN1 sound:", name);
+        io.close(file);
         return false;
     }
     var tenths = h.samples / h.rate * 10 + h.samples % h.rate * 10 / h.rate;
-    var w: Writer;
+    var w: io.Writer;
     var text: [128]u8;
-    writer_init(&w, STDOUT, text[:]);
-    put(&w, name);
-    put(&w, ": ");
-    put_u32(&w, tenths / 10);
-    put_byte(&w, '.');
-    put_u32(&w, tenths % 10);
-    put(&w, " seconds\n");
-    flush(&w);
+    io.writer_init(&w, io.STDOUT, text[:]);
+    io.put(&w, name);
+    io.put(&w, ": ");
+    io.put_u32(&w, tenths / 10);
+    io.put_byte(&w, '.');
+    io.put_u32(&w, tenths % 10);
+    io.put(&w, " seconds\n");
+    io.flush(&w);
 
     // Each output sample takes the nearest sample of the sound, so any rate
     // plays at the right speed.
     var rate: u32;
-    audio_status(&rate);
+    sound.status(&rate);
     if rate == 0 {
         rate = 22050;
     }
@@ -83,13 +88,13 @@ fn play_file(name: []u8) -> bool {
     var position: u32 = 0;
     var left = h.samples;
     while left > 0 {
-        var count = BLOCK_SAMPLES;
+        var count = sound.BLOCK_SAMPLES;
         if left < count {
             count = left;
         }
         var bytes = read_fully(file, block[0:4 + count / 2]);
-        if bytes < 4 || decode_sound_block(block[0:bytes], decoded[0:count]) != count {
-            complain("play", "the sound is cut short:", name);
+        if bytes < 4 || sound.decode_block(block[0:bytes], decoded[0:count]) != count {
+            os.complain("play", "the sound is cut short:", name);
             break;
         }
         while position >> 16 < count {
@@ -104,14 +109,14 @@ fn play_file(name: []u8) -> bool {
         left -= count;
     }
     send();
-    close(file);
+    io.close(file);
     return true;
 }
 
 // Queues what's been made, waiting while the queue is full.
 fn send() {
-    while out_count > 0 && audio_play((&out[0] as *u8)[0:out_count * 2]) == FAILED {
-        sleep(20);
+    while out_count > 0 && sound.play((&out[0] as *u8)[0:out_count * 2]) == io.FAILED {
+        os.sleep(20);
     }
     out_count = 0;
 }

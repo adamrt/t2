@@ -1,5 +1,7 @@
 // Turning tokens into a syntax tree.
 
+import io;
+
 enum N {
     // Declarations
     Fn,             // name, list: params, a: result type, b: body
@@ -101,7 +103,7 @@ fn append(list: *List, n: *Node) {
 
 fn parse_fail(message: []u8) {
     error_start(tok.file, tok.line);
-    put(&errors, message);
+    io.put(&errors, message);
     error_end();
 }
 
@@ -116,11 +118,11 @@ fn take(kind: Tok) -> bool {
 fn expect(kind: Tok, text: []u8) {
     if !take(kind) {
         error_start(tok.file, tok.line);
-        put(&errors, "expected '");
-        put(&errors, text);
-        put(&errors, "', found '");
-        put(&errors, tok.text);
-        put(&errors, "'");
+        io.put(&errors, "expected '");
+        io.put(&errors, text);
+        io.put(&errors, "', found '");
+        io.put(&errors, tok.text);
+        io.put(&errors, "'");
         error_end();
     }
 }
@@ -301,9 +303,9 @@ fn parse_type() -> *Node {
         n.module = imported(n.file, n.name);
         if n.module == 0 {
             error_start(n.file, n.line);
-            put(&errors, "no module '");
-            put(&errors, n.name);
-            put(&errors, "' is imported here");
+            io.put(&errors, "no module '");
+            io.put(&errors, n.name);
+            io.put(&errors, "' is imported here");
             error_end();
         }
         n.name = expect_name();

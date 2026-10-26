@@ -2,50 +2,53 @@
 // it has used, the instructions it has run, and the bytes it has read and
 // written.
 
+import io;
+import os;
+
 manifest {
     memory = 64 * KiB;
     stack = 16 * KiB;
     allow = "processes recovery";
 }
 
-var records: [32]ProcessInfo;
+var records: [32]os.ProcessInfo;
 
 fn main(memory: []u8) -> u32 {
-    var out: Writer;
+    var out: io.Writer;
     var buffer: [2048]u8;
-    writer_init(&out, STDOUT, buffer[:]);
-    var n = processes((&records[0] as *u8)[0:size_of(ProcessInfo) * 32]) / size_of(ProcessInfo);
-    put(&out, "  id  memory   stack     cycles    read written  name\n");
+    io.writer_init(&out, io.STDOUT, buffer[:]);
+    var n = os.processes((&records[0] as *u8)[0:size_of(os.ProcessInfo) * 32]) / size_of(os.ProcessInfo);
+    io.put(&out, "  id  memory   stack     cycles    read written  name\n");
     for i in 0..n {
         var p = &records[i];
         column(&out, p.id, 4);
         column(&out, p.memory / KiB, 7);
-        put(&out, "K");
+        io.put(&out, "K");
         column(&out, p.stack, 8);
         column(&out, p.cycles, 11);
         column(&out, p.read, 8);
         column(&out, p.written, 8);
-        put(&out, "  ");
-        put(&out, process_name(p));
+        io.put(&out, "  ");
+        io.put(&out, os.process_name(p));
         if p.state == 2 {
-            put(&out, " (waiting)");
+            io.put(&out, " (waiting)");
         } else if p.state == 3 {
-            put(&out, " (ended)");
+            io.put(&out, " (ended)");
         }
-        put_byte(&out, '\n');
+        io.put_byte(&out, '\n');
     }
-    flush(&out);
+    io.flush(&out);
     return 0;
 }
 
 // Writes a number right-aligned in a column.
-fn column(out: *Writer, value: u32, width: u32) {
+fn column(out: *io.Writer, value: u32, width: u32) {
     var digits: [12]u8;
-    var w: Writer;
-    writer_init(&w, STDOUT, digits[:]);
-    put_u32(&w, value);
+    var w: io.Writer;
+    io.writer_init(&w, io.STDOUT, digits[:]);
+    io.put_u32(&w, value);
     for i in w.used..width {
-        put_byte(out, ' ');
+        io.put_byte(out, ' ');
     }
-    put(out, digits[0:w.used]);
+    io.put(out, digits[0:w.used]);
 }

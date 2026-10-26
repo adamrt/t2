@@ -9,48 +9,48 @@ start:
     call _main
     sys 0
 
-; fn exit(status: u32);
-_exit:
+; fn os.exit(status: u32);
+_os.exit:
     r0 = [sp + 4]
     sys 0
 
-; fn read(file: u32, buffer: []u8) -> u32;
-_read:
+; fn io.read(file: u32, buffer: []u8) -> u32;
+_io.read:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 1
     return
 
-; fn write(file: u32, bytes: []u8) -> u32;
-_write:
+; fn io.write(file: u32, bytes: []u8) -> u32;
+_io.write:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 2
     return
 
-; fn open(path: []u8, mode: u32) -> u32;
-_open:
+; fn io.open(path: []u8, mode: u32) -> u32;
+_io.open:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 3
     return
 
-; fn close(file: u32) -> u32;
-_close:
+; fn io.close(file: u32) -> u32;
+_io.close:
     r0 = [sp + 4]
     sys 4
     return
 
-; fn arg_count() -> u32;
-_arg_count:
+; fn os.arg_count() -> u32;
+_os.arg_count:
     sys 5
     return
 
-; fn arg(index: u32, buffer: []u8) -> u32;
-_arg:
+; fn os.arg(index: u32, buffer: []u8) -> u32;
+_os.arg:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -60,8 +60,8 @@ _arg:
 ; The rest are Terrarium's own system calls (spec/system.md). The
 ; development monitor doesn't have them.
 
-; fn spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
-_spawn:
+; fn os.spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
+_os.spawn:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -72,29 +72,29 @@ _spawn:
     sys 7
     return
 
-; fn wait(process: u32) -> u32;
-_wait:
+; fn os.wait(process: u32) -> u32;
+_os.wait:
     r0 = [sp + 4]
     sys 8
     return
 
-; fn open_pipe(write_end: *u32) -> u32;
-_open_pipe:
+; fn os.open_pipe(write_end: *u32) -> u32;
+_os.open_pipe:
     sys 9
     r2 = [sp + 4]
     [r2] = r1
     return
 
-; fn info(path: []u8, info: *FileInfo) -> u32;
-_info:
+; fn os.info(path: []u8, info: *FileInfo) -> u32;
+_os.info:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 10
     return
 
-; fn list(path: []u8, buffer: []u8) -> u32;
-_list:
+; fn os.list(path: []u8, buffer: []u8) -> u32;
+_os.list:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -102,67 +102,67 @@ _list:
     sys 11
     return
 
-; fn remove(path: []u8) -> u32;
-_remove:
+; fn os.remove(path: []u8) -> u32;
+_os.remove:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 12
     return
 
-; fn make_dir(path: []u8) -> u32;
-_make_dir:
+; fn os.make_dir(path: []u8) -> u32;
+_os.make_dir:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 13
     return
 
-; fn set_dir(path: []u8) -> u32;
-_set_dir:
+; fn os.set_dir(path: []u8) -> u32;
+_os.set_dir:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 14
     return
 
-; fn get_dir(buffer: []u8) -> u32;
-_get_dir:
+; fn os.get_dir(buffer: []u8) -> u32;
+_os.get_dir:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 15
     return
 
-; fn time() -> u32;
-_time:
+; fn os.time() -> u32;
+_os.time:
     sys 16
     return
 
-; fn sleep(milliseconds: u32);
-_sleep:
+; fn os.sleep(milliseconds: u32);
+_os.sleep:
     r0 = [sp + 4]
     sys 17
     return
 
-; fn processes(buffer: []u8) -> u32;
-_processes:
+; fn os.processes(buffer: []u8) -> u32;
+_os.processes:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 18
     return
 
-; fn kill(process: u32) -> u32;
-_kill:
+; fn os.kill(process: u32) -> u32;
+_os.kill:
     r0 = [sp + 4]
     sys 19
     return
 
-; fn memory_info(free: *u32) -> u32;
-_memory_info:
+; fn os.memory_info(free: *u32) -> u32;
+_os.memory_info:
     sys 20
     r2 = [sp + 4]
     [r2] = r1
     return
 
-; fn window_open(title: []u8, width: u32, height: u32) -> u32;
-_window_open:
+; fn gfx.window_open(title: []u8, width: u32, height: u32) -> u32;
+_gfx.window_open:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -170,117 +170,117 @@ _window_open:
     sys 21
     return
 
-; fn window_draw(window: u32, commands: []u32) -> u32;
-_window_draw:
+; fn gfx.window_draw(window: u32, commands: []u32) -> u32;
+_gfx.window_draw:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 22
     return
 
-; fn event_wait(event: *Event, timeout: u32) -> u32;
-_event_wait:
+; fn gfx.event_wait(event: *Event, timeout: u32) -> u32;
+_gfx.event_wait:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 23
     return
 
-; fn available(handle: u32) -> u32;
-_available:
+; fn io.available(handle: u32) -> u32;
+_io.available:
     r0 = [sp + 4]
     sys 24
     return
 
-; fn screen_info(info: *ScreenInfo) -> u32;
-_screen_info:
+; fn gfx.screen_info(info: *ScreenInfo) -> u32;
+_gfx.screen_info:
     r0 = [sp + 4]
     sys 25
     return
 
-; fn seek(handle: u32, position: u32) -> u32;
-_seek:
+; fn io.seek(handle: u32, position: u32) -> u32;
+_io.seek:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 26
     return
 
-; fn trace_spawns(handle: u32) -> u32;
-_trace_spawns:
+; fn os.trace_spawns(handle: u32) -> u32;
+_os.trace_spawns:
     r0 = [sp + 4]
     sys 27
     return
 
-; fn audio_play(samples: []u8) -> u32;
-_audio_play:
+; fn sound.play(samples: []u8) -> u32;
+_sound.play:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 28
     return
 
-; fn audio_status(rate: *u32) -> u32;
-_audio_status:
+; fn sound.status(rate: *u32) -> u32;
+_sound.status:
     sys 29
     r2 = [sp + 4]
     [r2] = r1
     return
 
-; fn connect(host: []u8, port: u32) -> u32;
-_connect:
+; fn net.connect(host: []u8, port: u32) -> u32;
+_net.connect:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 30
     return
 
-; fn listen(port: u32) -> u32;
-_listen:
+; fn net.listen(port: u32) -> u32;
+_net.listen:
     r0 = [sp + 4]
     sys 31
     return
 
-; fn accept(listener: u32) -> u32;
-_accept:
+; fn net.accept(listener: u32) -> u32;
+_net.accept:
     r0 = [sp + 4]
     sys 32
     return
 
-; fn clipboard_set(text: []u8) -> u32;
-_clipboard_set:
+; fn gfx.clipboard_set(text: []u8) -> u32;
+_gfx.clipboard_set:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 33
     return
 
-; fn clipboard_get(buffer: []u8) -> u32;
-_clipboard_get:
+; fn gfx.clipboard_get(buffer: []u8) -> u32;
+_gfx.clipboard_get:
     r0 = [sp + 4]
     r1 = [sp + 8]
     sys 34
     return
 
-; fn window_resizable(window: u32, min_width: u32, min_height: u32) -> u32;
-_window_resizable:
+; fn gfx.window_resizable(window: u32, min_width: u32, min_height: u32) -> u32;
+_gfx.window_resizable:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 35
     return
 
-; fn date() -> u32;
-_date:
+; fn os.date() -> u32;
+_os.date:
     sys 36
     return
 
-; fn window_title(window: u32, title: []u8) -> u32;
-_window_title:
+; fn gfx.window_title(window: u32, title: []u8) -> u32;
+_gfx.window_title:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     sys 38
     return
 
-; fn rename(from: []u8, to: []u8) -> u32;
-_rename:
+; fn os.rename(from: []u8, to: []u8) -> u32;
+_os.rename:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
@@ -288,24 +288,24 @@ _rename:
     sys 37
     return
 
-; fn mem_copy(to: *u8, from: *u8, count: u32);
-_mem_copy:
+; fn mem.move(to: *u8, from: *u8, count: u32);
+_mem.move:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     copy r0, r1, r2
     return
 
-; fn mem_fill(to: *u8, value: u32, count: u32);
-_mem_fill:
+; fn mem.fill(to: *u8, value: u32, count: u32);
+_mem.fill:
     r0 = [sp + 4]
     r1 = [sp + 8]
     r2 = [sp + 12]
     fill r0, r1, r2
     return
 
-; fn stop();  Stops the program with a fault, so the monitor shows where.
-_stop:
+; fn os.stop();  Stops the program with a fault, so the monitor shows where.
+_os.stop:
     r0 = 0
     r0 = [r0]
 
@@ -315,7 +315,7 @@ _bounds_failed:
     r1 = bounds_message
     r2 = 20
     sys 2
-    call _stop
+    call _os.stop
 
 .data
 bounds_message:

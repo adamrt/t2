@@ -53,6 +53,15 @@ what it asks for, limited to what its parent has. 2 MiB of memory is kept
 back for programs with `recovery`, so `ps`, `kill` and `monitor` start even
 when memory is full. `trace` shows every system call a program makes.
 
+**Modules.** The library is ten modules (`io`, `mem`, `text`, `os`, `net`,
+`gfx`, `ui`, `math`, `image`, `sound`), each one file in `/lib`. A file
+imports what it uses and writes `io.print`, so names never clash between
+modules and you can see where each one comes from. Only what `main` reaches
+is compiled, so importing a module costs nothing in itself. The kernel
+imports modules too (`io`, `mem`, `text`, and `os` for `panic`), with its
+own runtime, `krt.asm`, beneath them: there `io.write` goes straight to the
+console instead of making a system call.
+
 **Formats.** All are Terrarium's own: `TRX2` programs, the `TFS1` disk (a
 FAT-like table with 4 KiB blocks), `TFN1` bitmap fonts, `TSN1` sounds (IMA
 ADPCM in blocks that decode on their own), and `TIM1` images
@@ -91,8 +100,8 @@ accents added.
   and Latin-1 (accented letters and the common symbols); anything else shows
   as `?`.
 - The language has no generics or methods (a struct can hold functions
-  instead), and every top-level name in a program shares one namespace, so
-  library names need care.
+  instead). A module is a single file, and all of a module's names can be
+  used outside it.
 - Sound through the host was never listened to. The tests only use the
   silent device, which keeps the same time.
 - The system tests run headless. The graphical programs were checked with
@@ -102,7 +111,6 @@ accents added.
 ## Ideas
 
 - A user-space desktop, now that windows, events and permissions exist.
-- Modules in the language.
 - Translating hot code to native ARM64.
 - UDP, and a networked game.
 - A file dialog, and resizing for paint.
