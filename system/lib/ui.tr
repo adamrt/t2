@@ -1,0 +1,147 @@
+// Standard widgets, drawn the immediate way: on every event the program
+// redraws its window by calling the widget functions, which draw themselves
+// and say what happened to them. A button reports a click when the mouse is
+// pressed and released on it.
+//
+//     ui_event(&ui, &e);
+//     if ui_button(&ui, 1, 10, 10, 80, 24, "Save") { save(); }
+//     present(ui.canvas);
+//
+// Each widget needs an id of its own, any number but 0.
+
+const UI_FACE: u32 = 0xffe0dbce;
+const UI_PRESSED: u32 = 0xffe8c35a;
+const UI_EDGE: u32 = 0xff1e1e24;
+const UI_TEXT: u32 = 0xff1e1e24;
+const UI_BACKGROUND: u32 = 0xfff2efe6;
+const UI_FIELD: u32 = 0xffffffff;
+
+struct Ui {
+    canvas: *Canvas;
+    mouse_x: i32;
+    mouse_y: i32;
+    pressed: bool;          // a press happened in this event
+    released: bool;         // a release happened in this event
+    active: u32;            // the widget the mouse went down on
+    typed: u32;             // a character typed in this event, or 0
+    key: u32;               // a key pressed in this event, or 0
+    focus: u32;             // the text field that takes typing
+}
+
+fn ui_init(ui: *Ui, canvas: *Canvas) {
+    mem_fill(ui as *u8, 0, size_of(Ui));
+    ui.canvas = canvas;
+}
+
+// Takes in one event, before the widgets are drawn for it.
+fn ui_event(ui: *Ui, e: *Event) {
+    ui.pressed = false;
+    ui.released = false;
+    ui.typed = 0;
+    ui.key = 0;
+    if e.kind == EVENT_MOUSE_MOVE || e.kind == EVENT_MOUSE_DOWN || e.kind == EVENT_MOUSE_UP {
+        ui.mouse_x = e.x;
+        ui.mouse_y = e.y;
+    }
+    if e.kind == EVENT_MOUSE_DOWN {
+        ui.pressed = true;
+        ui.active = 0;
+    } else if e.kind == EVENT_MOUSE_UP {
+        ui.released = true;
+    } else if e.kind == EVENT_TEXT {
+        ui.typed = e.key;
+    } else if e.kind == EVENT_KEY_DOWN {
+        ui.key = e.key;
+    }
+}
+
+// Ends an event: a release lets go of the widget that was pressed.
+fn ui_end(ui: *Ui) {
+    if ui.released {
+        ui.active = 0;
+    }
+}
+
+fn ui_inside(ui: *Ui, x: i32, y: i32, w: i32, h: i32) -> bool {
+    return ui.mouse_x >= x && ui.mouse_x < x + w && ui.mouse_y >= y && ui.mouse_y < y + h;
+}
+
+fn ui_label(ui: *Ui, x: i32, y: i32, text: []u8) {
+    draw_text(ui.canvas, x, y, UI_TEXT, text);
+}
+
+// A raised box with a dark edge.
+fn ui_box(ui: *Ui, x: i32, y: i32, w: i32, h: i32, face: u32) {
+    draw_fill(ui.canvas, x, y, w, h, UI_EDGE);
+    draw_fill(ui.canvas, x + 1, y + 1, w - 2, h - 2, face);
+}
+
+// Returns true when the button is clicked.
+fn ui_button(ui: *Ui, id: u32, x: i32, y: i32, w: i32, h: i32, label: []u8) -> bool {
+    var over = ui_inside(ui, x, y, w, h);
+    if ui.pressed && over {
+        ui.active = id;
+    }
+    var clicked = ui.released && over && ui.active == id;
+    var face = UI_FACE;
+    if ui.active == id && over && !ui.released {
+        face = UI_PRESSED;
+    }
+    ui_box(ui, x, y, w, h, face);
+    var text_x = x + (w - (label.len * 8) as i32) / 2;
+    draw_text(ui.canvas, text_x, y + (h - 16) / 2, UI_TEXT, label);
+    return clicked;
+}
+
+// A box that can be ticked. Returns true when it changes.
+fn ui_checkbox(ui: *Ui, id: u32, x: i32, y: i32, label: []u8, value: *bool) -> bool {
+    var w = 18 + (label.len * 8) as i32;
+    var over = ui_inside(ui, x, y, w, 16);
+    if ui.pressed && over {
+        ui.active = id;
+    }
+    var changed = ui.released && over && ui.active == id;
+    if changed {
+        *value = !*value;
+    }
+    ui_box(ui, x, y + 2, 12, 12, UI_FIELD);
+    if *value {
+        draw_fill(ui.canvas, x + 3, y + 5, 6, 6, UI_EDGE);
+    }
+    draw_text(ui.canvas, x + 18, y, UI_TEXT, label);
+    return changed;
+}
+
+// A one-line text field editing text[0:*length]. Clicking it gives it the
+// typing. Returns true when Enter is pressed in it.
+fn ui_field(ui: *Ui, id: u32, x: i32, y: i32, w: i32, text: []u8, length: *u32) -> bool {
+    if ui.pressed {
+        if ui_inside(ui, x, y, w, 22) {
+            ui.focus = id;
+        } else if ui.focus == id {
+            ui.focus = 0;
+        }
+    }
+    var entered = false;
+    if ui.focus == id {
+        if ui.typed != 0 && *length < text.len {
+            text[*length] = ui.typed as u8;
+            *length += 1;
+        } else if ui.key == KEY_BACKSPACE && *length > 0 {
+            *length -= 1;
+        } else if ui.key == KEY_ENTER {
+            entered = true;
+        }
+    }
+    ui_box(ui, x, y, w, 22, UI_FIELD);
+    var shown = text[0:*length];
+    var room = ((w - 10) / 8) as u32;
+    if shown.len > room {
+        shown = shown[shown.len - room:];
+    }
+    draw_text(ui.canvas, x + 5, y + 3, UI_TEXT, shown);
+    if ui.focus == id {
+        draw_fill(ui.canvas, x + 5 + (shown.len * 8) as i32, y + 3, 2, 16, UI_EDGE);
+    }
+    return entered;
+}

@@ -1,0 +1,199 @@
+// calc, a calculator. It works in fixed point, so it keeps four decimal
+// places and stays between -32768 and 32767. Type the keys or click them.
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+    allow = "window";
+}
+
+const KEY_SIZE = 44;
+const GAP = 6;
+const WIDTH = 4 * KEY_SIZE + 5 * GAP;
+const DISPLAY = 40;
+const HEIGHT = DISPLAY + 5 * KEY_SIZE + 7 * GAP;
+
+var canvas: Canvas;
+var words: [2048]u32;
+var strings: [512]u8;
+var ui: Ui;
+var shown: fixed;               // the number on the display
+var stored: fixed;              // the number before the operator
+var operator: u8;
+var typing: bool;               // digits go on the end of the display
+var decimals: u32;              // digits typed after the point, plus one
+var error: bool;
+var display_text: [32]u8;
+
+fn key_label(row: u32, column: u32) -> []u8 {
+    var keys = "789/456*123-0.=+";
+    var i = row * 4 + column;
+    return keys[i:i + 1];
+}
+
+fn main(memory: []u8) -> u32 {
+    var window = window_open("Calculator", WIDTH, HEIGHT);
+    if window == FAILED {
+        complain("calc", "can't open a window", "");
+        return 1;
+    }
+    canvas_init(&canvas, window, words[:], strings[:]);
+    ui_init(&ui, &canvas);
+    while true {
+        var e: Event;
+        event_wait(&e, FOREVER);
+        if e.kind == EVENT_CLOSE {
+            return 0;
+        }
+        if e.kind == EVENT_MOUSE_MOVE && ui.active == 0 {
+            continue;
+        }
+        ui_event(&ui, &e);
+        if ui.typed != 0 {
+            press(ui.typed as u8);
+        } else if ui.key == KEY_ENTER {
+            press('=');
+        } else if ui.key == KEY_BACKSPACE || ui.key == KEY_ESCAPE {
+            press('C');
+        }
+        draw();
+        ui_end(&ui);
+        present(&canvas);
+    }
+    return 0;
+}
+
+fn press(c: u8) {
+    if c == 'c' || c == 'C' {
+        shown = 0;
+        stored = 0;
+        operator = 0;
+        typing = false;
+        decimals = 0;
+        error = false;
+        return;
+    }
+    if error {
+        return;
+    }
+    if c >= '0' && c <= '9' {
+        if !typing {
+            shown = 0;
+            typing = true;
+            decimals = 0;
+        }
+        var digit = (c - '0') as fixed;
+        if decimals == 0 {
+            if shown < 3276 {
+                shown = shown * 10 + digit;
+            }
+        } else if decimals < 5 {
+            var place: fixed = 1;
+            for i in 0..decimals {
+                place = place / 10;
+            }
+            shown = shown + digit * place;
+            decimals += 1;
+        }
+        return;
+    }
+    if c == '.' {
+        if !typing {
+            shown = 0;
+            typing = true;
+        }
+        if decimals == 0 {
+            decimals = 1;
+        }
+        return;
+    }
+    if c == '+' || c == '-' || c == '*' || c == '/' || c == '=' {
+        if operator != 0 && (typing || c == '=') {
+            shown = apply(stored, operator, shown);
+        }
+        stored = shown;
+        if c == '=' {
+            operator = 0;
+        } else {
+            operator = c;
+        }
+        typing = false;
+    }
+}
+
+fn apply(a: fixed, op: u8, b: fixed) -> fixed {
+    if op == '+' {
+        return a + b;
+    }
+    if op == '-' {
+        return a - b;
+    }
+    if op == '*' {
+        return a * b;
+    }
+    if b == 0 {
+        error = true;
+        return 0;
+    }
+    return a / b;
+}
+
+// Writes a fixed-point number with up to four decimal places.
+fn format_fixed(value: fixed) -> []u8 {
+    var w: Writer;
+    writer_init(&w, STDOUT, display_text[:]);
+    var v = value;
+    if v < 0 {
+        put_byte(&w, '-');
+        v = -v;
+    }
+    var whole = v as i32;
+    put_u32(&w, whole as u32);
+    // Round the fraction to four places.
+    var fraction = ((v - whole as fixed) * 10000 + 0.5) as i32;
+    if fraction >= 10000 {
+        fraction = 9999;
+    }
+    if fraction > 0 {
+        put_byte(&w, '.');
+        var digits: [4]u8;
+        var f = fraction as u32;
+        var i: u32 = 4;
+        while i > 0 {
+            i -= 1;
+            digits[i] = (f % 10 + '0') as u8;
+            f /= 10;
+        }
+        var end: u32 = 4;
+        while end > 1 && digits[end - 1] == '0' {
+            end -= 1;
+        }
+        put(&w, digits[0:end]);
+    }
+    return display_text[0:w.used];
+}
+
+fn draw() {
+    draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, UI_BACKGROUND);
+    draw_fill(&canvas, GAP, GAP, WIDTH - 2 * GAP, DISPLAY - GAP, rgb(30, 30, 36));
+    var text = "error";
+    if !error {
+        text = format_fixed(shown);
+    }
+    var x = WIDTH - GAP - 8 - (text.len * 16) as i32;
+    draw_text_scaled(&canvas, x, GAP + 2, rgb(232, 195, 90), text, 2);
+    for row in 0..4 {
+        for column in 0..4 {
+            var label = key_label(row, column);
+            var kx = GAP + (column * (KEY_SIZE + GAP)) as i32;
+            var ky = DISPLAY + GAP + (row * (KEY_SIZE + GAP)) as i32;
+            if ui_button(&ui, row * 4 + column + 1, kx, ky, KEY_SIZE, KEY_SIZE, label) {
+                press(label[0]);
+            }
+        }
+    }
+    var cy = DISPLAY + GAP + (4 * (KEY_SIZE + GAP)) as i32;
+    if ui_button(&ui, 100, GAP, cy, WIDTH - 2 * GAP, KEY_SIZE, "Clear") {
+        press('C');
+    }
+}

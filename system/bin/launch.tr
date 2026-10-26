@@ -8,12 +8,12 @@ manifest {
 
 const WIDTH = 150;
 const BUTTON = 26;
-const COUNT = 9;
+const COUNT = 10;
 
 var canvas: Canvas;
-var words: [512]u32;
+var words: [1024]u32;
 var strings: [512]u8;
-var pressed: i32;
+var ui: Ui;
 
 fn label(i: u32) -> []u8 {
     match i {
@@ -21,10 +21,11 @@ fn label(i: u32) -> []u8 {
         1 => { return "Files"; }
         2 => { return "Editor"; }
         3 => { return "Monitor"; }
-        4 => { return "Cube"; }
-        5 => { return "Fractal"; }
-        6 => { return "Piano"; }
-        7 => { return "Worm"; }
+        4 => { return "Calculator"; }
+        5 => { return "Cube"; }
+        6 => { return "Fractal"; }
+        7 => { return "Piano"; }
+        8 => { return "Worm"; }
     }
     return "GPU demo";
 }
@@ -35,10 +36,11 @@ fn program(i: u32) -> []u8 {
         1 => { return "/bin/files"; }
         2 => { return "/bin/edit"; }
         3 => { return "/bin/monitor"; }
-        4 => { return "/bin/cube"; }
-        5 => { return "/bin/fractal"; }
-        6 => { return "/bin/piano"; }
-        7 => { return "/bin/worm"; }
+        4 => { return "/bin/calc"; }
+        5 => { return "/bin/cube"; }
+        6 => { return "/bin/fractal"; }
+        7 => { return "/bin/piano"; }
+        8 => { return "/bin/worm"; }
     }
     return "/bin/demo";
 }
@@ -50,43 +52,26 @@ fn main(memory: []u8) -> u32 {
         return 1;
     }
     canvas_init(&canvas, window, words[:], strings[:]);
-    pressed = -1;
+    ui_init(&ui, &canvas);
     while true {
         var e: Event;
         event_wait(&e, FOREVER);
         if e.kind == EVENT_CLOSE {
             return 0;
         }
-        if e.kind == EVENT_MOUSE_DOWN {
-            pressed = (e.y - 4) / BUTTON;
-            if pressed < 0 || pressed >= COUNT {
-                pressed = -1;
-            }
-        } else if e.kind == EVENT_MOUSE_UP {
-            var over = (e.y - 4) / BUTTON;
-            if pressed >= 0 && over == pressed {
-                spawn(program(pressed as u32), "", STDIN, STDOUT, STDERR);
-            }
-            pressed = -1;
-        } else if e.kind != EVENT_DRAW {
+        if e.kind == EVENT_MOUSE_MOVE && ui.active == 0 {
             continue;
         }
-        draw();
+        ui_event(&ui, &e);
+        draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, UI_BACKGROUND);
+        for i in 0..COUNT {
+            var y = 4 + (i * BUTTON) as i32;
+            if ui_button(&ui, i + 1, 6, y + 2, WIDTH - 12, BUTTON - 4, label(i)) {
+                spawn(program(i), "", STDIN, STDOUT, STDERR);
+            }
+        }
+        ui_end(&ui);
+        present(&canvas);
     }
     return 0;
-}
-
-fn draw() {
-    draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, rgb(242, 239, 230));
-    for i in 0..COUNT {
-        var y = 4 + (i * BUTTON) as i32;
-        var face = rgb(224, 219, 206);
-        if pressed == i as i32 {
-            face = rgb(232, 195, 90);
-        }
-        draw_fill(&canvas, 6, y + 2, WIDTH - 12, BUTTON - 4, rgb(30, 30, 36));
-        draw_fill(&canvas, 7, y + 3, WIDTH - 14, BUTTON - 6, face);
-        draw_text(&canvas, 16, y + 5, rgb(30, 30, 36), label(i));
-    }
-    present(&canvas);
 }
