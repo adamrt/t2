@@ -364,6 +364,30 @@ fn window_open(p: *Process, title: []u8, width: u32, height: u32) -> *Window {
     copy(w.title[:], title[0:w.title_len]);
     w.content.w = width as i32;
     w.content.h = height as i32;
+    place(w);
+    order[order_count] = n;
+    order_count += 1;
+    focus = n + 1;
+    redraw_all();
+    return w;
+}
+
+// Puts a new window in the first spot that doesn't cover another window,
+// scanning from the top left, or else a little below the last one placed.
+fn place(w: *Window) {
+    var y = TITLE + BORDER + 8;
+    while y + w.content.h + BORDER <= screen_height {
+        var x = BORDER + 8;
+        while x + w.content.w + BORDER <= screen_width {
+            w.content.x = x;
+            w.content.y = y;
+            if !covers_any(w) {
+                return;
+            }
+            x += 16;
+        }
+        y += 16;
+    }
     w.content.x = 40 + cascade;
     w.content.y = 40 + TITLE + cascade;
     if w.content.x + w.content.w > screen_width {
@@ -373,11 +397,20 @@ fn window_open(p: *Process, title: []u8, width: u32, height: u32) -> *Window {
         w.content.y = max_i(TITLE + BORDER, screen_height - w.content.h - BORDER);
     }
     cascade = (cascade + 30) % 180;
-    order[order_count] = n;
-    order_count += 1;
-    focus = n + 1;
-    redraw_all();
-    return w;
+}
+
+// Whether the window's frame, with a small gap, overlaps a window on screen.
+fn covers_any(w: *Window) -> bool {
+    var mine: Rect;
+    frame_of(w, &mine);
+    for k in 0..order_count {
+        var other: Rect;
+        frame_of(&windows[order[k]], &other);
+        if mine.x < other.x + other.w + 6 && other.x < mine.x + mine.w + 6 && mine.y < other.y + other.h + 6 && other.y < mine.y + mine.h + 6 {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn window_close(w: *Window) {
