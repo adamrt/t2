@@ -1,6 +1,7 @@
 // view shows a TIM1 image. Drag, scroll or use the arrows to look around a
-// picture bigger than the window. Only the tiles in view are read from the
-// file and decoded, so the picture can be much bigger than view's memory.
+// picture bigger than the window, and drag the strip under the window to
+// resize it. Only the tiles in view are read from the file and decoded, so
+// the picture can be much bigger than view's memory.
 
 manifest {
     memory = 4 * MiB;
@@ -64,6 +65,7 @@ fn main(memory: []u8) -> u32 {
         complain("view", "can't open a window", "");
         return 1;
     }
+    window_resizable(window, 64, 64);
     canvas_init(&canvas, window, words[:], strings[:]);
     while true {
         var e: Event;
@@ -88,6 +90,9 @@ fn main(memory: []u8) -> u32 {
             dy = drag_from_y - e.y;
             drag_from_x = e.x;
             drag_from_y = e.y;
+        } else if e.kind == EVENT_RESIZE {
+            width = e.x;
+            height = e.y;
         } else if e.kind != EVENT_DRAW {
             continue;
         }
@@ -118,6 +123,13 @@ fn clamp(v: i32, most: i32) -> i32 {
     return v;
 }
 
+fn min_u(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
 // The decoded pixels of a tile, reading it from the file if need be.
 fn tile_image(tx: u32, ty: u32) -> *Image {
     var n = ty * header.tiles_x + tx;
@@ -144,10 +156,14 @@ fn tile_image(tx: u32, ty: u32) -> *Image {
 }
 
 fn draw() {
+    // A window bigger than the picture shows a border around it.
+    if width > header.width as i32 || height > header.height as i32 {
+        draw_fill(&canvas, 0, 0, width, height, 0xff1b1d23);
+    }
     var first_x = scroll_x as u32 / TILE;
     var first_y = scroll_y as u32 / TILE;
-    var last_x = (scroll_x + width - 1) as u32 / TILE;
-    var last_y = (scroll_y + height - 1) as u32 / TILE;
+    var last_x = min_u((scroll_x + width - 1) as u32 / TILE, header.tiles_x - 1);
+    var last_y = min_u((scroll_y + height - 1) as u32 / TILE, header.tiles_y - 1);
     for ty in first_y..last_y + 1 {
         for tx in first_x..last_x + 1 {
             var image = tile_image(tx, ty);
