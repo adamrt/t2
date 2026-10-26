@@ -5,7 +5,8 @@
 // stack, and r7 points at the current function's frame.
 //
 // Only functions that main can reach are generated: starting from main, each
-// call or use of a function as a value puts it in the queue.
+// call or use of a function as a value puts it in the queue. Likewise only
+// the globals those functions use get space.
 
 struct StringData {
     node: *Node;
@@ -73,7 +74,7 @@ fn generate() {
     put(&out, "\n.bss\n");
     s = first_sym;
     while s != null {
-        if s.kind == SymKind.Global {
+        if s.kind == SymKind.Global && s.used {
             emit(".align 4");
             put_byte(&out, '_');
             put(&out, s.name);
@@ -567,13 +568,8 @@ fn gen_value(e: *Node) {
             if e.local != null {
                 load_local(e.local, "r0");
             } else {
-                start_line();
-                put(&out, "r0 = _");
-                put(&out, e.sym.name);
-                end_line();
-                if e.sym.kind == SymKind.Fn {
-                    use_function(e.sym);
-                } else {
+                emit_symbol(e.sym);
+                if e.sym.kind != SymKind.Fn {
                     load("r0", t);
                 }
             }
@@ -672,6 +668,19 @@ fn use_function(s: *Sym) {
     }
 }
 
+// Puts the address of a global or function in r0, and marks it used.
+fn emit_symbol(s: *Sym) {
+    if s.kind == SymKind.Fn {
+        use_function(s);
+    } else {
+        s.used = true;
+    }
+    start_line();
+    put(&out, "r0 = _");
+    put(&out, s.name);
+    end_line();
+}
+
 fn emit_call(s: *Sym) {
     use_function(s);
     start_line();
@@ -742,10 +751,7 @@ fn gen_address(e: *Node) {
             if e.local != null {
                 emit_frame_address("r0", e.local.offset);
             } else {
-                start_line();
-                put(&out, "r0 = _");
-                put(&out, e.sym.name);
-                end_line();
+                emit_symbol(e.sym);
             }
         }
         N.Member => {

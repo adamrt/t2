@@ -15,7 +15,8 @@ fn sum(values: []u32) -> u32 {
 
 A program is a set of files compiled together. Every top-level name is
 visible in every file, and declarations can appear in any order. Only the
-functions `main` can reach end up in the program.
+functions `main` can reach, and the globals they use, end up in the
+program, so a library costs only what a program uses of it.
 
 ## Types
 

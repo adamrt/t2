@@ -54,7 +54,7 @@ struct Sym {
     ty: *Type;          // the struct or enum, the constant's or global's type, or the result
     value: u32;         // a constant's value
     state: u32;         // 0 new, 1 being declared, 2 declared
-    used: bool;         // a function that main can reach, so it gets generated
+    used: bool;         // a function main can reach, or a global one uses
     next: *Sym;         // next in the same bucket
     after: *Sym;        // next in declaration order
 }
