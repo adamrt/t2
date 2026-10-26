@@ -25,8 +25,8 @@ It needs a C11 compiler and SDL3.
 | The assembler (`system/asm/`) | assembly   | 2,500 |
 | The compiler (`system/tc/`)   | the language | 3,400 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
-| Libraries (`system/lib/`)     | both       | 1,500 |
-| 38 programs (`system/bin/`)   | the language | 4,900 |
+| Libraries (`system/lib/`)     | both       | 1,600 |
+| 39 programs (`system/bin/`)   | the language | 5,000 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each

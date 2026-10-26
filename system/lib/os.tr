@@ -19,6 +19,7 @@ fn open_pipe(write_end: *u32) -> u32;
 fn info(path: []u8, info: *FileInfo) -> u32;
 fn list(path: []u8, buffer: []u8) -> u32;
 fn remove(path: []u8) -> u32;
+fn rename(from: []u8, to: []u8) -> u32;
 fn make_dir(path: []u8) -> u32;
 fn set_dir(path: []u8) -> u32;
 fn get_dir(buffer: []u8) -> u32;

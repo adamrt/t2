@@ -1,0 +1,61 @@
+// mv renames a file or directory, or moves files into a directory. Nothing
+// is copied: only the names change.
+//
+//     mv from to
+//     mv file... directory
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+    allow = "read write";
+}
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    if count < 2 {
+        complain("mv", "usage: mv from to, or mv file... directory", "");
+        return 2;
+    }
+    var target = args[count - 1];
+    var target_info: FileInfo;
+    var into = info(target, &target_info) != FAILED && target_info.kind == 2;
+    if !into && count > 2 {
+        complain("mv", "not a directory:", target);
+        return 2;
+    }
+    var status: u32 = 0;
+    for i in 0..count - 1 {
+        var to = target;
+        if into {
+            to = join(&arena, target, last_name(args[i]));
+        }
+        if rename(args[i], to) == FAILED {
+            complain("mv", "can't move", args[i]);
+            status = 1;
+        }
+    }
+    return status;
+}
+
+fn last_name(path: []u8) -> []u8 {
+    var end = path.len;
+    while end > 1 && path[end - 1] == '/' {
+        end -= 1;
+    }
+    var start = end;
+    while start > 0 && path[start - 1] != '/' {
+        start -= 1;
+    }
+    return path[start:end];
+}
+
+fn join(arena: *Arena, dir: []u8, name: []u8) -> []u8 {
+    var path = alloc_bytes(arena, dir.len + 1 + name.len);
+    copy(path, dir);
+    path[dir.len] = '/';
+    copy(path[dir.len + 1:], name);
+    return path;
+}

@@ -156,6 +156,7 @@ enum Call {
     ClipboardGet,
     WindowResizable,
     Date,
+    Rename,
 }
 
 // Text copied by one program for another to paste.
@@ -328,7 +329,7 @@ fn needs(p: *Process, call: Call) -> bool {
         Call.Info, Call.List, Call.SetDir => {
             return allowed(p, ALLOW_READ, "read files");
         }
-        Call.Remove, Call.MakeDir => {
+        Call.Remove, Call.MakeDir, Call.Rename => {
             return allowed(p, ALLOW_WRITE, "write files");
         }
         Call.Spawn => {
@@ -355,7 +356,7 @@ fn needs(p: *Process, call: Call) -> bool {
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.WindowResizable as u32 && !needs(p, number as Call) {
+    if number <= Call.Rename as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -461,6 +462,14 @@ fn system_call(p: *Process, number: u32) {
                 if name.len > 0 && add_entry(&dir, name, KIND_DIR, &f) {
                     result = 0;
                 }
+            }
+        }
+        Call.Rename => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            var to_buffer: [PATH_SIZE]u8;
+            var to = path_argument(p, r[2], r[3], to_buffer[:]);
+            if path.len > 0 && to.len > 0 && rename_file(path, to) {
+                result = 0;
             }
         }
         Call.SetDir => {
@@ -678,6 +687,7 @@ fn call_name(number: u32) -> []u8 {
         34 => { return "clipboard_get"; }
         35 => { return "window_resizable"; }
         36 => { return "date"; }
+        37 => { return "rename"; }
     }
     return "call";
 }
@@ -694,7 +704,7 @@ fn trace_call(p: *Process, number: u32, result: u32) {
     put_byte(&w, '(');
     // Calls with a path show it; the rest show their first argument.
     var r = p.regs[:];
-    if number == 3 || (number >= 10 && number <= 14) || number == 7 {
+    if number == 3 || (number >= 10 && number <= 14) || number == 7 || number == 37 {
         var path = user_bytes(p, r[0], min(r[1], 64));
         if path.ptr != null {
             put_byte(&w, '"');
@@ -964,6 +974,32 @@ fn open_file(p: *Process, path: []u8, mode: u32) -> u32 {
         o.position = o.open.file.size;
     }
     return add_handle(p, o);
+}
+
+// Moves a file or directory to a new path, keeping its blocks.
+fn rename_file(from: []u8, to: []u8) -> bool {
+    var f: FileRef;
+    var existing: FileRef;
+    if from.len <= 1 || !lookup(from, &f) || file_is_open(&f) || lookup(to, &existing) {
+        return false;
+    }
+    // A directory can't move inside itself.
+    if f.kind == KIND_DIR && to.len > from.len && to[from.len] == '/' && text_equal(to[0:from.len], from) {
+        return false;
+    }
+    var dir: FileRef;
+    var moved: FileRef;
+    var name = lookup_parent(to, &dir);
+    if name.len == 0 || !add_entry(&dir, name, f.kind, &moved) {
+        return false;
+    }
+    moved.first = f.first;
+    moved.size = f.size;
+    moved.time = f.time;
+    update_entry(&moved);
+    f.kind = 0;
+    update_entry(&f);
+    return true;
 }
 
 fn directory_empty(dir: *FileRef) -> bool {

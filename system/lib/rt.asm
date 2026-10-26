@@ -271,6 +271,15 @@ _date:
     sys 36
     return
 
+; fn rename(from: []u8, to: []u8) -> u32;
+_rename:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    r3 = [sp + 16]
+    sys 37
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

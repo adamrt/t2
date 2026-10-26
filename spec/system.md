@@ -44,6 +44,7 @@ monitor, so the same tools run on both.
 | 34 | clipboard_get | r0 buffer, r1 length                           | the clipboard's length     |
 | 35 | window_resizable | r0 handle, r1 least width, r2 least height  | 0                          |
 | 36 | date       |                                                   | local time, in seconds since 1970 |
+| 37 | rename     | r0 path, r1 length, r2 new path, r3 length        | 0                          |
 
 ## Handles
 
@@ -65,6 +66,11 @@ for data, and reads 0 bytes once it has closed or failed.
 Paths are separated by `/`. A path that doesn't start with `/` is relative
 to the process's directory, which it gets from its parent and changes with
 `set_dir`. `.` and `..` mean what you'd expect.
+
+`rename` moves a file or directory to a new path, which may be in another
+directory, without copying it. It never replaces anything already at the new
+path, won't move a file that's open or a directory into itself, and leaves
+a process whose directory moved with the old path.
 
 ## Programs
 

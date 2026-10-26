@@ -1,0 +1,23 @@
+Terrarium: 49152 KiB for programs
+
+Welcome to Terrarium. Type 'help' for help.
+
+/> /> /> /> b
+bin/
+d/
+docs/
+lib/
+src/
+system/
+/> hi
+/> /> b
+/> /d> /d> c
+/d> /> mv: can't move /d
+/> /> c
+/> hi
+/> mv: can't move /nothing
+/> mv: can't move /e/c
+/> /> c
+cat
+echo
+/> Terrarium: every process has ended

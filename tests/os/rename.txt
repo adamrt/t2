@@ -1,0 +1,20 @@
+mkdir /d
+echo hi > /a
+mv /a /b
+ls /
+cat /b
+mv /b /d
+ls /d
+cd /d
+mv b c
+ls
+cd /
+mv /d /d/e
+mv /d /e
+ls /e
+cat /e/c
+mv /nothing /x
+mv /e/c /bin/sh
+mv /bin/echo /bin/cat /e
+ls /e
+exit
