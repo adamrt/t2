@@ -27,15 +27,20 @@ Two numbers for two jobs, both 32-bit:
 
 | Type      | Counts                                  | Reaches                     | For                         |
 | --------- | --------------------------------------- | --------------------------- | --------------------------- |
-| Date      | `i32` days since 2000-01-01             | 5.8 million years each way  | birthdays, calendars, history |
+| Date      | `u32` days since 0000-01-01             | 11.7 million years          | birthdays, calendars, history |
 | Timestamp | `u32` seconds since 2000-01-01 00:00 UTC | 2000 to 2136                | when things happen here     |
 
-A date needs no seconds, which is what buys its range: 1 April 1980 is day
--7214. Dates work as plain numbers: `b - a` is the days between, `d + 7` a
-week later, `a < b` the earlier. A timestamp is a moment this machine saw,
-like a file changing, so it never comes before 2000; its date is
-`seconds / 86400`. A moment before 2000 to the second, if anything needs
-one, is a date and the seconds into that day.
+A date needs no seconds, which is what buys its range, and counting from
+year 0 keeps every date positive: 1 April 1980 is day 723,271. Year 0 is 1
+BC, as ISO 8601 numbers it, and the calendar is the Gregorian one all the
+way back. Dates work as plain numbers: `b - a` is the days between, `d + 7`
+a week later, `a < b` the earlier.
+
+A timestamp is a moment this machine saw, like a file changing, so it never
+comes before 2000; 32 bits of seconds only span 136 years, so its count has
+to start near now. The two meet at one constant: 2000-01-01 is day 730,485,
+so a timestamp's date is `730485 + seconds / 86400`. A moment before 2000 to
+the second, if anything needs one, is a date and the seconds into that day.
 
 ## UTC
 
@@ -54,7 +59,7 @@ do_work()
 var took = time.monotonic() - start        // milliseconds
 
 var now = time.now()                        // seconds since 2000, UTC
-var birthday = time.date(1980, 4, 1)        // day -7214
+var birthday = time.date(1980, 4, 1)        // day 723,271
 var days = time.today() - birthday
 var d time.Calendar
 time.calendar(birthday, &d)                 // year, month and day again
