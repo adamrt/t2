@@ -161,7 +161,7 @@ fn draw() {
         var e = &entries[n - 1];
         if e.kind == KIND_DIR {
             draw_text(&canvas, 8, y, rgb(45, 90, 80), entry_name(e));
-            draw_text(&canvas, 8 + entry_name(e).len as i32 * 8, y, rgb(45, 90, 80), "/");
+            draw_text(&canvas, 8 + char_count(entry_name(e)) as i32 * 8, y, rgb(45, 90, 80), "/");
         } else {
             draw_text(&canvas, 8, y, rgb(30, 30, 36), entry_name(e));
             var digits: [12]u8;

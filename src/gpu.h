@@ -62,3 +62,6 @@ typedef struct {
 bool gpu_init(Gpu *g, uint32_t width, uint32_t height);
 bool gpu_read(Gpu *g, uint32_t port, uint32_t *value);
 bool gpu_write(Gpu *g, Machine *m, uint32_t port, uint32_t value);
+// Decodes the UTF-8 character at *s, moving *s past it. A byte that doesn't
+// start a whole character before end comes back as 0xfffd on its own.
+uint32_t utf8_next(const uint8_t **s, const uint8_t *end);

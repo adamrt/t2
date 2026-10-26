@@ -86,6 +86,66 @@ fn is_letter(c: u8) -> bool {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
+// Text is UTF-8. These count and step over its characters, which take one to
+// four bytes each.
+
+fn is_continuation(c: u8) -> bool {
+    return (c & 0xc0) == 0x80;
+}
+
+fn char_count(text: []u8) -> u32 {
+    var n: u32 = 0;
+    for i in 0..text.len {
+        if !is_continuation(text[i]) {
+            n += 1;
+        }
+    }
+    return n;
+}
+
+// Where the character that ends at text[end] starts.
+fn char_start(text: []u8, end: u32) -> u32 {
+    var p = end;
+    while p > 0 {
+        p -= 1;
+        if !is_continuation(text[p]) {
+            break;
+        }
+    }
+    return p;
+}
+
+// Writes a character as UTF-8 at the start of out. Returns the bytes it
+// took, or 0 if it didn't fit.
+fn encode_char(c: u32, out: []u8) -> u32 {
+    var n: u32 = 4;
+    if c < 0x80 {
+        n = 1;
+    } else if c < 0x800 {
+        n = 2;
+    } else if c < 0x10000 {
+        n = 3;
+    }
+    if out.len < n {
+        return 0;
+    }
+    if n == 1 {
+        out[0] = c as u8;
+        return 1;
+    }
+    for i in 1..n {
+        out[n - i] = (0x80 | ((c >> (6 * (i - 1))) & 0x3f)) as u8;
+    }
+    var lead: u32 = 0xf0;
+    if n == 2 {
+        lead = 0xc0;
+    } else if n == 3 {
+        lead = 0xe0;
+    }
+    out[0] = (lead | (c >> (6 * (n - 1)))) as u8;
+    return n;
+}
+
 // Output ---------------------------------------------------------------------
 
 // Collects output in a buffer and writes it in large pieces.

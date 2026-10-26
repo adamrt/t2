@@ -17,8 +17,12 @@ const BACKGROUND: u32 = 0xff1b1d23;
 const FOREGROUND: u32 = 0xffd8d4c8;
 const CURSOR: u32 = 0xffe8c35a;
 
-// Each row of text takes MAX_COLUMNS bytes, however wide the window is.
+// Each row of text takes MAX_COLUMNS cells, however wide the window is. A
+// cell holds a character up to 255, which is what the font draws, or "?".
 var cells: [MAX_ROWS * MAX_COLUMNS]u8;
+var row_text: [MAX_COLUMNS * 2]u8;  // a row, as UTF-8
+var partial: u32;                   // a character the shell is part way through
+var partial_left: u32;              // and how many more bytes it needs
 var columns: u32;
 var rows: u32;
 var width: i32;
@@ -88,7 +92,7 @@ fn main(memory: []u8) -> u32 {
             }
             var got = read(from_shell, buffer[0:min(n, buffer.len)]);
             for i in 0..got {
-                put_char(buffer[i]);
+                receive(buffer[i]);
             }
             changed = true;
         }
@@ -122,10 +126,7 @@ fn min(a: u32, b: u32) -> u32 {
 // Returns true if the screen changed.
 fn handle_key(e: *Event) -> bool {
     if e.kind == EVENT_TEXT {
-        if typed_len + 1 < typed.len {
-            typed[typed_len] = e.key as u8;
-            typed_len += 1;
-        }
+        typed_len += encode_char(e.key, typed[typed_len:typed.len - 1]);
         return true;
     }
     if e.kind != EVENT_KEY_DOWN {
@@ -149,14 +150,14 @@ fn handle_key(e: *Event) -> bool {
         typed[typed_len] = '\n';
         typed_len += 1;
         for i in 0..typed_len {
-            put_char(typed[i]);
+            receive(typed[i]);
         }
         write_all(to_shell, typed[0:typed_len]);
         typed_len = 0;
         return true;
     }
     if e.key == KEY_BACKSPACE && typed_len > 0 {
-        typed_len -= 1;
+        typed_len = char_start(typed[:], typed_len);
         return true;
     }
     return false;
@@ -166,14 +167,20 @@ fn handle_key(e: *Event) -> bool {
 fn paste() {
     var text: [256]u8;
     var n = min(clipboard_get(text[:]), text.len);
-    for i in 0..n {
-        if text[i] == '\n' || typed_len + 1 >= typed.len {
+    var i: u32 = 0;
+    while i < n && text[i] != '\n' {
+        var next = i + 1;
+        while next < n && is_continuation(text[next]) {
+            next += 1;
+        }
+        if typed_len + (next - i) >= typed.len {
             return;
         }
-        if text[i] >= 32 && text[i] < 127 {
-            typed[typed_len] = text[i];
-            typed_len += 1;
+        if text[i] >= 32 && text[i] != 127 {
+            copy(typed[typed_len:], text[i:next]);
+            typed_len += next - i;
         }
+        i = next;
     }
 }
 
@@ -223,9 +230,9 @@ fn stop_programs() {
             kill(records[i].id);
         }
     }
-    put_char('^');
-    put_char('C');
-    put_char('\n');
+    receive('^');
+    receive('C');
+    receive('\n');
 }
 
 // Fits the text to a new window size, scrolling up if the cursor would be
@@ -249,7 +256,38 @@ fn scroll() {
     mem_fill(&cells[(MAX_ROWS - 1) * MAX_COLUMNS], ' ', MAX_COLUMNS);
 }
 
-fn put_char(c: u8) {
+// Takes the shell's output a byte at a time, putting together the
+// characters that take more than one.
+fn receive(b: u8) {
+    if partial_left > 0 && is_continuation(b) {
+        partial = partial << 6 | (b & 0x3f) as u32;
+        partial_left -= 1;
+        if partial_left == 0 {
+            put_char(partial);
+        }
+        return;
+    }
+    if partial_left > 0 {
+        partial_left = 0;
+        put_char('?');
+    }
+    if b < 0x80 {
+        put_char(b as u32);
+    } else if b >= 0xc2 && b < 0xe0 {
+        partial = (b & 0x1f) as u32;
+        partial_left = 1;
+    } else if b >= 0xe0 && b < 0xf0 {
+        partial = (b & 0x0f) as u32;
+        partial_left = 2;
+    } else if b >= 0xf0 && b < 0xf5 {
+        partial = (b & 0x07) as u32;
+        partial_left = 3;
+    } else {
+        put_char('?');
+    }
+}
+
+fn put_char(c: u32) {
     if c == '\n' {
         cursor_x = 0;
         new_line();
@@ -262,14 +300,17 @@ fn put_char(c: u8) {
         }
         return;
     }
-    if c < 32 || c > 126 {
+    if c < 32 || (c >= 127 && c < 160) {
         return;
+    }
+    if c > 255 {
+        c = '?';
     }
     if cursor_x >= columns {
         cursor_x = 0;
         new_line();
     }
-    cells[cursor_y * MAX_COLUMNS + cursor_x] = c;
+    cells[cursor_y * MAX_COLUMNS + cursor_x] = c as u8;
     cursor_x += 1;
 }
 
@@ -293,14 +334,18 @@ fn draw() {
         while end > 0 && line[end - 1] == ' ' {
             end -= 1;
         }
-        if end > 0 {
-            draw_text(&canvas, MARGIN, MARGIN + row as i32 * font_height, FOREGROUND, line[0:end]);
+        var n: u32 = 0;
+        for i in 0..end {
+            n += encode_char(line[i] as u32, row_text[n:]);
+        }
+        if n > 0 {
+            draw_text(&canvas, MARGIN, MARGIN + row as i32 * font_height, FOREGROUND, row_text[0:n]);
         }
     }
     var x = MARGIN + cursor_x as i32 * font_width;
     var y = MARGIN + cursor_y as i32 * font_height;
     draw_text(&canvas, x, y, FOREGROUND, typed[0:typed_len]);
-    x += typed_len as i32 * font_width;
+    x += char_count(typed[0:typed_len]) as i32 * font_width;
     draw_fill(&canvas, x, y, font_width, font_height, CURSOR);
     present(&canvas);
 }

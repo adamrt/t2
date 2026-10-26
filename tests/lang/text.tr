@@ -1,0 +1,32 @@
+// UTF-8 text. Prints "ok", or the number of the first failed check.
+
+var failures: u32;
+
+fn check(ok: bool, number: u32) {
+    if !ok && failures == 0 {
+        failures = number;
+    }
+}
+
+fn main(memory: []u8) -> u32 {
+    var word = "año €";
+    check(word.len == 8, 1);
+    check(char_count(word) == 5, 2);
+    check(text_equal(word, "a\xc3\xb1o \xe2\x82\xac"), 3);
+    check(char_start(word, word.len) == 5, 4);
+    check(char_start(word, 3) == 1, 5);
+    check(char_start(word, 1) == 0 && char_start(word, 0) == 0, 6);
+    var out: [8]u8;
+    check(encode_char('A', out[:]) == 1 && out[0] == 'A', 7);
+    check(encode_char(0xf1, out[:]) == 2 && text_equal(out[0:2], "ñ"), 8);
+    check(encode_char(0x20ac, out[:]) == 3 && text_equal(out[0:3], "€"), 9);
+    check(encode_char(0x1f600, out[:]) == 4 && text_equal(out[0:4], "\xf0\x9f\x98\x80"), 10);
+    check(encode_char(0x20ac, out[0:2]) == 0, 11);
+    check(is_continuation(word[2]) && !is_continuation(word[1]), 12);
+    check('é' == 0xe9 && 'ß' == 0xdf, 13);
+    check('€' == 0x20ac, 14);
+    if failures == 0 {
+        print("ok\n");
+    }
+    return failures;
+}

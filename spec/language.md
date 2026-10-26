@@ -101,8 +101,9 @@ operation.
 
 Following `null` stops the program, because nothing lives at low addresses.
 
-A string literal is a `[]u8`. Escapes are `\n`, `\t`, `\r`, `\0`, `\\`, `\'`,
-`\"` and `\xNN`.
+Source files are UTF-8. A string literal is a `[]u8` holding its text as
+UTF-8, and a character literal like `'a'` or `'é'` is the character's
+number. Escapes are `\n`, `\t`, `\r`, `\0`, `\\`, `\'`, `\"` and `\xNN`.
 
 ## Declarations
 

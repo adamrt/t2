@@ -102,7 +102,7 @@ draw event.
 
 `event_wait` fills eight words: the kind, the window's handle, x, y, key,
 modifiers, buttons, and 0. The kinds are 1 draw, 2 key down, 3 key up,
-4 text (the key is a character), 5 mouse move, 6 mouse down, 7 mouse up,
+4 text (the key is a character's Unicode number), 5 mouse move, 6 mouse down, 7 mouse up,
 8 wheel, 9 close (the close box was clicked), and 10 resize (x and y are
 the new width and height). Mouse positions are
 relative to the window; keys are as in [devices.md](devices.md).

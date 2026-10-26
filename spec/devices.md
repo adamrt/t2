@@ -86,7 +86,7 @@ Each command is its number followed by its arguments, all words:
 | 1 fill       | x, y, width, height, color                                    |
 | 2 line       | x0, y0, x1, y1, color                                         |
 | 3 image      | address, image width, image height, sx, sy, w, h, dx, dy, mode |
-| 4 text       | x, y, color, address, length, scale                           |
+| 4 text       | x, y, color, address, length in bytes, scale                  |
 | 5 triangle   | x0, y0, color0, x1, y1, color1, x2, y2, color2                |
 | 6 textured   | address, image width, image height, then x, y, u, v for each corner, tint |
 | 7 clip       | x, y, width, height: a further clip until the next one; a negative width ends it |
@@ -102,10 +102,11 @@ textured triangle samples the image at the corner coordinates, interpolated
 straight across without perspective, repeating past the image's edges, and
 multiplies each pixel by the tint.
 
-A font starts with five words: `TFN1`, glyph width (at most 8), glyph height,
-the first character, and the number of characters. Each glyph follows as
-one byte per row, the leftmost pixel in the top bit. Text that isn't in the
-font draws as `?`.
+Text is UTF-8, and each character takes one glyph's width. A font starts
+with five words: `TFN1`, glyph width (at most 8), glyph height, the first
+character, and the number of characters, numbered as in Unicode. Each glyph
+follows as one byte per row, the leftmost pixel in the top bit. Characters
+that aren't in the font, and bytes that aren't UTF-8, draw as `?`.
 
 ## Input
 
@@ -122,7 +123,7 @@ Interrupt bit 2 is raised while events are waiting.
 | -------------- | ---------------------------------------------- |
 | 1 key down     | 1, key, modifiers                              |
 | 2 key up       | 2, key, modifiers                              |
-| 3 text         | 3, character                                   |
+| 3 text         | 3, character, as a Unicode number              |
 | 4 mouse move   | 4, x, y, buttons held                          |
 | 5 mouse down   | 5, x, y, button                                |
 | 6 mouse up     | 6, x, y, button                                |

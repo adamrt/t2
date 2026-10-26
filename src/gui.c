@@ -5,6 +5,7 @@
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
+#include <string.h>
 
 enum {
     KEY_LEFT = 0x100,
@@ -205,13 +206,15 @@ handle(Gui *gui, SDL_Event *e, InputQueue *q)
             push(q, e->type == SDL_EVENT_KEY_DOWN ? INPUT_KEY_DOWN : INPUT_KEY_UP, key, modifiers(e->key.mod), 0);
         break;
     }
-    case SDL_EVENT_TEXT_INPUT:
-        for (const char *s = e->text.text; *s; s++) {
-            uint8_t c = (uint8_t)*s;
-            if (c >= 32 && c < 127)
+    case SDL_EVENT_TEXT_INPUT: {
+        const uint8_t *s = (const uint8_t *)e->text.text, *end = s + strlen(e->text.text);
+        while (s < end) {
+            uint32_t c = utf8_next(&s, end);
+            if (c >= 32 && c != 127 && c != 0xfffd)
                 push(q, INPUT_TEXT, c, 0, 0);
         }
         break;
+    }
     case SDL_EVENT_MOUSE_MOTION:
         gui->mouse_x = e->motion.x;
         gui->mouse_y = e->motion.y;

@@ -49,7 +49,7 @@ struct Event {
     window: u32;
     x: i32;
     y: i32;
-    key: u32;           // a key, or for EVENT_TEXT a character
+    key: u32;           // a key, or for EVENT_TEXT a character's Unicode number
     modifiers: u32;
     buttons: u32;       // buttons held, or the button pressed or released
     reserved: u32;

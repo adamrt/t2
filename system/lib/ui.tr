@@ -88,14 +88,14 @@ fn ui_button(ui: *Ui, id: u32, x: i32, y: i32, w: i32, h: i32, label: []u8) -> b
         face = UI_PRESSED;
     }
     ui_box(ui, x, y, w, h, face);
-    var text_x = x + (w - (label.len * 8) as i32) / 2;
+    var text_x = x + (w - (char_count(label) * 8) as i32) / 2;
     draw_text(ui.canvas, text_x, y + (h - 16) / 2, UI_TEXT, label);
     return clicked;
 }
 
 // A box that can be ticked. Returns true when it changes.
 fn ui_checkbox(ui: *Ui, id: u32, x: i32, y: i32, label: []u8, value: *bool) -> bool {
-    var w = 18 + (label.len * 8) as i32;
+    var w = 18 + (char_count(label) * 8) as i32;
     var over = ui_inside(ui, x, y, w, 16);
     if ui.pressed && over {
         ui.active = id;
@@ -124,24 +124,26 @@ fn ui_field(ui: *Ui, id: u32, x: i32, y: i32, w: i32, text: []u8, length: *u32) 
     }
     var entered = false;
     if ui.focus == id {
-        if ui.typed != 0 && *length < text.len {
-            text[*length] = ui.typed as u8;
-            *length += 1;
+        if ui.typed != 0 {
+            *length += encode_char(ui.typed, text[*length:]);
         } else if ui.key == KEY_BACKSPACE && *length > 0 {
-            *length -= 1;
+            *length = char_start(text, *length);
         } else if ui.key == KEY_ENTER {
             entered = true;
         }
     }
     ui_box(ui, x, y, w, 22, UI_FIELD);
-    var shown = text[0:*length];
+    // Shows the end of the text, as much as fits.
+    var start = *length;
+    var shown: u32 = 0;
     var room = ((w - 10) / 8) as u32;
-    if shown.len > room {
-        shown = shown[shown.len - room:];
+    while start > 0 && shown < room {
+        start = char_start(text, start);
+        shown += 1;
     }
-    draw_text(ui.canvas, x + 5, y + 3, UI_TEXT, shown);
+    draw_text(ui.canvas, x + 5, y + 3, UI_TEXT, text[start:*length]);
     if ui.focus == id {
-        draw_fill(ui.canvas, x + 5 + (shown.len * 8) as i32, y + 3, 2, 16, UI_EDGE);
+        draw_fill(ui.canvas, x + 5 + (shown * 8) as i32, y + 3, 2, 16, UI_EDGE);
     }
     return entered;
 }

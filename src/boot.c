@@ -470,12 +470,14 @@ boot(const BootOptions *o)
         if (o->run_for != 0 && now() - h.start > (uint64_t)o->run_for * 1000)
             break;
         // Typed keys arrive one at a time, as if from a quick typist. A newline
-        // is Enter, escape is Escape, and other control characters are
-        // Ctrl with a letter.
+        // is Enter, escape is Escape, backspace is Backspace, and other
+        // control characters are Ctrl with a letter.
         if (typing != NULL && *typing != '\0' && now() >= next_key && h.events.count < INPUT_QUEUE) {
-            uint32_t c = (uint8_t)*typing++;
+            const uint8_t *s = (const uint8_t *)typing;
+            uint32_t c = utf8_next(&s, s + strlen(typing));
+            typing = (const char *)s;
             InputEvent e = { INPUT_TEXT, c, 0, 0 };
-            if (c == '\n' || c == 27 || c == '\t')
+            if (c == '\n' || c == 27 || c == '\t' || c == '\b')
                 e = (InputEvent){ INPUT_KEY_DOWN, c == '\n' ? 10 : c, 0, 0 };
             else if (c < 32)
                 e = (InputEvent){ INPUT_KEY_DOWN, 'a' + c - 1, 2, 0 };

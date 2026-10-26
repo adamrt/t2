@@ -5,6 +5,7 @@
 
 #include "gpu.h"
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -228,6 +229,26 @@ blit(Context *c, const uint32_t *w)
     return true;
 }
 
+uint32_t
+utf8_next(const uint8_t **s, const uint8_t *end)
+{
+    const uint8_t *p = *s;
+    uint32_t b = *p, n = b >= 0xf0 && b < 0xf5 ? 3 : b >= 0xe0 ? 2 : b >= 0xc2 && b < 0xe0 ? 1 : 0;
+    *s = p + 1;
+    if (b < 0x80)
+        return b;
+    if (n == 0 || b >= 0xf5 || (ptrdiff_t)n >= end - p)
+        return 0xfffd;
+    uint32_t ch = b & (0x3fu >> n);
+    for (uint32_t k = 1; k <= n; k++) {
+        if ((p[k] & 0xc0) != 0x80)
+            return 0xfffd;
+        ch = ch << 6 | (p[k] & 0x3fu);
+    }
+    *s = p + n + 1;
+    return ch;
+}
+
 static bool
 text(Context *c, const uint32_t *w)
 {
@@ -241,8 +262,8 @@ text(Context *c, const uint32_t *w)
     const uint8_t *glyphs = physical(c->m, c->g->font + 20, (uint64_t)count * fh);
     if (glyphs == NULL || fw > 8 || count == 0)
         return false;
-    for (uint32_t i = 0; i < length && x < (int32_t)c->g->width; i++, x += (int32_t)(fw * scale)) {
-        uint32_t ch = chars[i];
+    for (const uint8_t *p = chars, *end = chars + length; p < end && x < (int32_t)c->g->width; x += (int32_t)(fw * scale)) {
+        uint32_t ch = utf8_next(&p, end);
         if (ch < first || ch >= first + count)
             ch = '?' >= first && '?' < first + count ? '?' : first;
         const uint8_t *glyph = glyphs + (ch - first) * fh;

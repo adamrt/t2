@@ -55,7 +55,8 @@ when memory is full. `trace` shows every system call a program makes.
 FAT-like table with 4 KiB blocks), `TFN1` bitmap fonts, and `TIM1` images
 (64×64 tiles, each compressed on its own with QOI's operations, so a viewer
 decodes only what it shows). Terra, the system font, is drawn in
-`system/fonts/terra.txt`.
+`system/fonts/terra.txt`; its accented letters are its plain ones with
+accents added.
 
 ## Where it differs from the plan
 
@@ -82,7 +83,9 @@ decodes only what it shows). Terra, the system font, is drawn in
   appending.
 - When anything happens, every blocked process runs again to retry its
   call. That's simple, but it isn't efficient with many waiting processes.
-- Text is ASCII in one 8×16 bitmap font.
+- Text is UTF-8, left to right, one character per cell. Terra draws ASCII
+  and Latin-1 (accented letters and the common symbols); anything else shows
+  as `?`.
 - The language has no function pointers, generics or methods, and every
   top-level name in a program shares one namespace, so library names need
   care.

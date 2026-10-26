@@ -42,7 +42,8 @@ It needs a C11 compiler and SDL3.
 - **The GPU** draws PS1-style: fills, lines, text, images, and shaded or
   affine-textured triangles. Windows draw straight into the one shared
   framebuffer, clipped to the parts other windows don't cover.
-- **Terra**, the system font, is drawn as text in `system/fonts/terra.txt`.
+- **Text is UTF-8** everywhere. Terra, the system font, is drawn as text in
+  `system/fonts/terra.txt` and covers ASCII and Latin-1.
 
 ![The editor, a game, a piano and the launcher](docs/images/apps.png)
 
@@ -98,8 +99,8 @@ one with `-s`) puts label names in traces and fault reports.
 [kernel.sym]` starts the whole machine. For testing, `--screen WxH` gives it
 a screen without a window, `--type text` presses keys once it has started,
 `--run-for ms` stops it, and `--screenshot out.png` saves the screen. In
-`--type`, a newline is Enter, `\x1b` is Escape, and other control characters
-are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
+`--type`, a newline is Enter, `\x1b` is Escape, `\b` is Backspace, and other
+control characters are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
 typing, and `--date seconds` stops the clock at one moment.
 
 The assembler and compiler build themselves from seeds in `bootstrap/`; see

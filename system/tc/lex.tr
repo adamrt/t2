@@ -97,7 +97,11 @@ fn next_token() {
     } else if c == '\'' {
         lex_pos += 1;
         tok.kind = Tok.Int;
-        tok.value = lex_escape();
+        if peek_char(0) > 127 {
+            tok.value = lex_utf8();
+        } else {
+            tok.value = lex_escape();
+        }
         if peek_char(0) != '\'' {
             lex_fail("unterminated character");
         }
@@ -252,9 +256,6 @@ fn lex_escape() -> u32 {
         lex_fail("unterminated text");
     }
     lex_pos += 1;
-    if c > 127 {
-        lex_fail("only ASCII is allowed in text");
-    }
     if c != '\\' {
         return c;
     }
@@ -280,6 +281,32 @@ fn lex_escape() -> u32 {
     }
     lex_fail("bad escape");
     return 0;
+}
+
+// Reads a character written in UTF-8, giving its number.
+fn lex_utf8() -> u32 {
+    var c = peek_char(0) as u32;
+    var n: u32 = 1;
+    var value = c & 0x1f;
+    if c >= 0xf0 {
+        n = 3;
+        value = c & 0x07;
+    } else if c >= 0xe0 {
+        n = 2;
+        value = c & 0x0f;
+    } else if c < 0xc0 {
+        lex_fail("bad UTF-8");
+    }
+    lex_pos += 1;
+    for i in 0..n {
+        var b = peek_char(0);
+        if (b & 0xc0) != 0x80 {
+            lex_fail("bad UTF-8");
+        }
+        value = value << 6 | (b & 0x3f) as u32;
+        lex_pos += 1;
+    }
+    return value;
 }
 
 fn lex_string() {
