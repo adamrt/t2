@@ -71,6 +71,21 @@ push(InputQueue *q, uint32_t type, uint32_t a, uint32_t b, uint32_t c)
     q->count++;
 }
 
+// The framebuffer is the largest that fits, at most 1280 pixels wide, so
+// that a whole number of host pixels shows each of its pixels.
+static uint32_t
+pick_size(uint32_t pixels_w, uint32_t pixels_h, uint32_t *width, uint32_t *height)
+{
+    uint32_t scale = (pixels_w + 1279) / 1280;
+    if (scale == 0)
+        scale = 1;
+    *width = pixels_w / scale;
+    *height = pixels_h / scale;
+    if ((uint64_t)*width * *height * 8 > VRAM_SIZE)
+        *height = (uint32_t)(VRAM_SIZE / 8 / *width);
+    return scale;
+}
+
 Gui *
 gui_open(bool fullscreen, uint32_t *width, uint32_t *height)
 {
@@ -80,33 +95,36 @@ gui_open(bool fullscreen, uint32_t *width, uint32_t *height)
     }
     SDL_DisplayID display = SDL_GetPrimaryDisplay();
     SDL_Rect area;
-    if (fullscreen ? !SDL_GetDisplayBounds(display, &area) : !SDL_GetDisplayUsableBounds(display, &area)) {
+    if (!SDL_GetDisplayUsableBounds(display, &area)) {
         area.w = 1280;
         area.h = 800;
     }
-    if (!fullscreen)
-        area.h -= 32; // room for the window's title bar
     const SDL_DisplayMode *mode = SDL_GetDesktopDisplayMode(display);
     float density = mode != NULL ? mode->pixel_density : 1;
     if (density < 1)
         density = 1;
-    uint32_t pixels_w = (uint32_t)((float)area.w * density);
-    uint32_t pixels_h = (uint32_t)((float)area.h * density);
-    uint32_t scale = (pixels_w + 1279) / 1280;
-    if (scale == 0)
-        scale = 1;
-    *width = pixels_w / scale;
-    *height = pixels_h / scale;
-    if ((uint64_t)*width * *height * 8 > VRAM_SIZE)
-        *height = (uint32_t)(VRAM_SIZE / 8 / *width);
 
     Gui *gui = SDL_calloc(1, sizeof(Gui));
-    SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0);
-    int window_w = (int)((float)(*width * scale) / density);
-    int window_h = (int)((float)(*height * scale) / density);
-    gui->window = SDL_CreateWindow("Terrarium", window_w, window_h, flags);
+    SDL_WindowFlags flags = SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    if (fullscreen) {
+        // A fullscreen window can be smaller than the display, as on Macs
+        // with a notch, so the framebuffer is fitted to the window itself.
+        gui->window = SDL_CreateWindow("Terrarium", area.w, area.h, flags | SDL_WINDOW_FULLSCREEN);
+        int pixels_w = 0, pixels_h = 0;
+        if (gui->window != NULL) {
+            SDL_SyncWindow(gui->window);
+            SDL_GetWindowSizeInPixels(gui->window, &pixels_w, &pixels_h);
+        }
+        pick_size((uint32_t)pixels_w, (uint32_t)pixels_h, width, height);
+    } else {
+        area.h -= 32; // room for the window's title bar
+        uint32_t scale = pick_size((uint32_t)((float)area.w * density), (uint32_t)((float)area.h * density), width, height);
+        int window_w = (int)((float)(*width * scale) / density);
+        int window_h = (int)((float)(*height * scale) / density);
+        gui->window = SDL_CreateWindow("Terrarium", window_w, window_h, flags);
+    }
     gui->renderer = gui->window ? SDL_CreateRenderer(gui->window, NULL) : NULL;
-    if (gui->renderer == NULL) {
+    if (gui->renderer == NULL || *width == 0 || *height == 0) {
         fprintf(stderr, "terrarium: can't open a window: %s\n", SDL_GetError());
         return NULL;
     }

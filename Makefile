@@ -87,8 +87,9 @@ $(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(
 $(BUILD)/run.img: $(BUILD)/disk.img
 	cp $< $@
 
+# The machine fills the screen; make run WINDOW=1 opens a window instead.
 run: all $(BUILD)/run.img
-	$(VM) boot $(BUILD)/run.img $(BUILD)/kernel.sym
+	$(VM) boot $(if $(WINDOW),,--fullscreen) $(BUILD)/run.img $(BUILD)/kernel.sym
 
 test: all
 	tests/run.sh

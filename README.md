@@ -11,11 +11,13 @@ spinning cube and a fractal](docs/images/desktop.png)
 
 ```sh
 make            # the machine, the tools (built by themselves), and a disk
-make run        # boot Terrarium in a window; this terminal becomes its console
+make run        # boot Terrarium fullscreen; this terminal becomes its console
 make test       # instructions, faults, the language, and whole-system sessions
 ```
 
-It needs a C11 compiler and SDL3.
+It needs a C11 compiler and SDL3. Terrarium fills the screen at a
+whole-number scale (Cmd-Q quits on a Mac); `make run WINDOW=1` opens a
+window instead.
 
 ## What's inside
 
