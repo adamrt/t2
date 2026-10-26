@@ -5,8 +5,8 @@ Welcome to Terrarium. Type 'help' for help.
 /> /bin/edit
   memory  2048 KiB
   stack   32 KiB
-  code    20048 bytes
-  data    1156551 bytes
+  code    22152 bytes
+  data    1156621 bytes
   allows  read write window 
 /> /bin/echo
   memory  64 KiB

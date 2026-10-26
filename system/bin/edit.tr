@@ -2,11 +2,12 @@
 //
 //     edit [file]
 //
-// Arrows, Home, End, Page Up and Page Down move; the mouse places the cursor
-// and the wheel scrolls; dragging the strip under the window resizes it. Tab
-// inserts four spaces. With Ctrl (or Cmd): S
-// saves, C copies the line, X cuts it, V pastes, and F finds text (Enter
-// finds the next, Escape stops).
+// Arrows, Home, End, Page Up and Page Down move, and select with Shift; the
+// mouse places the cursor, dragging selects, and the wheel scrolls; dragging
+// the strip under the window resizes it. Tab inserts four spaces. With Ctrl
+// (or Cmd): S saves, A selects everything, C copies the selection (or the
+// line), X cuts it, V pastes, and F finds text (Enter finds the next, Escape
+// stops).
 //
 // The text lives in a gap buffer: one array with the unused space kept at the
 // cursor, so typing only ever touches the gap.
@@ -29,6 +30,8 @@ const NUMBERS: u32 = 0xff9a968c;
 const COMMENT: u32 = 0xff5a8a70;
 const STRING: u32 = 0xffb05a3c;
 const CURSOR: u32 = 0xff2d5a50;
+const SELECTION: u32 = 0xffcfe0d4;
+const NONE: u32 = 0xffffffff;
 const STATUS: u32 = 0xff1e1e24;
 const STATUS_TEXT: u32 = 0xfff2efe6;
 
@@ -36,6 +39,8 @@ var text: [CAPACITY]u8;
 var gap_start: u32;
 var gap_end: u32;
 var cursor: u32;            // a position in the text, gap not counted
+var anchor: u32;            // the other end of the selection, or NONE
+var dragging: bool;
 var top: u32;               // the first line shown
 var left: u32;              // the first column shown
 var modified: bool;
@@ -61,6 +66,7 @@ var font_width: i32;
 var font_height: i32;
 
 fn main(memory: []u8) -> u32 {
+    anchor = NONE;
     gap_start = 0;
     gap_end = CAPACITY;
     if arg_count() > 0 {
@@ -106,7 +112,7 @@ fn main(memory: []u8) -> u32 {
             continue;
         }
         handle(&e);
-        if e.kind != EVENT_KEY_UP && e.kind != EVENT_MOUSE_MOVE && e.kind != EVENT_MOUSE_UP {
+        if e.kind != EVENT_KEY_UP && (e.kind != EVENT_MOUSE_MOVE || dragging) && e.kind != EVENT_MOUSE_UP {
             draw();
         }
     }
@@ -335,19 +341,22 @@ fn handle(e: *Event) {
         return;
     }
     if e.kind == EVENT_TEXT {
+        delete_selection();
         insert_char(e.key);
     } else if e.kind == EVENT_KEY_DOWN {
         key(e.key, e.modifiers);
-    } else if e.kind == EVENT_MOUSE_DOWN {
-        var row = (e.y - MARGIN) / font_height;
-        var column = (e.x - MARGIN) / font_width - GUTTER;
-        if row >= 0 && row < rows as i32 {
-            var start = start_of_line(top + row as u32);
-            if column < 0 {
-                column = 0;
-            }
-            move_to_column(start, left + column as u32);
+    } else if e.kind == EVENT_MOUSE_DOWN && e.buttons == 1 {
+        place_cursor(e.x, e.y);
+        anchor = cursor;
+        dragging = true;
+    } else if e.kind == EVENT_MOUSE_MOVE && dragging {
+        place_cursor(e.x, e.y);
+    } else if e.kind == EVENT_MOUSE_UP {
+        dragging = false;
+        if anchor == cursor {
+            anchor = NONE;
         }
+        return;
     } else if e.kind == EVENT_WHEEL {
         if e.y > 0 {
             top = min(top + 3, lines() - 1);
@@ -359,12 +368,35 @@ fn handle(e: *Event) {
     keep_cursor_visible();
 }
 
+// Moves the cursor to where the mouse is.
+fn place_cursor(x: i32, y: i32) {
+    var row = (y - MARGIN) / font_height;
+    var column = (x - MARGIN) / font_width - GUTTER;
+    if row < 0 {
+        row = 0;
+    }
+    if row >= rows as i32 {
+        row = rows as i32 - 1;
+    }
+    if column < 0 {
+        column = 0;
+    }
+    move_to_column(start_of_line(top + row as u32), left + column as u32);
+}
+
+fn is_movement(code: u32) -> bool {
+    return code == KEY_LEFT || code == KEY_RIGHT || code == KEY_UP || code == KEY_DOWN || code == KEY_HOME || code == KEY_END || code == KEY_PAGE_UP || code == KEY_PAGE_DOWN;
+}
+
 fn key(code: u32, modifiers: u32) {
     if (modifiers & (MOD_CTRL | MOD_SUPER)) != 0 {
         if code == 's' {
             save();
+        } else if code == 'a' {
+            anchor = 0;
+            cursor = length();
         } else if code == 'c' || code == 'x' {
-            copy_line(code == 'x');
+            copy_text(code == 'x');
         } else if code == 'v' {
             paste();
         } else if code == 'f' {
@@ -372,17 +404,37 @@ fn key(code: u32, modifiers: u32) {
         }
         return;
     }
+    if is_movement(code) {
+        // Shift keeps the selection's other end where it was.
+        if (modifiers & MOD_SHIFT) == 0 {
+            anchor = NONE;
+        } else if anchor == NONE {
+            anchor = cursor;
+        }
+    }
     var start = line_start(cursor);
     var column = column_of(start, cursor);
     match code {
-        KEY_ENTER => { insert('\n'); }
+        KEY_ENTER => {
+            delete_selection();
+            insert('\n');
+        }
         KEY_TAB => {
+            delete_selection();
             for i in 0..4 {
                 insert(' ');
             }
         }
-        KEY_BACKSPACE => { delete_before(); }
-        KEY_DELETE => { delete_after(); }
+        KEY_BACKSPACE => {
+            if !delete_selection() {
+                delete_before();
+            }
+        }
+        KEY_DELETE => {
+            if !delete_selection() {
+                delete_after();
+            }
+        }
         KEY_LEFT => {
             if cursor > 0 {
                 cursor = previous_char(cursor);
@@ -418,12 +470,53 @@ fn key(code: u32, modifiers: u32) {
     }
 }
 
-// Copies the cursor's line, with its line break, and cuts it too if asked.
-fn copy_line(cut: bool) {
+// The selection ---------------------------------------------------------------
+
+fn has_selection() -> bool {
+    return anchor != NONE && anchor != cursor;
+}
+
+fn selection_start() -> u32 {
+    return min(anchor, cursor);
+}
+
+fn selection_end() -> u32 {
+    if anchor > cursor {
+        return anchor;
+    }
+    return cursor;
+}
+
+fn delete_range(start: u32, end: u32) {
+    move_gap(start);
+    gap_end += end - start;
+    cursor = start;
+    modified = true;
+}
+
+// Deletes the selected text, if there is any.
+fn delete_selection() -> bool {
+    if !has_selection() {
+        anchor = NONE;
+        return false;
+    }
+    delete_range(selection_start(), selection_end());
+    anchor = NONE;
+    return true;
+}
+
+// Copies the selection, or without one the cursor's line with its line
+// break, and cuts it too if asked.
+fn copy_text(cut: bool) {
+    var whole_line = !has_selection();
     var start = line_start(cursor);
     var end = line_end(cursor);
     if end < length() {
         end += 1;
+    }
+    if !whole_line {
+        start = selection_start();
+        end = selection_end();
     }
     var n = min(end - start, clip.len);
     for i in 0..n {
@@ -431,20 +524,27 @@ fn copy_line(cut: bool) {
     }
     clipboard_set(clip[0:n]);
     if cut {
-        move_gap(start);
-        gap_end += n;
-        cursor = start;
-        modified = true;
+        delete_range(start, start + n);
+        anchor = NONE;
+    }
+    if n < end - start {
+        message = "only the first 64 KiB fit";
+    } else if cut && whole_line {
         message = "cut the line";
-    } else {
+    } else if cut {
+        message = "cut the selection";
+    } else if whole_line {
         message = "copied the line";
+    } else {
+        message = "copied the selection";
     }
 }
 
-// Pastes at the cursor; whole lines go in above the cursor's line.
+// Pastes at the cursor, or over the selection. Whole lines go in above the
+// cursor's line.
 fn paste() {
     var n = min(clipboard_get(clip[:]), clip.len);
-    if n > 0 && clip[n - 1] == '\n' {
+    if !delete_selection() && n > 0 && clip[n - 1] == '\n' {
         cursor = line_start(cursor);
     }
     for i in 0..n {
@@ -474,7 +574,8 @@ fn find_next() {
     if find_len == 0 || find_len > n {
         return;
     }
-    for step in 1..n + 1 {
+    // A match leaves the cursor at its end, so this starts at the cursor.
+    for step in 0..n {
         var p = (cursor + step) % n;
         if p + find_len > n {
             continue;
@@ -487,7 +588,8 @@ fn find_next() {
             }
         }
         if found {
-            cursor = p;
+            anchor = p;
+            cursor = p + find_len;
             return;
         }
     }
@@ -556,6 +658,7 @@ fn draw() {
             i = next;
         }
         var x = MARGIN + GUTTER as i32 * font_width;
+        draw_selection(start, end, x, y);
         if comment < used {
             draw_text(&canvas, x, y, FOREGROUND, row_text[0:comment]);
             draw_text(&canvas, x + comment_column as i32 * font_width, y, COMMENT, row_text[comment:used]);
@@ -574,6 +677,37 @@ fn draw() {
     }
     draw_status(width);
     present(&canvas);
+}
+
+// Shades the selected part of the line from start to end, and one more
+// column if the selection takes its line break.
+fn draw_selection(start: u32, end: u32, x: i32, y: i32) {
+    if !has_selection() {
+        return;
+    }
+    var from = selection_start();
+    var to = selection_end();
+    if to <= start || from > end {
+        return;
+    }
+    var first = column_of(start, max_u32(from, start));
+    var last = column_of(start, min(to, end));
+    if to > end {
+        last += 1;
+    }
+    var width = columns - GUTTER;
+    first = min(max_u32(first, left) - left, width);
+    last = min(max_u32(last, left) - left, width);
+    if last > first {
+        draw_fill(&canvas, x + first as i32 * font_width, y, (last - first) as i32 * font_width, font_height, SELECTION);
+    }
+}
+
+fn max_u32(a: u32, b: u32) -> u32 {
+    if a > b {
+        return a;
+    }
+    return b;
 }
 
 // Draws a line, coloring text in double quotes.

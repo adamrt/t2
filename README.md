@@ -65,7 +65,8 @@ Hello from the Terrarium language!
 The last line rebuilds the compiler inside Terrarium and checks that the
 result is byte for byte the compiler the host built. Some others to try:
 
-- `edit file` — a text editor (Ctrl-S, C, X, V, F); `files` — a file browser
+- `edit file` — a text editor (Shift or drag selects; Ctrl-S, A, C, X, V, F);
+  `files` — a file browser
 - `paint`, `view` — draw pixel art and look at TIM1 images
 - `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
 - `worm`, `life`, `piano`, `calc`, `clock` — two games, an instrument, and

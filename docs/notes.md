@@ -91,7 +91,6 @@ accents added.
 - The language has no generics or methods (a struct can hold functions
   instead), and every top-level name in a program shares one namespace, so
   library names need care.
-- The editor copies whole lines; it has no selection.
 - Sound through the host was never listened to. The tests only use the
   silent device, which keeps the same time.
 - The system tests run headless. The graphical programs were checked with
@@ -104,4 +103,4 @@ accents added.
 - Modules in the language.
 - Translating hot code to native ARM64.
 - UDP, and a chat program or a networked game.
-- A file dialog, selection in the editor, resizing for more programs.
+- A file dialog, undo in the editor, resizing for more programs.
