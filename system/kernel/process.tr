@@ -54,6 +54,9 @@ struct Process {
     permissions: u32;
     trace: *Object;         // where to report this process's system calls
     trace_spawns: *Object;  // where to report those of processes it starts
+    stack_low: u32;         // the lowest sp seen, for the stack's high-water mark
+    bytes_read: u32;
+    bytes_written: u32;
 }
 
 var processes: [MAX_PROCESSES]Process;
@@ -185,6 +188,7 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     p.regs[0] = GUARD + align4(data) + align4(bss);
     p.regs[1] = GUARD + data_size - stack;
     p.regs[8] = GUARD + data_size;
+    p.stack_low = p.regs[8];
 
     var slash = path.len;
     while slash > 0 && path[slash - 1] != '/' {

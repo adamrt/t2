@@ -75,9 +75,10 @@ collects an ended child's status with `wait`.
 padded with zeros, then the kind (1 file, 2 directory), the size, the time
 it last changed (as from `date`), and 4 zero bytes.
 
-`processes` fills its buffer with 48-byte records: the id, the parent's id,
+`processes` fills its buffer with 64-byte records: the id, the parent's id,
 the state (1 ready, 2 waiting, 3 ended), the memory reserved, the CPU cycles
-used, and a name of up to 28 bytes.
+used, the most stack it has used (its high-water mark), the bytes it has
+read and written, and a name of up to 32 bytes.
 
 ## Windows
 

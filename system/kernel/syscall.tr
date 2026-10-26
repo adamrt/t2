@@ -354,6 +354,9 @@ fn system_call(p: *Process, number: u32) {
             var bytes = user_bytes(p, r[1], r[2]);
             if o != null && bytes.ptr != null {
                 result = read_object(p, o, bytes);
+                if result != FAILED && p.state == State.Ready {
+                    p.bytes_read += result;
+                }
             }
         }
         Call.Write => {
@@ -361,6 +364,9 @@ fn system_call(p: *Process, number: u32) {
             var bytes = user_bytes(p, r[1], r[2]);
             if o != null && bytes.ptr != null {
                 result = write_object(p, o, bytes);
+                if result != FAILED && p.state == State.Ready {
+                    p.bytes_written += result;
+                }
             }
         }
         Call.Open => {
@@ -1048,24 +1054,30 @@ fn make_pipe(p: *Process) -> u32 {
     return read_handle;
 }
 
-// Fills the buffer with 48-byte records: id, parent, state, memory, cycles,
-// then a name of up to 28 bytes padded with zeros. Returns the bytes used.
+// Fills the buffer with 64-byte records: id, parent, state, memory, cycles,
+// the most stack used, bytes read, bytes written, then a name of up to 32
+// bytes padded with zeros. Returns the bytes used.
 fn list_processes(buffer: []u8) -> u32 {
     var n: u32 = 0;
     for i in 0..MAX_PROCESSES {
         var q = &processes[i];
-        if q.state == State.Free || n + 48 > buffer.len {
+        if q.state == State.Free || n + 64 > buffer.len {
             continue;
         }
-        var record = buffer[n:n + 48];
-        mem_fill(record.ptr, 0, 48);
+        var record = buffer[n:n + 64];
+        mem_fill(record.ptr, 0, 64);
         set_word(record, 0, q.id);
         set_word(record, 4, q.parent);
         set_word(record, 8, q.state as u32);
         set_word(record, 12, q.memory);
         set_word(record, 16, q.cycles);
-        copy(record[20:], q.name[0:min(q.name_len, 28)]);
-        n += 48;
+        if q.memory > 0 {
+            set_word(record, 20, GUARD + q.memory - q.code_size - q.stack_low);
+        }
+        set_word(record, 24, q.bytes_read);
+        set_word(record, 28, q.bytes_written);
+        copy(record[32:], q.name[0:min(q.name_len, 32)]);
+        n += 64;
     }
     return n;
 }

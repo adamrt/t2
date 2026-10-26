@@ -8,7 +8,7 @@ manifest {
     allow = "window processes recovery";
 }
 
-const WIDTH = 440;
+const WIDTH = 520;
 const HEIGHT = 330;
 const HISTORY = 100;
 const MAX = 32;
@@ -108,7 +108,7 @@ fn draw() {
     var bar = ((WIDTH - 20) as u32 * (used / KiB) / (total / KiB)) as i32;
     draw_fill(&canvas, 10, 28, bar, 14, rgb(45, 90, 80));
 
-    draw_text(&canvas, 10, 52, rgb(120, 116, 106), "  id  name              memory   instructions/s");
+    draw_text(&canvas, 10, 52, rgb(120, 116, 106), "  id  name            memory   stack instructions/s");
     for i in 0..count {
         var p = &records[i];
         var y = 72 + (i as i32) * 16;
@@ -119,13 +119,14 @@ fn draw() {
         pad(&w, p.id, 4);
         put(&w, "  ");
         var name = process_name(p);
-        put(&w, name);
-        for k in name.len..16 {
+        put(&w, name[0:min(name.len, 14)]);
+        for k in name.len..14 {
             put_byte(&w, ' ');
         }
         pad(&w, p.memory / KiB, 7);
         put(&w, "K");
-        pad(&w, rates[i], 17);
+        pad(&w, p.stack, 8);
+        pad(&w, rates[i], 15);
         draw_text(&canvas, 10, y, rgb(30, 30, 36), line_text[0:w.used]);
         if p.id > 1 && ui_button(&ui, p.id, WIDTH - 52, y - 1, 44, 17, "Stop") {
             kill(p.id);
@@ -166,4 +167,11 @@ fn pad(w: *Writer, value: u32, width: u32) {
         put_byte(w, ' ');
     }
     put(w, digits[0:d.used]);
+}
+
+fn min(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
 }

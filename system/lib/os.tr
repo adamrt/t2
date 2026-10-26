@@ -64,15 +64,18 @@ fn entry_name(e: *ListEntry) -> []u8 {
 struct ProcessInfo {
     id: u32;
     parent: u32;
-    state: u32;
-    memory: u32;
-    cycles: u32;
-    name: [28]u8;
+    state: u32;         // 1 ready, 2 waiting, 3 ended
+    memory: u32;        // bytes reserved
+    cycles: u32;        // instructions run
+    stack: u32;         // the most stack it has used, in bytes
+    read: u32;          // bytes read from files, pipes and the like
+    written: u32;
+    name: [32]u8;
 }
 
 fn process_name(p: *ProcessInfo) -> []u8 {
     var n: u32 = 0;
-    while n < 28 && p.name[n] != 0 {
+    while n < 32 && p.name[n] != 0 {
         n += 1;
     }
     return p.name[0:n];
