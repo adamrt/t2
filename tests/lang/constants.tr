@@ -1,0 +1,56 @@
+// Constants and conversions. Prints "ok", or the number of the first failed check.
+
+const SIDE: u32 = 64;
+const AREA: u32 = SIDE * SIDE;
+const MINUS_NINE: i32 = -9;
+const HALF: i32 = MINUS_NINE / 2;          // typed, so it divides signed
+const MASK = 0xff;
+
+enum Light {
+    Red,
+    Amber,
+    Green = 7,
+}
+
+var failures: u32;
+
+fn check(ok: bool, number: u32) {
+    if !ok && failures == 0 {
+        failures = number;
+    }
+}
+
+fn next(l: Light) -> Light {
+    match l {
+        Light.Red => { return Light.Green; }
+        Light.Green => { return Light.Amber; }
+    }
+    return Light.Red;
+}
+
+fn main(memory: []u8) -> u32 {
+    check(AREA == 4096, 1);
+    check(HALF == -4, 2);
+    var buffer: [AREA / 1024]u8;
+    check(buffer.len == 4, 3);
+    var n: u32 = 3;
+    check(1 << n == 8, 4);
+    check(0x80 >> n == 16, 5);
+    check((MASK & 0x0f) == 15, 6);
+    var f: fixed = 2.75;
+    check(f as i32 == 2, 7);
+    check((-f) as i32 == -3, 8);
+    check(((n as fixed) * 1.5) as i32 == 4, 9);
+    check(next(Light.Red) == Light.Green && next(Light.Green) == Light.Amber, 10);
+    check(Light.Green as u32 == 7 && next(Light.Amber) == Light.Red, 11);
+    var big: u32 = 0xffffffff;
+    check(big + 1 == 0, 12);
+    var small: i32 = -2147483647;
+    check(small - 1 < 0 && small - 2 > 0, 13);
+    check(300 as u8 == 44, 14);
+    check(-1 as u16 == 0xffff, 15);
+    if failures == 0 {
+        print("ok\n");
+    }
+    return failures;
+}

@@ -60,6 +60,11 @@ var count: u32 = 0;     // fine
 var count = 0;          // error: say which type
 ```
 
+Arithmetic between constants without a type is worked out on 32-bit
+values, with division, remainder and right shifts unsigned, so `-9 / 2` is
+not `-4`. Give a constant a type, as in `const N: i32 = -9;`, and arithmetic
+on it follows that type.
+
 A constant shifted by an amount that isn't constant is a `u32`.
 
 `KiB` (1024) and `MiB` (1048576) are predefined.
