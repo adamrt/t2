@@ -1,0 +1,83 @@
+// The TSN1 sound codec. Prints "ok", or the number of the first failed check.
+
+var failures: u32;
+var samples: [1200]u16;
+var decoded: [BLOCK_SAMPLES]u16;
+var block: [SOUND_BLOCK]u8;
+
+fn check(ok: bool, number: u32) {
+    if !ok && failures == 0 {
+        failures = number;
+    }
+}
+
+// The largest difference between samples and what decoding gives back.
+fn worst_error(from: u32, count: u32, state: *Adpcm) -> i32 {
+    var used = encode_sound_block(samples[from:from + count], state, block[:]);
+    check(used == 4 + count / 2, 90);
+    var n = decode_sound_block(block[0:used], decoded[0:count]);
+    check(n == count && decoded[0] == samples[from], 91);
+    var worst: i32 = 0;
+    for i in 0..count {
+        var d = from_sample(decoded[i]) - from_sample(samples[from + i]);
+        if d < 0 {
+            d = 0 - d;
+        }
+        if d > worst {
+            worst = d;
+        }
+    }
+    return worst;
+}
+
+fn main(memory: []u8) -> u32 {
+    make_sound_steps();
+    check(sound_steps[0] == 7 && sound_steps[8] == 15 && sound_steps[SOUND_STEPS - 1] == 20432, 1);
+
+    var header: [SOUND_HEADER]u8;
+    write_sound_header(header[:], 22050, 1234);
+    var h: SoundHeader;
+    check(sound_header(header[:], &h) && h.rate == 22050 && h.samples == 1234, 2);
+    header[0] = 'X';
+    check(!sound_header(header[:], &h), 3);
+
+    // A slow triangle wave: ADPCM follows it closely once it has adapted.
+    for i in 0..samples.len {
+        var t = (i % 200) as i32;
+        var v = t * 300 - 15000;
+        if t >= 100 {
+            v = (200 - t) * 300 - 15000;
+        }
+        samples[i] = to_sample(v);
+    }
+    var state: Adpcm;
+    worst_error(0, BLOCK_SAMPLES, &state);
+    check(worst_error(BLOCK_SAMPLES, BLOCK_SAMPLES, &state) < 100, 4);
+
+    // A full-scale square wave, the hardest case: it must still reach both ends.
+    for i in 0..samples.len {
+        samples[i] = to_sample(-32000);
+        if (i / 50) % 2 == 1 {
+            samples[i] = to_sample(32000);
+        }
+    }
+    var loud: Adpcm;
+    worst_error(0, BLOCK_SAMPLES, &loud);
+    var top: i32 = 0;
+    for i in 0..BLOCK_SAMPLES {
+        if from_sample(decoded[i]) > top {
+            top = from_sample(decoded[i]);
+        }
+    }
+    check(top > 30000, 5);
+
+    // A short last block.
+    var quiet: Adpcm;
+    check(worst_error(0, 7, &quiet) >= 0, 6);
+    check(decode_sound_block(block[0:2], decoded[:]) == 0, 7);
+
+    if failures == 0 {
+        print("ok\n");
+    }
+    return failures;
+}

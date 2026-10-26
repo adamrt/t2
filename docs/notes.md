@@ -52,7 +52,8 @@ back for programs with `recovery`, so `ps`, `kill` and `monitor` start even
 when memory is full. `trace` shows every system call a program makes.
 
 **Formats.** All are Terrarium's own: `TRX2` programs, the `TFS1` disk (a
-FAT-like table with 4 KiB blocks), `TFN1` bitmap fonts, and `TIM1` images
+FAT-like table with 4 KiB blocks), `TFN1` bitmap fonts, `TSN1` sounds (IMA
+ADPCM in blocks that decode on their own), and `TIM1` images
 (64×64 tiles, each compressed on its own with QOI's operations, so a viewer
 decodes only what it shows). Terra, the system font, is drawn in
 `system/fonts/terra.txt`; its accented letters are its plain ones with
@@ -67,7 +68,8 @@ accents added.
   million instructions a second on an M3. There is no native translation.
 - **Networking is TCP only**, using the host's sockets, and listening only
   on the host's loopback address.
-- **Sound is a stream of samples.** There's no audio file format yet.
+- **Sound is a stream of samples**, and TSN1 files store them with IMA
+  ADPCM's 4-bit codes. The piano records, and `play` plays them back.
 - **System calls look a little like Unix** (handles, read, write, open),
   because the tools needed to run both on the host and inside Terrarium.
   Everything else (spawn instead of fork, windows, permissions) is
@@ -102,5 +104,4 @@ accents added.
 - Modules in the language.
 - Translating hot code to native ARM64.
 - UDP, and a chat program or a networked game.
-- A streaming audio format and a player.
 - A file dialog, selection in the editor, resizing for more programs.

@@ -10,19 +10,19 @@ SDL_LIBS := $(shell pkg-config --libs sdl3)
 
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
-OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr system/lib/ui.tr system/lib/math.tr system/lib/image.tr
+OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr system/lib/ui.tr system/lib/math.tr system/lib/image.tr system/lib/sound.tr
 TC_SOURCE = $(LIBRARY) $(sort $(wildcard system/tc/*.tr))
 KERNEL_SOURCE = $(LIBRARY) $(sort $(wildcard system/kernel/*.tr))
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp manifest hold trace piano fetch serve worm calc date clock paint search sort hex life mv
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube view fractal monitor launch files cmp manifest hold trace piano fetch serve worm calc date clock paint search sort hex life mv play
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.
 DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc $(BUILD)/terra.tfn:/system/font \
 	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
-	system/lib/gfx.tr:/lib/gfx.tr system/lib/ui.tr:/lib/ui.tr system/lib/math.tr:/lib/math.tr system/lib/image.tr:/lib/image.tr \
+	system/lib/gfx.tr:/lib/gfx.tr system/lib/ui.tr:/lib/ui.tr system/lib/math.tr:/lib/math.tr system/lib/image.tr:/lib/image.tr system/lib/sound.tr:/lib/sound.tr \
 	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm \
 	$(foreach f,$(wildcard spec/*.md),$(f):/docs/$(notdir $(f))) README.md:/docs/README.md \
 	$(foreach f,$(SOURCES),$(f):/src/$(patsubst system/%,%,$(f)))
@@ -33,7 +33,7 @@ SOURCES = $(wildcard system/tc/*.tr system/kernel/*.tr system/kernel/*.asm syste
 
 .PHONY: all test seed run clean
 
-all: $(VM) $(TOOLS) $(BUILD)/disk.img $(BUILD)/mkimage.bin
+all: $(VM) $(TOOLS) $(BUILD)/disk.img $(BUILD)/mkimage.bin $(BUILD)/mksound.bin
 
 $(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h src/audio.h src/net.h
 	@mkdir -p $(BUILD)
@@ -67,6 +67,10 @@ $(BUILD)/mkdisk.bin: system/tools/mkdisk.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
 $(BUILD)/mkfont.bin: system/tools/mkfont.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
 	$(TC) -o $(BUILD)/mkfont.asm $(LIBRARY) system/tools/mkfont.tr
 	$(ASM) -o $@ $(RUNTIME) $(BUILD)/mkfont.asm
+
+$(BUILD)/mksound.bin: system/tools/mksound.tr system/lib/sound.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
+	$(TC) -o $(BUILD)/mksound.asm $(LIBRARY) system/lib/sound.tr system/tools/mksound.tr
+	$(ASM) -o $@ $(RUNTIME) $(BUILD)/mksound.asm
 
 $(BUILD)/mkimage.bin: system/tools/mkimage.tr system/lib/image.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
 	$(TC) -o $(BUILD)/mkimage.asm $(LIBRARY) system/lib/image.tr system/tools/mkimage.tr

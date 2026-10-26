@@ -25,8 +25,8 @@ It needs a C11 compiler and SDL3.
 | The assembler (`system/asm/`) | assembly   | 2,500 |
 | The compiler (`system/tc/`)   | the language | 3,400 |
 | The kernel (`system/kernel/`) | the language | 2,800 |
-| Libraries (`system/lib/`)     | both       | 1,600 |
-| 39 programs (`system/bin/`)   | the language | 5,000 |
+| Libraries (`system/lib/`)     | both       | 1,800 |
+| 40 programs (`system/bin/`)   | the language | 5,100 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -69,7 +69,7 @@ result is byte for byte the compiler the host built. Some others to try:
 - `paint`, `view` — draw pixel art and look at TIM1 images
 - `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
 - `worm`, `life`, `piano`, `calc`, `clock` — two games, an instrument, and
-  two tools
+  two tools; the piano records (R) and `play piano.tsn` plays it back
 - `monitor`, `ps`, `mem` — memory reserved and instructions used; the
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
@@ -88,6 +88,7 @@ build/terrarium build/tc.bin -o build/hello.asm system/lib/core.tr examples/hell
 build/terrarium build/asm.bin -o build/hello.bin system/lib/rt.asm build/hello.asm
 build/terrarium build/hello.bin
 build/terrarium build/mkimage.bin -o picture.tim picture.bmp    # BMP to TIM1
+build/terrarium build/mksound.bin -o sound.tsn recording.wav     # WAV to TSN1
 ```
 
 `build/terrarium [--trace] [--stats] program.bin [arguments...]` runs a

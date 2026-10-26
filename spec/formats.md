@@ -6,10 +6,11 @@ piece at a time, without holding a whole file in memory. Tools in
 
 | Format | Extension | Described in                                   |
 | ------ | --------- | ---------------------------------------------- |
-| TRX1   | none      | [executable.md](executable.md): programs       |
+| TRX2   | none      | [executable.md](executable.md): programs       |
 | TFS1   | `.img`    | [filesystem.md](filesystem.md): disks          |
 | TFN1   | `.tfn`    | [devices.md](devices.md#gpu): bitmap fonts     |
 | TIM1   | `.tim`    | below: images                                  |
+| TSN1   | `.tsn`    | below: sounds                                  |
 
 ## TIM1 images
 
@@ -43,3 +44,40 @@ pixel made is remembered in slot `(r * 3 + g * 5 + b * 7 + a * 11) % 64`.
 
 Channels wrap around within a byte. The operations are the ones the QOI
 format uses; the tiles and table are Terrarium's.
+
+## TSN1 sounds
+
+A sound is 16-bit mono samples, each squeezed to 4 bits, in blocks of 256
+bytes that each decode on their own, so a player can start anywhere and
+needs only a block at a time.
+
+| Offset | Field      | Meaning                                          |
+| ------ | ---------- | ------------------------------------------------ |
+| 0      | magic      | the bytes `TSN1`                                 |
+| 4      | rate       | samples per second                               |
+| 8      | samples    | how many samples there are                       |
+| 12     | block size | 256                                              |
+| 16     | blocks     | one after another                                |
+
+A full block holds 505 samples; the last block holds the rest and is
+shorter. A block starts with its first sample as a signed 16-bit word, then
+a byte saying which step size comes next (0–88), then a zero byte. Every
+following byte holds the codes for two more samples, the low four bits
+first, so a block of `n` samples takes `4 + n / 2` bytes.
+
+Each code moves the sample by part of the current step size, and makes the
+next step bigger or smaller:
+
+```
+diff = step / 8
+if code & 1: diff += step / 4
+if code & 2: diff += step / 2
+if code & 4: diff += step
+sample = sample - diff if code & 8 else sample + diff   (kept within -32768..32767)
+step number -= 1 if code & 7 < 4 else step number += 2 * (code & 7 - 3)   (kept within 0..88)
+```
+
+The 89 step sizes start at 7, and each is the one before times 1.1, rounded
+down, but at least one more. This is IMA ADPCM, with Terrarium's own step
+sizes and file; `play` plays a sound at any rate, and `mksound` makes one
+from a WAV file.

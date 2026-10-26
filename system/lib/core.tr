@@ -78,6 +78,18 @@ fn copy(to: []u8, from: []u8) {
     mem_copy(to.ptr, from.ptr, from.len);
 }
 
+// Little-endian words, as Terrarium's formats store them.
+fn read_word(bytes: []u8, offset: u32) -> u32 {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+}
+
+fn write_word(bytes: []u8, offset: u32, value: u32) {
+    bytes[offset] = (value & 255) as u8;
+    bytes[offset + 1] = ((value >> 8) & 255) as u8;
+    bytes[offset + 2] = ((value >> 16) & 255) as u8;
+    bytes[offset + 3] = (value >> 24) as u8;
+}
+
 fn is_digit(c: u8) -> bool {
     return c >= '0' && c <= '9';
 }

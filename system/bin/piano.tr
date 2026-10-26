@@ -1,11 +1,12 @@
 // piano plays notes. Click the keys, or use the keyboard: a s d f g h j k l ;
 // for the white keys and w e t y u o p for the black ones. Each note is a
-// triangle wave that fades out, and up to eight sound at once.
+// triangle wave that fades out, and up to eight sound at once. R starts and
+// stops recording to piano.tsn in the current directory.
 
 manifest {
     memory = 256 * KiB;
     stack = 32 * KiB;
-    allow = "window audio";
+    allow = "write window audio";
 }
 
 const WHITE_KEYS = 10;
@@ -31,6 +32,8 @@ var voices: [VOICES]Voice;
 var samples: [CHUNK]u16;
 var rate: u32;
 var lit: [17]u32;               // frames each key stays highlighted
+var recorder: SoundWriter;
+var recording: bool;
 
 // Notes from middle C up, in semitones.
 fn white_note(i: u32) -> u32 {
@@ -122,6 +125,9 @@ fn fill_sound() {
         if audio_play((&samples[0] as *u8)[0:CHUNK * 2]) == FAILED {
             return;
         }
+        if recording {
+            sound_writer_add(&recorder, samples[:]);
+        }
         queued += CHUNK * 2;
     }
 }
@@ -160,7 +166,9 @@ fn main(memory: []u8) -> u32 {
             if e.kind == EVENT_CLOSE {
                 return 0;
             }
-            if e.kind == EVENT_TEXT {
+            if e.kind == EVENT_TEXT && (e.key == 'r' || e.key == 'R') {
+                record();
+            } else if e.kind == EVENT_TEXT {
                 play(key_note(e.key));
             } else if e.kind == EVENT_MOUSE_DOWN {
                 play(note_at(e.x, e.y));
@@ -179,6 +187,29 @@ fn main(memory: []u8) -> u32 {
         }
     }
     return 0;
+}
+
+// Starts recording, or stops and finishes the file.
+fn record() {
+    if !recording {
+        var file = open("piano.tsn", MODE_WRITE);
+        if file == FAILED {
+            complain("piano", "can't write piano.tsn", "");
+            return;
+        }
+        sound_writer_start(&recorder, file, rate, 0);
+        recording = true;
+        return;
+    }
+    recording = false;
+    // Only now is the length known, so the header is written again.
+    var header: [SOUND_HEADER]u8;
+    write_sound_header(header[:], rate, recorder.total + recorder.count);
+    var ok = sound_writer_finish(&recorder) && seek(recorder.file, 0) == 0 && write_all(recorder.file, header[:]);
+    close(recorder.file);
+    if !ok {
+        complain("piano", "can't write piano.tsn", "");
+    }
 }
 
 fn note_at(x: i32, y: i32) -> u32 {
@@ -219,6 +250,11 @@ fn draw() {
         }
         draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face);
     }
-    draw_text(&canvas, 8, KEY_H + 7, rgb(216, 212, 200), "white keys: asdfghjkl;  black: wetyuop");
+    if recording {
+        draw_fill(&canvas, 8, KEY_H + 11, 8, 8, rgb(220, 70, 60));
+        draw_text(&canvas, 22, KEY_H + 7, rgb(216, 212, 200), "recording: R stops");
+    } else {
+        draw_text(&canvas, 8, KEY_H + 7, rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record");
+    }
     present(&canvas);
 }

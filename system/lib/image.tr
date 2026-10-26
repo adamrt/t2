@@ -18,17 +18,6 @@ struct ImageHeader {
     tiles_y: u32;
 }
 
-fn read_word(bytes: []u8, offset: u32) -> u32 {
-    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
-}
-
-fn write_word(bytes: []u8, offset: u32, value: u32) {
-    bytes[offset] = (value & 255) as u8;
-    bytes[offset + 1] = ((value >> 8) & 255) as u8;
-    bytes[offset + 2] = ((value >> 16) & 255) as u8;
-    bytes[offset + 3] = (value >> 24) as u8;
-}
-
 // Reads the header at the start of a file. Returns false if it isn't TIM1.
 fn image_header(bytes: []u8, h: *ImageHeader) -> bool {
     if bytes.len < 16 || !text_equal(bytes[0:4], "TIM1") || read_word(bytes, 12) != TILE {

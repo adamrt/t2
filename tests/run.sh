@@ -61,6 +61,22 @@ for t in tests/lang/*.tr; do
     if [ $status -eq 0 ] && [ "$got" = ok ]; then report ok $t; else report "exit $status: $got" $t; fi
 done
 
+# Each library test is compiled with the library it's named after.
+for t in tests/lib/*.tr; do
+    name=$(basename $t .tr)
+    if ! $VM build/tc.bin -o $OUT/lib-$name.asm system/lib/core.tr system/lib/$name.tr $t; then
+        report "compile failed" $t
+        continue
+    fi
+    if ! assemble $OUT/lib-$name.bin system/lib/rt.asm $OUT/lib-$name.asm; then
+        report "assembly failed" $t
+        continue
+    fi
+    got=$($VM $OUT/lib-$name.bin 2>&1)
+    status=$?
+    if [ $status -eq 0 ] && [ "$got" = ok ]; then report ok $t; else report "exit $status: $got" $t; fi
+done
+
 # Each session boots a fresh copy of the disk, with the clock stopped at one
 # moment, and compares what it prints.
 for t in tests/os/*.txt; do
