@@ -1,5 +1,6 @@
 #!/bin/sh
-# Runs every test with the tools in build/.
+# Runs every test with the tools in build/. With --update, it instead saves
+# what each system session prints as its expected output.
 
 VM=build/terrarium
 OUT=build/tests
@@ -64,6 +65,11 @@ done
 for t in tests/os/*.txt; do
     name=$(basename $t .txt)
     cp build/disk.img $OUT/disk.img
+    if [ "$1" = --update ]; then
+        timeout 60 $VM boot --headless $OUT/disk.img < $t > tests/os/$name.out 2>&1
+        echo "updated tests/os/$name.out"
+        continue
+    fi
     got=$(timeout 60 $VM boot --headless $OUT/disk.img < $t 2>&1)
     if [ "$got" = "$(cat tests/os/$name.out)" ]; then report ok $t; else report "output differs" $t; fi
 done
