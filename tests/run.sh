@@ -60,5 +60,13 @@ for t in tests/lang/*.tr; do
     if [ $status -eq 0 ] && [ "$got" = ok ]; then report ok $t; else report "exit $status: $got" $t; fi
 done
 
+# Each session boots a fresh copy of the disk and compares what it prints.
+for t in tests/os/*.txt; do
+    name=$(basename $t .txt)
+    cp build/disk.img $OUT/disk.img
+    got=$(timeout 60 $VM boot $OUT/disk.img < $t 2>&1)
+    if [ "$got" = "$(cat tests/os/$name.out)" ]; then report ok $t; else report "output differs" $t; fi
+done
+
 echo "$pass passed, $fail failed"
 [ $fail -eq 0 ]

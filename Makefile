@@ -8,11 +8,23 @@ MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c
 
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
+OS_LIBRARY = $(LIBRARY) system/lib/os.tr
 TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
+KERNEL_SOURCE = $(LIBRARY) $(wildcard system/kernel/*.tr)
+TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-.PHONY: all test seed clean
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc
+PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
-all: $(VM) $(BUILD)/asm.bin $(BUILD)/tc.bin
+# What goes on the disk, as host-file:/disk/path.
+DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
+	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc \
+	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
+	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm
+
+.PHONY: all test seed run clean
+
+all: $(VM) $(TOOLS) $(BUILD)/disk.img
 
 $(VM): $(MACHINE) src/machine.h src/host.h
 	@mkdir -p $(BUILD)
@@ -29,6 +41,30 @@ $(BUILD)/tc.bin: $(TC_SOURCE) $(RUNTIME) bootstrap/tc.bin $(BUILD)/asm.bin
 	$(ASM) -o $(BUILD)/tc-stage1.bin $(RUNTIME) $(BUILD)/tc-stage1.asm
 	$(VM) $(BUILD)/tc-stage1.bin -o $(BUILD)/tc.asm $(TC_SOURCE)
 	$(ASM) -o $@ -s $(BUILD)/tc.sym $(RUNTIME) $(BUILD)/tc.asm
+
+$(BUILD)/kernel.bin: $(KERNEL_SOURCE) system/kernel/krt.asm $(TOOLS)
+	$(TC) -o $(BUILD)/kernel.asm $(KERNEL_SOURCE)
+	$(ASM) -o $@ -s $(BUILD)/kernel.sym system/kernel/krt.asm $(BUILD)/kernel.asm
+
+$(BUILD)/bin/%.bin: system/bin/%.tr $(OS_LIBRARY) $(RUNTIME) $(TOOLS)
+	@mkdir -p $(BUILD)/bin
+	$(TC) -o $(BUILD)/bin/$*.asm $(OS_LIBRARY) $<
+	$(ASM) -o $@ -s $(BUILD)/bin/$*.sym $(RUNTIME) $(BUILD)/bin/$*.asm
+
+$(BUILD)/mkdisk.bin: system/tools/mkdisk.tr $(LIBRARY) $(RUNTIME) $(TOOLS)
+	$(TC) -o $(BUILD)/mkdisk.asm $(LIBRARY) system/tools/mkdisk.tr
+	$(ASM) -o $@ $(RUNTIME) $(BUILD)/mkdisk.asm
+
+$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/kernel.bin $(PROGRAM_BINS) $(TOOLS) $(OS_LIBRARY) $(RUNTIME) examples/hello.tr
+	$(VM) $(BUILD)/mkdisk.bin -o $@ -k $(BUILD)/kernel.bin $(DISK_FILES)
+
+# Terrarium runs on a copy of the disk, so what you do in it lasts until the
+# disk image is rebuilt.
+$(BUILD)/run.img: $(BUILD)/disk.img
+	cp $< $@
+
+run: all $(BUILD)/run.img
+	$(VM) boot $(BUILD)/run.img $(BUILD)/kernel.sym
 
 test: all
 	tests/run.sh

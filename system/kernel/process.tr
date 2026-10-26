@@ -1,0 +1,304 @@
+// Processes and the memory they live in.
+//
+// Each process gets one unbroken run of physical memory: its code, then its
+// data. Programs only see addresses relative to their own run, so the kernel
+// can slide runs together whenever free memory is in pieces.
+
+enum State {
+    Free,
+    Ready,
+    Blocked,        // waiting; it repeats its system call when woken
+    Zombie,         // ended, waiting for its parent to collect the status
+}
+
+const MAX_PROCESSES = 32;
+const MAX_HANDLES = 16;
+const ARGS_SIZE = 1024;
+const PATH_SIZE = 256;
+const PROCESS_NAME_SIZE = 32;
+const PAGE: u32 = 4096;
+
+struct Process {
+    state: State;
+    id: u32;
+    parent: u32;
+    name: [PROCESS_NAME_SIZE]u8;
+    name_len: u32;
+    regs: [9]u32;
+    pc: u32;
+    region: u32;            // physical address of its memory
+    memory: u32;            // bytes of memory
+    code_size: u32;
+    stack_size: u32;
+    handles: [MAX_HANDLES]*Object;
+    args: [ARGS_SIZE]u8;
+    args_len: u32;
+    arg_count: u32;
+    dir: [PATH_SIZE]u8;
+    dir_len: u32;
+    status: u32;
+    wake_time: u32;         // when a sleep ends, or 0
+    cycles: u32;
+}
+
+var processes: [MAX_PROCESSES]Process;
+var next_id: u32;
+var last_run: u32;
+
+fn next_ready() -> *Process {
+    for i in 0..MAX_PROCESSES {
+        var n = (last_run + 1 + i) % MAX_PROCESSES;
+        if processes[n].state == State.Ready {
+            last_run = n;
+            return &processes[n];
+        }
+    }
+    return null;
+}
+
+fn any_alive() -> bool {
+    for i in 0..MAX_PROCESSES {
+        if processes[i].state == State.Ready || processes[i].state == State.Blocked {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn wake_all() {
+    for i in 0..MAX_PROCESSES {
+        if processes[i].state == State.Blocked {
+            processes[i].state = State.Ready;
+        }
+    }
+}
+
+// The earliest time a sleeping process wants to wake, or 0.
+fn next_wake() -> u32 {
+    var soonest: u32 = 0;
+    for i in 0..MAX_PROCESSES {
+        var t = processes[i].wake_time;
+        if processes[i].state == State.Blocked && t != 0 && (soonest == 0 || t < soonest) {
+            soonest = t;
+        }
+    }
+    return soonest;
+}
+
+// Makes the process repeat its system call when it next runs.
+fn block(p: *Process) {
+    p.state = State.Blocked;
+    p.pc -= 4;
+}
+
+fn find_process(id: u32) -> *Process {
+    for i in 0..MAX_PROCESSES {
+        if processes[i].state != State.Free && processes[i].id == id {
+            return &processes[i];
+        }
+    }
+    return null;
+}
+
+// Starts the program at an absolute path. Each argument in args ends with a
+// zero byte. The new process gets handles 0, 1 and 2 from the given objects.
+fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -> *Process {
+    var f: FileRef;
+    if !lookup(path, &f) || f.kind != KIND_FILE {
+        return null;
+    }
+    var header: [28]u8;
+    if read_at(&f, 0, header[:]) != 28 || !text_equal(header[0:4], "TRX1") {
+        return null;
+    }
+    var entry = get_word(header[:], 4);
+    var code = get_word(header[:], 8);
+    var data = get_word(header[:], 12);
+    var bss = get_word(header[:], 16);
+    var stack = get_word(header[:], 20);
+    var memory = get_word(header[:], 24);
+    var data_size = memory - code;
+    if code % 4 != 0 || memory % 4 != 0 || memory < code || 28 + code + data > f.size {
+        return null;
+    }
+    if align4(data) + align4(bss) + stack > data_size || entry < GUARD || entry - GUARD >= code || args.len > ARGS_SIZE {
+        return null;
+    }
+
+    var p: *Process = null;
+    for i in 0..MAX_PROCESSES {
+        if processes[i].state == State.Free {
+            p = &processes[i];
+            break;
+        }
+    }
+    if p == null {
+        return null;
+    }
+    mem_fill(p as *u8, 0, size_of(Process));
+    var region = reserve(memory, p);
+    if region == FAILED {
+        return null;
+    }
+    var bytes = physical_bytes(region, memory);
+    mem_fill(bytes.ptr, 0, memory);
+    read_at(&f, 28, bytes[0:code]);
+    read_at(&f, 28 + code, bytes[code:code + data]);
+
+    next_id += 1;
+    p.id = next_id;
+    p.region = region;
+    p.memory = memory;
+    p.code_size = code;
+    p.stack_size = stack;
+    p.pc = entry;
+    p.regs[0] = GUARD + align4(data) + align4(bss);
+    p.regs[1] = GUARD + data_size - stack;
+    p.regs[8] = GUARD + data_size;
+
+    var slash = path.len;
+    while slash > 0 && path[slash - 1] != '/' {
+        slash -= 1;
+    }
+    p.name_len = min(path.len - slash, PROCESS_NAME_SIZE);
+    copy(p.name[:], path[slash:slash + p.name_len]);
+    copy(p.args[:], args);
+    p.args_len = args.len;
+    for i in 0..args.len {
+        if args[i] == 0 {
+            p.arg_count += 1;
+        }
+    }
+    if parent != null {
+        p.parent = parent.id;
+        copy(p.dir[:], parent.dir[0:parent.dir_len]);
+        p.dir_len = parent.dir_len;
+    } else {
+        p.dir[0] = '/';
+        p.dir_len = 1;
+    }
+    for i in 0..handles.len {
+        p.handles[i] = handles[i];
+        if handles[i] != null {
+            handles[i].refs += 1;
+        }
+    }
+    p.state = State.Ready;
+    return p;
+}
+
+fn exit_process(p: *Process, status: u32) {
+    for i in 0..MAX_HANDLES {
+        if p.handles[i] != null {
+            release_object(p.handles[i]);
+            p.handles[i] = null;
+        }
+    }
+    release_memory(p);
+    p.status = status;
+    var parent = find_process(p.parent);
+    if parent != null && parent.state != State.Zombie {
+        p.state = State.Zombie;
+    } else {
+        p.state = State.Free;
+    }
+    // Children that already ended have nobody left to collect them.
+    for i in 0..MAX_PROCESSES {
+        if processes[i].state == State.Zombie && processes[i].parent == p.id {
+            processes[i].state = State.Free;
+        }
+    }
+    wake_all();
+}
+
+fn align4(n: u32) -> u32 {
+    return (n + 3) & ~3;
+}
+
+// Memory ---------------------------------------------------------------------
+
+struct Region {
+    base: u32;
+    size: u32;
+    owner: *Process;
+}
+
+var regions: [MAX_PROCESSES]Region;     // sorted by base
+var region_count: u32;
+var memory_start: u32;
+var memory_end: u32;
+
+fn memory_init(start: u32, end: u32) {
+    memory_start = start;
+    memory_end = end;
+}
+
+fn physical_bytes(base: u32, size: u32) -> []u8 {
+    return ((base + GUARD) as *u8)[0:size];
+}
+
+fn memory_used() -> u32 {
+    var used: u32 = 0;
+    for i in 0..region_count {
+        used += regions[i].size;
+    }
+    return used;
+}
+
+// Finds a run of size bytes for owner, compacting memory if that helps.
+// Returns its physical address, or FAILED.
+fn reserve(request: u32, owner: *Process) -> u32 {
+    var size = (request + PAGE - 1) / PAGE * PAGE;
+    if region_count == MAX_PROCESSES || size > memory_end - memory_start - memory_used() {
+        return FAILED;
+    }
+    var base = memory_start;
+    var at = region_count;
+    for i in 0..region_count {
+        if regions[i].base - base >= size {
+            at = i;
+            break;
+        }
+        base = regions[i].base + regions[i].size;
+    }
+    if at == region_count && memory_end - base < size {
+        compact();
+        base = memory_start + memory_used();
+    }
+    var i = region_count;
+    while i > at {
+        regions[i] = regions[i - 1];
+        i -= 1;
+    }
+    regions[at].base = base;
+    regions[at].size = size;
+    regions[at].owner = owner;
+    region_count += 1;
+    return base;
+}
+
+fn release_memory(owner: *Process) {
+    for i in 0..region_count {
+        if regions[i].owner == owner {
+            for j in i..region_count - 1 {
+                regions[j] = regions[j + 1];
+            }
+            region_count -= 1;
+            return;
+        }
+    }
+}
+
+// Slides every process's memory down so the free memory is in one piece.
+fn compact() {
+    var base = memory_start;
+    for i in 0..region_count {
+        var r = &regions[i];
+        if r.base != base {
+            mem_copy(physical_bytes(base, 0).ptr, physical_bytes(r.base, 0).ptr, r.size);
+            r.base = base;
+            r.owner.region = base;
+        }
+        base += r.size;
+    }
+}

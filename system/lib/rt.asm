@@ -57,6 +57,110 @@ _arg:
     sys 6
     return
 
+; The rest are Terrarium's own system calls (spec/system.md). The
+; development monitor doesn't have them.
+
+; fn spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
+_spawn:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    r3 = [sp + 16]
+    r4 = [sp + 20]
+    r5 = [sp + 24]
+    r6 = [sp + 28]
+    sys 7
+    return
+
+; fn wait(process: u32) -> u32;
+_wait:
+    r0 = [sp + 4]
+    sys 8
+    return
+
+; fn open_pipe(write_end: *u32) -> u32;
+_open_pipe:
+    sys 9
+    r2 = [sp + 4]
+    [r2] = r1
+    return
+
+; fn info(path: []u8, info: *FileInfo) -> u32;
+_info:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    sys 10
+    return
+
+; fn list(path: []u8, buffer: []u8) -> u32;
+_list:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    r3 = [sp + 16]
+    sys 11
+    return
+
+; fn remove(path: []u8) -> u32;
+_remove:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 12
+    return
+
+; fn make_dir(path: []u8) -> u32;
+_make_dir:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 13
+    return
+
+; fn set_dir(path: []u8) -> u32;
+_set_dir:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 14
+    return
+
+; fn get_dir(buffer: []u8) -> u32;
+_get_dir:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 15
+    return
+
+; fn time() -> u32;
+_time:
+    sys 16
+    return
+
+; fn sleep(milliseconds: u32);
+_sleep:
+    r0 = [sp + 4]
+    sys 17
+    return
+
+; fn processes(buffer: []u8) -> u32;
+_processes:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 18
+    return
+
+; fn kill(process: u32) -> u32;
+_kill:
+    r0 = [sp + 4]
+    sys 19
+    return
+
+; fn memory_info(free: *u32) -> u32;
+_memory_info:
+    sys 20
+    r2 = [sp + 4]
+    [r2] = r1
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

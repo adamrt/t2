@@ -1,0 +1,45 @@
+// cat copies files, or its input, to its output.
+//
+//     cat [file...]
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+}
+
+var arena: Arena;
+var buffer: [16 * KiB]u8;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    if count == 0 {
+        copy_file(STDIN);
+        return 0;
+    }
+    var status: u32 = 0;
+    for i in 0..count {
+        var file = open(args[i], MODE_READ);
+        if file == FAILED {
+            complain("cat", "can't read", args[i]);
+            status = 1;
+            continue;
+        }
+        copy_file(file);
+        close(file);
+    }
+    return status;
+}
+
+fn copy_file(file: u32) {
+    while true {
+        var n = read(file, buffer[:]);
+        if n == 0 || n == FAILED {
+            return;
+        }
+        if !write_all(STDOUT, buffer[0:n]) {
+            return;
+        }
+    }
+}

@@ -1,0 +1,588 @@
+// System calls, and the objects that handles refer to.
+//
+// A system call that has to wait blocks its process, which repeats the call
+// when something changes, so a blocked call leaves the registers alone.
+// Arguments come in r0-r6 and the result goes in r0.
+
+enum ObjectKind {
+    Free,
+    Console,
+    File,
+    PipeReader,
+    PipeWriter,
+}
+
+struct Object {
+    kind: ObjectKind;
+    refs: u32;
+    file: FileRef;
+    position: u32;
+    writable: bool;
+    pipe: *Pipe;
+}
+
+const PIPE_SIZE = 4096;
+
+struct Pipe {
+    used: bool;
+    data: [PIPE_SIZE]u8;
+    start: u32;
+    count: u32;
+    readers: u32;
+    writers: u32;
+}
+
+const MAX_OBJECTS = 128;
+const MAX_PIPES = 16;
+
+var objects: [MAX_OBJECTS]Object;
+var pipes: [MAX_PIPES]Pipe;
+
+enum Call {
+    Exit,
+    Read,
+    Write,
+    Open,
+    Close,
+    Args,
+    Arg,
+    Spawn,
+    Wait,
+    Pipe,
+    Info,
+    List,
+    Remove,
+    MakeDir,
+    SetDir,
+    GetDir,
+    Time,
+    Sleep,
+    Processes,
+    Kill,
+    Memory,
+}
+
+fn new_object(kind: ObjectKind) -> *Object {
+    for i in 0..MAX_OBJECTS {
+        var o = &objects[i];
+        if o.kind == ObjectKind.Free {
+            mem_fill(o as *u8, 0, size_of(Object));
+            o.kind = kind;
+            o.refs = 1;
+            return o;
+        }
+    }
+    return null;
+}
+
+fn release_object(o: *Object) {
+    o.refs -= 1;
+    if o.refs > 0 {
+        return;
+    }
+    if o.kind == ObjectKind.PipeReader {
+        o.pipe.readers -= 1;
+    } else if o.kind == ObjectKind.PipeWriter {
+        o.pipe.writers -= 1;
+    }
+    if o.pipe != null && o.pipe.readers == 0 && o.pipe.writers == 0 {
+        o.pipe.used = false;
+    }
+    o.kind = ObjectKind.Free;
+    wake_all();
+}
+
+fn add_handle(p: *Process, o: *Object) -> u32 {
+    for i in 0..MAX_HANDLES {
+        if p.handles[i] == null {
+            p.handles[i] = o;
+            return i;
+        }
+    }
+    release_object(o);
+    return FAILED;
+}
+
+fn handle_object(p: *Process, handle: u32) -> *Object {
+    if handle >= MAX_HANDLES {
+        return null;
+    }
+    return p.handles[handle];
+}
+
+// The bytes at a user address, or an empty slice with a null pointer.
+fn user_bytes(p: *Process, address: u32, length: u32) -> []u8 {
+    var empty: []u8;
+    var size = p.memory - p.code_size;
+    if address < GUARD || address - GUARD > size || length > size - (address - GUARD) {
+        return empty;
+    }
+    return ((p.region + p.code_size + address) as *u8)[0:length];
+}
+
+// Turns a path, relative to the process's directory, into an absolute path
+// without "." or "..", stored in out. Returns an empty slice if it's too long.
+fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
+    var empty: []u8;
+    var n: u32 = 0;
+    if path.len == 0 || path[0] != '/' {
+        if p.dir_len > 1 {
+            copy(out, p.dir[0:p.dir_len]);
+            n = p.dir_len;
+        }
+    }
+    var rest = path;
+    while rest.len > 0 {
+        var end: u32 = 0;
+        while end < rest.len && rest[end] != '/' {
+            end += 1;
+        }
+        var part = rest[0:end];
+        if end < rest.len {
+            rest = rest[end + 1:];
+        } else {
+            rest = rest[end:];
+        }
+        if part.len == 0 || text_equal(part, ".") {
+            continue;
+        }
+        if text_equal(part, "..") {
+            while n > 0 && out[n - 1] != '/' {
+                n -= 1;
+            }
+            if n > 0 {
+                n -= 1;
+            }
+            continue;
+        }
+        if n + 1 + part.len > out.len {
+            return empty;
+        }
+        out[n] = '/';
+        copy(out[n + 1:], part);
+        n += 1 + part.len;
+    }
+    if n == 0 {
+        out[0] = '/';
+        n = 1;
+    }
+    return out[0:n];
+}
+
+// Reads a path argument from user memory and resolves it.
+fn path_argument(p: *Process, address: u32, length: u32, out: []u8) -> []u8 {
+    var empty: []u8;
+    var text = user_bytes(p, address, length);
+    if text.ptr == null {
+        return empty;
+    }
+    return resolve_path(p, text, out);
+}
+
+fn system_call(p: *Process, number: u32) {
+    var r = p.regs[:];
+    var result = FAILED;
+    var path_buffer: [PATH_SIZE]u8;
+    var path: []u8;
+    var f: FileRef;
+    match number as Call {
+        Call.Exit => {
+            exit_process(p, r[0]);
+        }
+        Call.Read => {
+            var o = handle_object(p, r[0]);
+            var bytes = user_bytes(p, r[1], r[2]);
+            if o != null && bytes.ptr != null {
+                result = read_object(p, o, bytes);
+            }
+        }
+        Call.Write => {
+            var o = handle_object(p, r[0]);
+            var bytes = user_bytes(p, r[1], r[2]);
+            if o != null && bytes.ptr != null {
+                result = write_object(p, o, bytes);
+            }
+        }
+        Call.Open => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            if path.len > 0 {
+                result = open_file(p, path, r[2]);
+            }
+        }
+        Call.Close => {
+            var o = handle_object(p, r[0]);
+            if o != null {
+                release_object(o);
+                p.handles[r[0]] = null;
+                result = 0;
+            }
+        }
+        Call.Args => {
+            result = p.arg_count;
+        }
+        Call.Arg => {
+            var buffer = user_bytes(p, r[1], r[2]);
+            var arg = nth_arg(p, r[0]);
+            if buffer.ptr != null && arg.ptr != null {
+                copy(buffer, arg[0:min(arg.len, buffer.len)]);
+                result = arg.len;
+            }
+        }
+        Call.Spawn => {
+            result = spawn(p);
+        }
+        Call.Wait => {
+            var child = find_process(r[0]);
+            if child != null && child.parent == p.id {
+                if child.state != State.Zombie {
+                    block(p);
+                } else {
+                    result = child.status;
+                    child.state = State.Free;
+                }
+            }
+        }
+        Call.Pipe => {
+            result = make_pipe(p);
+        }
+        Call.Info => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            var info = user_bytes(p, r[2], 8);
+            if path.len > 0 && info.ptr != null && lookup(path, &f) {
+                set_word(info, 0, f.kind);
+                set_word(info, 4, f.size);
+                result = 0;
+            }
+        }
+        Call.List => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            var buffer = user_bytes(p, r[2], r[3]);
+            if path.len > 0 && buffer.ptr != null && lookup(path, &f) && f.kind == KIND_DIR {
+                result = list_directory(&f, buffer);
+            }
+        }
+        Call.Remove => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            if path.len > 1 && lookup(path, &f) && (f.kind == KIND_FILE || directory_empty(&f)) {
+                remove_entry(&f);
+                result = 0;
+            }
+        }
+        Call.MakeDir => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            var dir: FileRef;
+            if path.len > 0 && !lookup(path, &f) {
+                var name = lookup_parent(path, &dir);
+                if name.len > 0 && add_entry(&dir, name, KIND_DIR, &f) {
+                    result = 0;
+                }
+            }
+        }
+        Call.SetDir => {
+            path = path_argument(p, r[0], r[1], path_buffer[:]);
+            if path.len > 0 && lookup(path, &f) && f.kind == KIND_DIR {
+                copy(p.dir[:], path);
+                p.dir_len = path.len;
+                result = 0;
+            }
+        }
+        Call.GetDir => {
+            var buffer = user_bytes(p, r[0], r[1]);
+            if buffer.ptr != null {
+                copy(buffer, p.dir[0:min(p.dir_len, buffer.len)]);
+                result = p.dir_len;
+            }
+        }
+        Call.Time => {
+            result = clock_ms();
+        }
+        Call.Sleep => {
+            if p.wake_time == 0 {
+                p.wake_time = clock_ms() + r[0];
+            }
+            if clock_ms() < p.wake_time {
+                block(p);
+            } else {
+                p.wake_time = 0;
+                result = 0;
+            }
+        }
+        Call.Processes => {
+            var buffer = user_bytes(p, r[0], r[1]);
+            if buffer.ptr != null {
+                result = list_processes(buffer);
+            }
+        }
+        Call.Kill => {
+            var target = find_process(r[0]);
+            if target != null && target.state != State.Zombie {
+                exit_process(target, 137);
+                result = 0;
+            }
+        }
+        Call.Memory => {
+            r[1] = memory_end - memory_start - memory_used();
+            result = memory_end - memory_start;
+        }
+    }
+    if p.state == State.Ready {
+        r[0] = result;
+    }
+}
+
+fn nth_arg(p: *Process, index: u32) -> []u8 {
+    var empty: []u8;
+    var start: u32 = 0;
+    var n: u32 = 0;
+    for i in 0..p.args_len {
+        if p.args[i] == 0 {
+            if n == index {
+                return p.args[start:i];
+            }
+            n += 1;
+            start = i + 1;
+        }
+    }
+    return empty;
+}
+
+// Reading and writing ---------------------------------------------------------
+
+fn read_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
+    match o.kind {
+        ObjectKind.Console => {
+            if console_count == 0 {
+                if console_closed {
+                    return 0;
+                }
+                block(p);
+                return 0;
+            }
+            var n = min(console_count, bytes.len);
+            for i in 0..n {
+                bytes[i] = console_input[(console_start + i) % console_input.len];
+            }
+            console_start = (console_start + n) % console_input.len;
+            console_count -= n;
+            return n;
+        }
+        ObjectKind.File => {
+            var n = read_at(&o.file, o.position, bytes);
+            o.position += n;
+            return n;
+        }
+        ObjectKind.PipeReader => {
+            var pipe = o.pipe;
+            if pipe.count == 0 {
+                if pipe.writers == 0 {
+                    return 0;
+                }
+                block(p);
+                return 0;
+            }
+            var n = min(pipe.count, bytes.len);
+            for i in 0..n {
+                bytes[i] = pipe.data[(pipe.start + i) % PIPE_SIZE];
+            }
+            pipe.start = (pipe.start + n) % PIPE_SIZE;
+            pipe.count -= n;
+            wake_all();
+            return n;
+        }
+    }
+    return FAILED;
+}
+
+fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
+    match o.kind {
+        ObjectKind.Console => {
+            for i in 0..bytes.len {
+                io_write(0x20, bytes[i]);
+            }
+            return bytes.len;
+        }
+        ObjectKind.File => {
+            if !o.writable {
+                return FAILED;
+            }
+            var n = write_at(&o.file, o.position, bytes);
+            o.position += n;
+            return n;
+        }
+        ObjectKind.PipeWriter => {
+            var pipe = o.pipe;
+            if pipe.readers == 0 {
+                return FAILED;
+            }
+            if pipe.count == PIPE_SIZE {
+                block(p);
+                return 0;
+            }
+            var n = min(PIPE_SIZE - pipe.count, bytes.len);
+            for i in 0..n {
+                pipe.data[(pipe.start + pipe.count + i) % PIPE_SIZE] = bytes[i];
+            }
+            pipe.count += n;
+            wake_all();
+            return n;
+        }
+    }
+    return FAILED;
+}
+
+// Files ------------------------------------------------------------------------
+
+// Mode 0 reads, 1 creates or empties the file to write it, 2 appends.
+fn open_file(p: *Process, path: []u8, mode: u32) -> u32 {
+    var f: FileRef;
+    var exists = lookup(path, &f);
+    if exists && f.kind != KIND_FILE {
+        return FAILED;
+    }
+    if mode == 0 && !exists {
+        return FAILED;
+    }
+    if mode > 2 {
+        return FAILED;
+    }
+    if mode > 0 && !exists {
+        var dir: FileRef;
+        var name = lookup_parent(path, &dir);
+        if name.len == 0 || !add_entry(&dir, name, KIND_FILE, &f) {
+            return FAILED;
+        }
+    } else if mode == 1 {
+        truncate(&f);
+    }
+    var o = new_object(ObjectKind.File);
+    if o == null {
+        return FAILED;
+    }
+    o.file = f;
+    o.writable = mode > 0;
+    if mode == 2 {
+        o.position = f.size;
+    }
+    return add_handle(p, o);
+}
+
+fn directory_empty(dir: *FileRef) -> bool {
+    var e: Entry;
+    for i in 0..dir.size / ENTRY_SIZE {
+        if load_entry(dir, i, &e) && e.file.kind != 0 {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Fills the buffer with 64-byte records: a name of up to 48 bytes padded with
+// zeros, the kind, the size, and 8 zero bytes. Returns the bytes used.
+fn list_directory(dir: *FileRef, buffer: []u8) -> u32 {
+    var e: Entry;
+    var n: u32 = 0;
+    for i in 0..dir.size / ENTRY_SIZE {
+        if n + 64 > buffer.len {
+            break;
+        }
+        if load_entry(dir, i, &e) && e.file.kind != 0 {
+            var record = buffer[n:n + 64];
+            mem_fill(record.ptr, 0, 64);
+            copy(record, e.name[0:e.name_len]);
+            set_word(record, 48, e.file.kind);
+            set_word(record, 52, e.file.size);
+            n += 64;
+        }
+    }
+    return n;
+}
+
+// Processes and pipes -------------------------------------------------------------
+
+// spawn(path, length, args, args length, input, output, errors)
+fn spawn(p: *Process) -> u32 {
+    var r = p.regs[:];
+    var path_buffer: [PATH_SIZE]u8;
+    var path = path_argument(p, r[0], r[1], path_buffer[:]);
+    var args = user_bytes(p, r[2], r[3]);
+    if path.len == 0 || args.ptr == null {
+        return FAILED;
+    }
+    var handles: [3]*Object;
+    for i in 0..3 {
+        handles[i] = handle_object(p, r[4 + i]);
+        if handles[i] == null {
+            return FAILED;
+        }
+    }
+    var child = spawn_process(p, path, args, handles[:]);
+    if child == null {
+        return FAILED;
+    }
+    return child.id;
+}
+
+// Returns the reading handle, with the writing handle in r1.
+fn make_pipe(p: *Process) -> u32 {
+    var pipe: *Pipe = null;
+    for i in 0..MAX_PIPES {
+        if !pipes[i].used {
+            pipe = &pipes[i];
+            break;
+        }
+    }
+    if pipe == null {
+        return FAILED;
+    }
+    var reader = new_object(ObjectKind.PipeReader);
+    if reader == null {
+        return FAILED;
+    }
+    var writer = new_object(ObjectKind.PipeWriter);
+    if writer == null {
+        release_object(reader);
+        return FAILED;
+    }
+    pipe.used = true;
+    pipe.start = 0;
+    pipe.count = 0;
+    pipe.readers = 1;
+    pipe.writers = 1;
+    reader.pipe = pipe;
+    writer.pipe = pipe;
+    var read_handle = add_handle(p, reader);
+    if read_handle == FAILED {
+        release_object(writer);
+        return FAILED;
+    }
+    var write_handle = add_handle(p, writer);
+    if write_handle == FAILED {
+        release_object(p.handles[read_handle]);
+        p.handles[read_handle] = null;
+        return FAILED;
+    }
+    p.regs[1] = write_handle;
+    return read_handle;
+}
+
+// Fills the buffer with 48-byte records: id, parent, state, memory, cycles,
+// then a name of up to 28 bytes padded with zeros. Returns the bytes used.
+fn list_processes(buffer: []u8) -> u32 {
+    var n: u32 = 0;
+    for i in 0..MAX_PROCESSES {
+        var q = &processes[i];
+        if q.state == State.Free || n + 48 > buffer.len {
+            continue;
+        }
+        var record = buffer[n:n + 48];
+        mem_fill(record.ptr, 0, 48);
+        set_word(record, 0, q.id);
+        set_word(record, 4, q.parent);
+        set_word(record, 8, q.state as u32);
+        set_word(record, 12, q.memory);
+        set_word(record, 16, q.cycles);
+        copy(record[20:], q.name[0:min(q.name_len, 28)]);
+        n += 48;
+    }
+    return n;
+}

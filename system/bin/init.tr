@@ -1,0 +1,17 @@
+// init is the first program. It starts the shell, and when the shell ends,
+// so does Terrarium.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    print("\nWelcome to Terrarium. Type 'help' for help.\n\n");
+    var shell = spawn("/bin/sh", "", STDIN, STDOUT, STDERR);
+    if shell == FAILED {
+        print("init: can't start /bin/sh\n");
+        return 1;
+    }
+    return wait(shell);
+}

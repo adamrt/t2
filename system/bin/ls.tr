@@ -1,0 +1,106 @@
+// ls lists what's in directories, alphabetically.
+//
+//     ls [-l] [path...]
+//
+// With -l it also shows each file's size. Directories end with "/".
+
+manifest {
+    memory = 256 * KiB;
+    stack = 16 * KiB;
+}
+
+var arena: Arena;
+var out: Writer;
+var out_buffer: [1024]u8;
+var listing: [64 * KiB]u8;
+var long: bool;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    writer_init(&out, STDOUT, out_buffer[:]);
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    var paths: u32 = 0;
+    var status: u32 = 0;
+    for i in 0..count {
+        if text_equal(args[i], "-l") {
+            long = true;
+        }
+    }
+    for i in 0..count {
+        if !text_equal(args[i], "-l") {
+            if !show(args[i]) {
+                status = 1;
+            }
+            paths += 1;
+        }
+    }
+    if paths == 0 && !show(".") {
+        status = 1;
+    }
+    flush(&out);
+    return status;
+}
+
+fn show(path: []u8) -> bool {
+    var f: FileInfo;
+    if info(path, &f) == FAILED {
+        flush(&out);
+        complain("ls", "not found:", path);
+        return false;
+    }
+    if f.kind != KIND_DIR {
+        line(path, f.kind, f.size);
+        return true;
+    }
+    var n = list(path, listing[:]);
+    var count = n / 64;
+    var entries = (&listing[0] as *ListEntry)[0:count];
+    // Insertion sort by name.
+    for i in 1..count {
+        var j = i;
+        while j > 0 && before(&entries[j], &entries[j - 1]) {
+            var swap = entries[j];
+            entries[j] = entries[j - 1];
+            entries[j - 1] = swap;
+            j -= 1;
+        }
+    }
+    for i in 0..count {
+        line(entry_name(&entries[i]), entries[i].kind, entries[i].size);
+    }
+    return true;
+}
+
+fn before(a: *ListEntry, b: *ListEntry) -> bool {
+    var x = entry_name(a);
+    var y = entry_name(b);
+    for i in 0..x.len {
+        if i == y.len {
+            return false;
+        }
+        if x[i] != y[i] {
+            return x[i] < y[i];
+        }
+    }
+    return x.len < y.len;
+}
+
+fn line(name: []u8, kind: u32, size: u32) {
+    if long {
+        var digits: [12]u8;
+        var w: Writer;
+        writer_init(&w, STDOUT, digits[:]);
+        put_u32(&w, size);
+        for i in w.used..10 {
+            put_byte(&out, ' ');
+        }
+        put(&out, digits[0:w.used]);
+        put(&out, "  ");
+    }
+    put(&out, name);
+    if kind == KIND_DIR {
+        put_byte(&out, '/');
+    }
+    put_byte(&out, '\n');
+}

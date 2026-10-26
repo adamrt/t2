@@ -1,0 +1,47 @@
+// ps lists the processes, with the memory each reserved and the CPU cycles
+// it has used.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+var records: [32]ProcessInfo;
+
+fn main(memory: []u8) -> u32 {
+    var out: Writer;
+    var buffer: [1024]u8;
+    writer_init(&out, STDOUT, buffer[:]);
+    var n = processes((&records[0] as *u8)[0:size_of(ProcessInfo) * 32]) / size_of(ProcessInfo);
+    put(&out, "   id  parent  memory      cycles  name\n");
+    for i in 0..n {
+        var p = &records[i];
+        column(&out, p.id, 5);
+        column(&out, p.parent, 8);
+        column(&out, p.memory / KiB, 7);
+        put(&out, "K");
+        column(&out, p.cycles, 12);
+        put(&out, "  ");
+        put(&out, process_name(p));
+        if p.state == 2 {
+            put(&out, " (waiting)");
+        } else if p.state == 3 {
+            put(&out, " (ended)");
+        }
+        put_byte(&out, '\n');
+    }
+    flush(&out);
+    return 0;
+}
+
+// Writes a number right-aligned in a column.
+fn column(out: *Writer, value: u32, width: u32) {
+    var digits: [12]u8;
+    var w: Writer;
+    writer_init(&w, STDOUT, digits[:]);
+    put_u32(&w, value);
+    for i in w.used..width {
+        put_byte(out, ' ');
+    }
+    put(out, digits[0:w.used]);
+}

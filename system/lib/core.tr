@@ -101,9 +101,22 @@ fn writer_init(w: *Writer, file: u32, buffer: []u8) {
     w.used = 0;
 }
 
+// Writes all the bytes, unless the file fails.
+fn write_all(file: u32, bytes: []u8) -> bool {
+    var done: u32 = 0;
+    while done < bytes.len {
+        var n = write(file, bytes[done:]);
+        if n == 0 || n == FAILED {
+            return false;
+        }
+        done += n;
+    }
+    return true;
+}
+
 fn flush(w: *Writer) {
     if w.used > 0 {
-        write(w.file, w.buffer[0:w.used]);
+        write_all(w.file, w.buffer[0:w.used]);
         w.used = 0;
     }
 }
@@ -112,7 +125,7 @@ fn put(w: *Writer, text: []u8) {
     if text.len > w.buffer.len - w.used {
         flush(w);
         if text.len > w.buffer.len {
-            write(w.file, text);
+            write_all(w.file, text);
             return;
         }
     }
@@ -162,5 +175,72 @@ fn put_hex(w: *Writer, value: u32) {
 
 // Writes text straight to standard output.
 fn print(text: []u8) {
-    write(STDOUT, text);
+    write_all(STDOUT, text);
+}
+
+// Input ------------------------------------------------------------------------
+
+// Reads a file a buffer at a time and hands out lines.
+struct Reader {
+    file: u32;
+    buffer: []u8;
+    start: u32;
+    end: u32;
+    done: bool;
+}
+
+fn reader_init(r: *Reader, file: u32, buffer: []u8) {
+    r.file = file;
+    r.buffer = buffer;
+    r.start = 0;
+    r.end = 0;
+    r.done = false;
+}
+
+// Copies the next line, without its newline, into out and returns its
+// length. A line longer than out is cut short. Returns FAILED at the end.
+fn read_line(r: *Reader, out: []u8) -> u32 {
+    var n: u32 = 0;
+    while true {
+        if r.start == r.end {
+            if r.done {
+                if n == 0 {
+                    return FAILED;
+                }
+                return n;
+            }
+            r.start = 0;
+            r.end = read(r.file, r.buffer);
+            if r.end == 0 || r.end == FAILED {
+                r.end = 0;
+                r.done = true;
+            }
+            continue;
+        }
+        var c = r.buffer[r.start];
+        r.start += 1;
+        if c == '\n' {
+            return n;
+        }
+        if n < out.len {
+            out[n] = c;
+            n += 1;
+        }
+    }
+    return n;
+}
+
+// Turns decimal text into a number. Returns FAILED if it isn't one.
+fn parse_u32(text: []u8) -> u32 {
+    if text.len == 0 {
+        return FAILED;
+    }
+    var value: u32 = 0;
+    for i in 0..text.len {
+        if !is_digit(text[i]) {
+            return FAILED;
+        }
+        value = value * 10 + (text[i] - '0');
+    }
+    return value;
 }

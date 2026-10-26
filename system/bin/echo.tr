@@ -1,0 +1,24 @@
+// echo prints its arguments, separated by spaces.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [64][]u8;
+    var count = get_args(&arena, args[:]);
+    var out: Writer;
+    writer_init(&out, STDOUT, alloc_bytes(&arena, 1024));
+    for i in 0..count {
+        if i > 0 {
+            put_byte(&out, ' ');
+        }
+        put(&out, args[i]);
+    }
+    put_byte(&out, '\n');
+    flush(&out);
+    return 0;
+}

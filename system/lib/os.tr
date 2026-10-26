@@ -1,0 +1,91 @@
+// Terrarium's system calls beyond the basic ones in core.tr. They're
+// described in spec/system.md.
+
+const KIND_FILE: u32 = 1;
+const KIND_DIR: u32 = 2;
+const MODE_READ: u32 = 0;
+const MODE_WRITE: u32 = 1;
+const MODE_APPEND: u32 = 2;
+
+struct FileInfo {
+    kind: u32;
+    size: u32;
+}
+
+fn spawn(path: []u8, args: []u8, input: u32, output: u32, errors: u32) -> u32;
+fn wait(process: u32) -> u32;
+fn open_pipe(write_end: *u32) -> u32;
+fn info(path: []u8, info: *FileInfo) -> u32;
+fn list(path: []u8, buffer: []u8) -> u32;
+fn remove(path: []u8) -> u32;
+fn make_dir(path: []u8) -> u32;
+fn set_dir(path: []u8) -> u32;
+fn get_dir(buffer: []u8) -> u32;
+fn time() -> u32;
+fn sleep(milliseconds: u32);
+fn processes(buffer: []u8) -> u32;
+fn kill(process: u32) -> u32;
+fn memory_info(free: *u32) -> u32;
+
+// A directory listing record, as list() returns them.
+struct ListEntry {
+    name: [48]u8;
+    kind: u32;
+    size: u32;
+    reserved: [8]u8;
+}
+
+fn entry_name(e: *ListEntry) -> []u8 {
+    var n: u32 = 0;
+    while n < 48 && e.name[n] != 0 {
+        n += 1;
+    }
+    return e.name[0:n];
+}
+
+// A record from processes().
+struct ProcessInfo {
+    id: u32;
+    parent: u32;
+    state: u32;
+    memory: u32;
+    cycles: u32;
+    name: [28]u8;
+}
+
+fn process_name(p: *ProcessInfo) -> []u8 {
+    var n: u32 = 0;
+    while n < 28 && p.name[n] != 0 {
+        n += 1;
+    }
+    return p.name[0:n];
+}
+
+// Collects a program's arguments into an array of slices. Returns how many.
+fn get_args(arena: *Arena, args: [][]u8) -> u32 {
+    var count = arg_count();
+    if count > args.len {
+        count = args.len;
+    }
+    for i in 0..count {
+        var buffer = alloc_bytes(arena, 256);
+        var n = arg(i, buffer);
+        if n > 256 {
+            n = 256;
+        }
+        args[i] = buffer[0:n];
+    }
+    return count;
+}
+
+// Prints "program: message detail" to standard error.
+fn complain(program: []u8, message: []u8, detail: []u8) {
+    write_all(STDERR, program);
+    write_all(STDERR, ": ");
+    write_all(STDERR, message);
+    if detail.len > 0 {
+        write_all(STDERR, " ");
+        write_all(STDERR, detail);
+    }
+    write_all(STDERR, "\n");
+}

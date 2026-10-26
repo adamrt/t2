@@ -1,0 +1,18 @@
+// sleep waits for a number of milliseconds.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    var text: [16]u8;
+    var n = arg(0, text[:]);
+    var ms = parse_u32(text[0:n]);
+    if arg_count() != 1 || n > 16 || ms == FAILED {
+        complain("sleep", "usage: sleep milliseconds", "");
+        return 2;
+    }
+    sleep(ms);
+    return 0;
+}

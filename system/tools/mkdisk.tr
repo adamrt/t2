@@ -1,0 +1,293 @@
+// mkdisk builds a disk image from files on the host. It runs on the
+// development monitor, which gives it the host's files.
+//
+//     mkdisk -o disk.img [-m megabytes] [-k kernel.bin] host-file:/disk/path...
+//
+// The layout is described in spec/filesystem.md. Every file lands in one
+// unbroken run of blocks.
+
+manifest {
+    memory = 48 * MiB;
+}
+
+const BLOCK = 4096;
+const END = 0xffffffff;
+const RESERVED = 0xfffffffe;
+const ENTRY_SIZE = 64;
+const NAME_SIZE = 48;
+const KIND_FILE = 1;
+const KIND_DIR = 2;
+
+struct Entry {
+    name: []u8;
+    kind: u32;
+    data: []u8;
+    children: *Entry;
+    next: *Entry;
+    first: u32;
+    size: u32;
+}
+
+var arena: Arena;
+var image: []u8;
+var blocks: u32;
+var next_block: u32;
+var root: Entry;
+var kernel: *Entry;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    root.kind = KIND_DIR;
+
+    var output: []u8;
+    var megabytes: u32 = 32;
+    var i: u32 = 0;
+    while i < arg_count() {
+        var text = argument(i);
+        i += 1;
+        if text_equal(text, "-o") || text_equal(text, "-m") || text_equal(text, "-k") {
+            if i == arg_count() {
+                usage();
+            }
+            var value = argument(i);
+            i += 1;
+            if text_equal(text, "-o") {
+                output = value;
+            } else if text_equal(text, "-m") {
+                megabytes = parse_number(value);
+            } else {
+                kernel = add_file(value, "/system/kernel");
+            }
+        } else {
+            var colon = find_byte(text, ':');
+            if colon == text.len {
+                usage();
+            }
+            add_file(text[0:colon], text[colon + 1:]);
+        }
+    }
+    if output.len == 0 || megabytes == 0 || megabytes > 64 {
+        usage();
+    }
+
+    blocks = megabytes * (MiB / BLOCK);
+    image = alloc_bytes(&arena, blocks * BLOCK);
+    var table_blocks = (blocks * 4 + BLOCK - 1) / BLOCK;
+    for b in 0..table_blocks + 1 {
+        set_next(b, RESERVED);
+    }
+    next_block = table_blocks + 1;
+    lay_out(&root);
+
+    var header = image[0:BLOCK];
+    copy(header, "TFS1");
+    set_word(header, 4, BLOCK);
+    set_word(header, 8, blocks);
+    set_word(header, 12, 1);
+    set_word(header, 16, table_blocks);
+    set_word(header, 20, root.first);
+    set_word(header, 24, root.size);
+    if kernel != null {
+        set_word(header, 28, kernel.first);
+        set_word(header, 32, kernel.size);
+    }
+
+    var file = open(output, 1);
+    if file == FAILED {
+        fail("can't write", output);
+    }
+    var done: u32 = 0;
+    while done < image.len {
+        var n = write(file, image[done:]);
+        if n == 0 || n == FAILED {
+            fail("can't write", output);
+        }
+        done += n;
+    }
+    close(file);
+    return 0;
+}
+
+fn usage() {
+    write(STDERR, "usage: mkdisk -o disk.img [-m megabytes] [-k kernel.bin] host-file:/disk/path...\n");
+    exit(2);
+}
+
+fn fail(message: []u8, name: []u8) {
+    write(STDERR, "mkdisk: ");
+    write(STDERR, message);
+    write(STDERR, " ");
+    write(STDERR, name);
+    write(STDERR, "\n");
+    exit(1);
+}
+
+fn argument(index: u32) -> []u8 {
+    var buffer = alloc_bytes(&arena, 256);
+    var n = arg(index, buffer);
+    if n > buffer.len {
+        fail("argument is too long:", buffer);
+    }
+    return buffer[0:n];
+}
+
+fn parse_number(text: []u8) -> u32 {
+    var value: u32 = 0;
+    for i in 0..text.len {
+        if !is_digit(text[i]) {
+            usage();
+        }
+        value = value * 10 + (text[i] - '0');
+    }
+    return value;
+}
+
+fn find_byte(text: []u8, c: u8) -> u32 {
+    for i in 0..text.len {
+        if text[i] == c {
+            return i;
+        }
+    }
+    return text.len;
+}
+
+fn read_host_file(path: []u8) -> []u8 {
+    var file = open(path, 0);
+    if file == FAILED {
+        fail("can't read", path);
+    }
+    var start = (arena.used + 3) & ~3;
+    var free = arena.memory[start:];
+    var n: u32 = 0;
+    while true {
+        var got = read(file, free[n:]);
+        if got == FAILED {
+            fail("can't read", path);
+        }
+        if got == 0 {
+            break;
+        }
+        n += got;
+    }
+    close(file);
+    arena.used = start + n;
+    return free[0:n];
+}
+
+// Adds a host file at a path on the disk, making directories on the way.
+fn add_file(host: []u8, path: []u8) -> *Entry {
+    var dir = &root;
+    var rest = path;
+    while true {
+        while rest.len > 0 && rest[0] == '/' {
+            rest = rest[1:];
+        }
+        var end = find_byte(rest, '/');
+        var name = rest[0:end];
+        rest = rest[end:];
+        if name.len == 0 || name.len > NAME_SIZE || text_equal(name, ".") || text_equal(name, "..") {
+            fail("bad path", path);
+        }
+        var existing = find_child(dir, name);
+        if rest.len == 0 {
+            if existing != null {
+                fail("two files with the same path:", path);
+            }
+            var file = add_child(dir, name, KIND_FILE);
+            file.data = read_host_file(host);
+            return file;
+        }
+        if existing == null {
+            existing = add_child(dir, name, KIND_DIR);
+        } else if existing.kind != KIND_DIR {
+            fail("not a directory:", path);
+        }
+        dir = existing;
+    }
+    return null;
+}
+
+fn find_child(dir: *Entry, name: []u8) -> *Entry {
+    var e = dir.children;
+    while e != null {
+        if text_equal(e.name, name) {
+            return e;
+        }
+        e = e.next;
+    }
+    return null;
+}
+
+fn add_child(dir: *Entry, name: []u8, kind: u32) -> *Entry {
+    var e = new(&arena, Entry);
+    e.name = name;
+    e.kind = kind;
+    e.next = dir.children;
+    dir.children = e;
+    return e;
+}
+
+// Layout ---------------------------------------------------------------------
+
+fn set_word(bytes: []u8, offset: u32, value: u32) {
+    bytes[offset] = (value & 255) as u8;
+    bytes[offset + 1] = ((value >> 8) & 255) as u8;
+    bytes[offset + 2] = ((value >> 16) & 255) as u8;
+    bytes[offset + 3] = (value >> 24) as u8;
+}
+
+fn set_next(block: u32, next: u32) {
+    set_word(image, BLOCK + block * 4, next);
+}
+
+// Gives the bytes their own run of blocks and returns the first, or 0 when
+// there are no bytes.
+fn store(bytes: []u8) -> u32 {
+    if bytes.len == 0 {
+        return 0;
+    }
+    var count = (bytes.len + BLOCK - 1) / BLOCK;
+    if next_block + count > blocks {
+        write(STDERR, "mkdisk: the disk is full\n");
+        exit(1);
+    }
+    var first = next_block;
+    next_block += count;
+    copy(image[first * BLOCK:], bytes);
+    for i in 0..count {
+        if i == count - 1 {
+            set_next(first + i, END);
+        } else {
+            set_next(first + i, first + i + 1);
+        }
+    }
+    return first;
+}
+
+fn lay_out(e: *Entry) {
+    if e.kind == KIND_FILE {
+        e.first = store(e.data);
+        e.size = e.data.len;
+        return;
+    }
+    var count: u32 = 0;
+    var child = e.children;
+    while child != null {
+        lay_out(child);
+        count += 1;
+        child = child.next;
+    }
+    var listing = alloc_bytes(&arena, count * ENTRY_SIZE);
+    var offset: u32 = 0;
+    child = e.children;
+    while child != null {
+        copy(listing[offset:], child.name);
+        set_word(listing, offset + 48, child.kind);
+        set_word(listing, offset + 52, child.first);
+        set_word(listing, offset + 56, child.size);
+        offset += ENTRY_SIZE;
+        child = child.next;
+    }
+    e.first = store(listing);
+    e.size = listing.len;
+}

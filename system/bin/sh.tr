@@ -1,0 +1,341 @@
+// sh, the Terrarium shell. It runs commands typed at the prompt, or the lines
+// of a file given as its argument:
+//
+//     ls /bin | wc > count.txt
+//
+// Words are separated by spaces, and quotes keep spaces inside a word. "|"
+// feeds one command's output to the next, "<" reads input from a file, and
+// ">" writes output to one (">>" adds to its end). A line starting with "#"
+// is a comment. Programs without a "/" in their name come from /bin.
+
+manifest {
+    memory = 256 * KiB;
+    stack = 16 * KiB;
+}
+
+const MAX_WORDS = 32;
+const MAX_STAGES = 8;
+
+struct Stage {
+    words: [MAX_WORDS][]u8;
+    count: u32;
+    input: []u8;
+    output: []u8;
+    append: bool;
+}
+
+var line: [1024]u8;
+var text: [2048]u8;             // the words, with quotes removed
+var text_used: u32;
+var stages: [MAX_STAGES]Stage;
+var stage_count: u32;
+var read_buffer: [1024]u8;
+var finished: bool;
+
+fn main(memory: []u8) -> u32 {
+    var input = STDIN;
+    var interactive = true;
+    if arg_count() > 0 {
+        var name: [256]u8;
+        var n = arg(0, name[:]);
+        input = open(name[0:min(n, 256)], MODE_READ);
+        if input == FAILED {
+            complain("sh", "can't read", name[0:min(n, 256)]);
+            return 1;
+        }
+        interactive = false;
+    }
+    var reader: Reader;
+    reader_init(&reader, input, read_buffer[:]);
+    var status: u32 = 0;
+    while !finished {
+        if interactive {
+            prompt();
+        }
+        var n = read_line(&reader, line[:]);
+        if n == FAILED {
+            break;
+        }
+        status = run_line(line[0:n]);
+    }
+    return status;
+}
+
+fn min(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+fn prompt() {
+    var dir: [256]u8;
+    var n = get_dir(dir[:]);
+    write_all(STDOUT, dir[0:min(n, 256)]);
+    write_all(STDOUT, "> ");
+}
+
+fn run_line(input: []u8) -> u32 {
+    if !parse(input) {
+        return 1;
+    }
+    if stage_count == 0 {
+        return 0;
+    }
+    var first = &stages[0];
+    if stage_count == 1 && run_builtin(first) {
+        return 0;
+    }
+    return run_pipeline();
+}
+
+// Parsing ------------------------------------------------------------------------
+
+fn is_special(c: u8) -> bool {
+    return c == '|' || c == '<' || c == '>';
+}
+
+// Splits a line into stages. Returns false, after complaining, if it's malformed.
+fn parse(input: []u8) -> bool {
+    text_used = 0;
+    stage_count = 0;
+    var i: u32 = 0;
+    while i < input.len && input[i] == ' ' {
+        i += 1;
+    }
+    if i == input.len || input[i] == '#' {
+        return true;
+    }
+    var stage = new_stage();
+    while i < input.len {
+        var c = input[i];
+        if c == ' ' || c == '\t' {
+            i += 1;
+            continue;
+        }
+        if c == '|' {
+            if stage.count == 0 {
+                complain("sh", "missing command before '|'", "");
+                return false;
+            }
+            if stage_count == MAX_STAGES {
+                complain("sh", "too many commands in one line", "");
+                return false;
+            }
+            stage = new_stage();
+            i += 1;
+            continue;
+        }
+        var redirect = c;
+        if c == '<' || c == '>' {
+            i += 1;
+            if c == '>' && i < input.len && input[i] == '>' {
+                stage.append = true;
+                i += 1;
+            }
+            while i < input.len && input[i] == ' ' {
+                i += 1;
+            }
+        }
+        var start = text_used;
+        while i < input.len && input[i] != ' ' && input[i] != '\t' && !is_special(input[i]) {
+            var q = input[i];
+            if q == '"' || q == '\'' {
+                i += 1;
+                while i < input.len && input[i] != q {
+                    add_text(input[i]);
+                    i += 1;
+                }
+                if i == input.len {
+                    complain("sh", "a quote isn't closed", "");
+                    return false;
+                }
+                i += 1;
+            } else {
+                add_text(q);
+                i += 1;
+            }
+        }
+        var word = text[start:text_used];
+        if redirect == '<' || redirect == '>' {
+            if word.len == 0 {
+                complain("sh", "missing file name after", input[i - 1:i]);
+                return false;
+            }
+            if redirect == '<' {
+                stage.input = word;
+            } else {
+                stage.output = word;
+            }
+            continue;
+        }
+        if stage.count == MAX_WORDS {
+            complain("sh", "too many words", "");
+            return false;
+        }
+        stage.words[stage.count] = word;
+        stage.count += 1;
+    }
+    if stage.count == 0 {
+        complain("sh", "missing command", "");
+        return false;
+    }
+    return true;
+}
+
+fn new_stage() -> *Stage {
+    var stage = &stages[stage_count];
+    stage_count += 1;
+    mem_fill(stage as *u8, 0, size_of(Stage));
+    return stage;
+}
+
+fn add_text(c: u8) {
+    if text_used < text.len {
+        text[text_used] = c;
+        text_used += 1;
+    }
+}
+
+// Running --------------------------------------------------------------------------
+
+fn run_builtin(stage: *Stage) -> bool {
+    var name = stage.words[0];
+    if text_equal(name, "cd") {
+        var dir = "/";
+        if stage.count > 1 {
+            dir = stage.words[1];
+        }
+        if set_dir(dir) == FAILED {
+            complain("cd", "no such directory:", dir);
+        }
+        return true;
+    }
+    if text_equal(name, "exit") {
+        finished = true;
+        return true;
+    }
+    if text_equal(name, "help") {
+        print("Commands are programs in /bin:\n  ");
+        var buffer: [4096]u8;
+        var n = list("/bin", buffer[:]);
+        var i: u32 = 0;
+        while i + 64 <= n {
+            var e = &buffer[i] as *ListEntry;
+            print(entry_name(e));
+            print(" ");
+            i += 64;
+        }
+        print("\nBuilt in: cd, exit, help.\n");
+        print("'|' connects commands; '<', '>' and '>>' redirect to files.\n");
+        return true;
+    }
+    return false;
+}
+
+fn run_pipeline() -> u32 {
+    var ids: [MAX_STAGES]u32;
+    var input = STDIN;
+    for s in 0..stage_count {
+        var stage = &stages[s];
+        if stage.input.len > 0 {
+            if input != STDIN {
+                close(input);
+            }
+            input = open(stage.input, MODE_READ);
+            if input == FAILED {
+                complain("sh", "can't read", stage.input);
+                return wait_all(ids[0:s]);
+            }
+        }
+        var output = STDOUT;
+        var next_input = STDIN;
+        if stage.output.len > 0 {
+            var mode = MODE_WRITE;
+            if stage.append {
+                mode = MODE_APPEND;
+            }
+            output = open(stage.output, mode);
+            if output == FAILED {
+                complain("sh", "can't write", stage.output);
+                output = STDOUT;
+            }
+        } else if s + 1 < stage_count {
+            var write_end: u32;
+            next_input = open_pipe(&write_end);
+            if next_input == FAILED {
+                complain("sh", "can't make a pipe", "");
+                next_input = STDIN;
+            } else {
+                output = write_end;
+            }
+        }
+
+        ids[s] = start(stage, input, output);
+        if input != STDIN {
+            close(input);
+        }
+        if output != STDOUT {
+            close(output);
+        }
+        input = next_input;
+    }
+    return wait_all(ids[0:stage_count]);
+}
+
+// Starts one command. Returns its process id, or FAILED.
+fn start(stage: *Stage, input: u32, output: u32) -> u32 {
+    var path: [256]u8;
+    var name = stage.words[0];
+    var n: u32 = 0;
+    if find_slash(name) == name.len {
+        copy(path[:], "/bin/");
+        n = 5;
+    }
+    if n + name.len > path.len {
+        complain("sh", "name is too long", "");
+        return FAILED;
+    }
+    copy(path[n:], name);
+    n += name.len;
+
+    var args: [2048]u8;
+    var used: u32 = 0;
+    for i in 1..stage.count {
+        var word = stage.words[i];
+        if used + word.len + 1 > args.len {
+            complain("sh", "arguments are too long", "");
+            return FAILED;
+        }
+        copy(args[used:], word);
+        used += word.len;
+        args[used] = 0;
+        used += 1;
+    }
+    var id = spawn(path[0:n], args[0:used], input, output, STDERR);
+    if id == FAILED {
+        complain("sh", "can't run", name);
+    }
+    return id;
+}
+
+fn find_slash(name: []u8) -> u32 {
+    for i in 0..name.len {
+        if name[i] == '/' {
+            return i;
+        }
+    }
+    return name.len;
+}
+
+fn wait_all(ids: []u32) -> u32 {
+    var status: u32 = 0;
+    for i in 0..ids.len {
+        if ids[i] != FAILED {
+            status = wait(ids[i]);
+        } else {
+            status = 1;
+        }
+    }
+    return status;
+}

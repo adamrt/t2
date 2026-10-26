@@ -1,0 +1,70 @@
+// wc counts the lines, words and bytes of files, or of its input.
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+}
+
+var buffer: [16 * KiB]u8;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    if count == 0 {
+        count_file(STDIN, "");
+        return 0;
+    }
+    var status: u32 = 0;
+    for i in 0..count {
+        var file = open(args[i], MODE_READ);
+        if file == FAILED {
+            complain("wc", "can't read", args[i]);
+            status = 1;
+            continue;
+        }
+        count_file(file, args[i]);
+        close(file);
+    }
+    return status;
+}
+
+fn count_file(file: u32, name: []u8) {
+    var lines: u32 = 0;
+    var words: u32 = 0;
+    var bytes: u32 = 0;
+    var in_word = false;
+    while true {
+        var n = read(file, buffer[:]);
+        if n == 0 || n == FAILED {
+            break;
+        }
+        bytes += n;
+        for i in 0..n {
+            var c = buffer[i];
+            if c == '\n' {
+                lines += 1;
+            }
+            var space = c == ' ' || c == '\n' || c == '\t' || c == '\r';
+            if !space && !in_word {
+                words += 1;
+            }
+            in_word = !space;
+        }
+    }
+    var out: Writer;
+    var text: [128]u8;
+    writer_init(&out, STDOUT, text[:]);
+    put_u32(&out, lines);
+    put_byte(&out, ' ');
+    put_u32(&out, words);
+    put_byte(&out, ' ');
+    put_u32(&out, bytes);
+    if name.len > 0 {
+        put_byte(&out, ' ');
+        put(&out, name);
+    }
+    put_byte(&out, '\n');
+    flush(&out);
+}

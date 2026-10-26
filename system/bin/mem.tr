@@ -1,0 +1,20 @@
+// mem shows how much memory programs can use, and how much is free.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    var free: u32;
+    var total = memory_info(&free);
+    var out: Writer;
+    var buffer: [256]u8;
+    writer_init(&out, STDOUT, buffer[:]);
+    put_u32(&out, total / KiB);
+    put(&out, " KiB for programs, ");
+    put_u32(&out, free / KiB);
+    put(&out, " KiB free\n");
+    flush(&out);
+    return 0;
+}

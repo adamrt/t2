@@ -1,0 +1,44 @@
+// cp copies a file.
+//
+//     cp from to
+
+manifest {
+    memory = 128 * KiB;
+    stack = 16 * KiB;
+}
+
+var buffer: [32 * KiB]u8;
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [2][]u8;
+    if arg_count() != 2 {
+        complain("cp", "usage: cp from to", "");
+        return 2;
+    }
+    get_args(&arena, args[:]);
+    var from = open(args[0], MODE_READ);
+    if from == FAILED {
+        complain("cp", "can't read", args[0]);
+        return 1;
+    }
+    var to = open(args[1], MODE_WRITE);
+    if to == FAILED {
+        complain("cp", "can't write", args[1]);
+        return 1;
+    }
+    while true {
+        var n = read(from, buffer[:]);
+        if n == 0 || n == FAILED {
+            break;
+        }
+        if !write_all(to, buffer[0:n]) {
+            complain("cp", "can't write", args[1]);
+            return 1;
+        }
+    }
+    close(from);
+    close(to);
+    return 0;
+}

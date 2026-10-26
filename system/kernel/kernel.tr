@@ -1,0 +1,197 @@
+// The Terrarium kernel: it starts the first program and then runs whichever
+// process is ready, until every process has ended.
+
+manifest {
+    memory = 4 * MiB;
+    stack = 64 * KiB;
+}
+
+const PORT_CAUSE: u32 = 0x00;
+const PORT_VALUE: u32 = 0x01;
+const PORT_ADDRESS: u32 = 0x02;
+const PORT_USER_PC: u32 = 0x03;
+const PORT_USER_CODE_BASE: u32 = 0x04;
+const PORT_USER_CODE_SIZE: u32 = 0x05;
+const PORT_USER_DATA_BASE: u32 = 0x06;
+const PORT_USER_DATA_SIZE: u32 = 0x07;
+const PORT_USER_STACK_LIMIT: u32 = 0x08;
+const PORT_PENDING: u32 = 0x09;
+const PORT_USER_R0: u32 = 0x10;
+const PORT_CONSOLE_READ: u32 = 0x21;
+const PORT_CLOCK: u32 = 0x22;
+const PORT_TIMER: u32 = 0x23;
+
+const CAUSE_SYS: u32 = 1;
+const CAUSE_FAULT: u32 = 2;
+const IRQ_TIMER: u32 = 1;
+const IRQ_CONSOLE: u32 = 2;
+const CONSOLE_EMPTY: u32 = 0xffffffff;
+const CONSOLE_CLOSED: u32 = 0xfffffffe;
+
+const GUARD: u32 = 0x10000;
+const SLICE: u32 = 10000;           // microseconds a process runs before the next gets a turn
+
+fn io_read(port: u32) -> u32;
+fn io_write(port: u32, value: u32);
+fn resume_user();
+fn wait_interrupt();
+fn power_off();
+
+var free_memory: u32;               // set at startup by krt.asm
+var ram_size: u32;
+var arena: Arena;
+var log: Writer;
+var log_buffer: [256]u8;
+
+var console_input: [4096]u8;
+var console_start: u32;
+var console_count: u32;
+var console_closed: bool;
+
+var clock_last: u32;
+var clock_micros: u32;
+var clock_millis: u32;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    writer_init(&log, STDOUT, log_buffer[:]);
+    memory_init(free_memory, ram_size);
+    if !fs_init() {
+        panic("the disk has no file system");
+    }
+    put(&log, "Terrarium: ");
+    put_u32(&log, (ram_size - free_memory) / KiB);
+    put(&log, " KiB for programs\n");
+    flush(&log);
+
+    var console = new_object(ObjectKind.Console);
+    console.refs = 0;
+    var handles: [3]*Object;
+    handles[0] = console;
+    handles[1] = console;
+    handles[2] = console;
+    if spawn_process(null, "/bin/init", "", handles[:]) == null {
+        panic("can't start /bin/init");
+    }
+    schedule();
+    return 0;
+}
+
+fn schedule() {
+    while true {
+        handle_interrupts();
+        var p = next_ready();
+        if p != null {
+            run(p);
+            continue;
+        }
+        if !any_alive() {
+            put(&log, "Terrarium: every process has ended\n");
+            flush(&log);
+            power_off();
+        }
+        var sleep = next_wake();
+        if sleep != 0 {
+            io_write(PORT_TIMER, (sleep - clock_ms()) * 1000 + 1);
+        } else {
+            io_write(PORT_TIMER, 0);
+        }
+        wait_interrupt();
+    }
+}
+
+fn handle_interrupts() {
+    var pending = io_read(PORT_PENDING);
+    if pending == 0 {
+        return;
+    }
+    io_write(PORT_PENDING, pending);
+    if pending & IRQ_CONSOLE != 0 {
+        receive_console();
+    }
+    wake_all();
+}
+
+fn receive_console() {
+    while true {
+        var c = io_read(PORT_CONSOLE_READ);
+        if c == CONSOLE_EMPTY {
+            return;
+        }
+        if c == CONSOLE_CLOSED {
+            console_closed = true;
+            return;
+        }
+        if console_count < console_input.len {
+            console_input[(console_start + console_count) % console_input.len] = c as u8;
+            console_count += 1;
+        }
+    }
+}
+
+// Milliseconds since the machine started.
+fn clock_ms() -> u32 {
+    var now = io_read(PORT_CLOCK);
+    clock_micros += now - clock_last;
+    clock_last = now;
+    clock_millis += clock_micros / 1000;
+    clock_micros %= 1000;
+    return clock_millis;
+}
+
+// Runs a process until it traps, then handles what it asked for.
+fn run(p: *Process) {
+    var data_size = p.memory - p.code_size;
+    for i in 0..9 {
+        io_write(PORT_USER_R0 + i, p.regs[i]);
+    }
+    io_write(PORT_USER_PC, p.pc);
+    io_write(PORT_USER_CODE_BASE, p.region);
+    io_write(PORT_USER_CODE_SIZE, p.code_size);
+    io_write(PORT_USER_DATA_BASE, p.region + p.code_size);
+    io_write(PORT_USER_DATA_SIZE, data_size);
+    io_write(PORT_USER_STACK_LIMIT, GUARD + data_size - p.stack_size);
+    io_write(PORT_TIMER, SLICE);
+    var before = io_read(0x0a);
+    resume_user();
+    p.cycles += io_read(0x0a) - before;
+    for i in 0..9 {
+        p.regs[i] = io_read(PORT_USER_R0 + i);
+    }
+    p.pc = io_read(PORT_USER_PC);
+
+    var cause = io_read(PORT_CAUSE);
+    if cause == CAUSE_SYS {
+        system_call(p, io_read(PORT_VALUE));
+    } else if cause == CAUSE_FAULT {
+        report_fault(p, io_read(PORT_VALUE), io_read(PORT_ADDRESS));
+        exit_process(p, 255);
+    }
+}
+
+fn fault_name(fault: u32) -> []u8 {
+    match fault {
+        1 => { return "illegal instruction"; }
+        2 => { return "bad code address"; }
+        3 => { return "bad data address"; }
+        4 => { return "misaligned access"; }
+        5 => { return "division by zero"; }
+        6 => { return "stack overflow"; }
+        7 => { return "privileged instruction"; }
+    }
+    return "fault";
+}
+
+fn report_fault(p: *Process, fault: u32, address: u32) {
+    put(&log, p.name[0:p.name_len]);
+    put(&log, ": ");
+    put(&log, fault_name(fault));
+    put(&log, " at 0x");
+    put_hex(&log, p.pc);
+    if fault == 3 || fault == 4 || fault == 6 {
+        put(&log, ", address 0x");
+        put_hex(&log, address);
+    }
+    put_byte(&log, '\n');
+    flush(&log);
+}

@@ -1,0 +1,21 @@
+// rm removes files and empty directories.
+
+manifest {
+    memory = 64 * KiB;
+    stack = 16 * KiB;
+}
+
+fn main(memory: []u8) -> u32 {
+    var arena: Arena;
+    arena_init(&arena, memory);
+    var args: [32][]u8;
+    var count = get_args(&arena, args[:]);
+    var status: u32 = 0;
+    for i in 0..count {
+        if remove(args[i]) == FAILED {
+            complain("rm", "can't remove", args[i]);
+            status = 1;
+        }
+    }
+    return status;
+}
