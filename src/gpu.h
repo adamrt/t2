@@ -35,6 +35,8 @@ enum {
 };
 
 #define GPU_MAX_CLIPS 64
+// A list stops once it has visited this many screens' worth of pixels.
+#define GPU_BUDGET_SCREENS 16
 
 typedef struct {
     uint32_t width;

@@ -91,6 +91,11 @@ Each command is its number followed by its arguments, all words:
 | 6 textured   | address, image width, image height, then x, y, u, v for each corner, tint |
 | 7 clip       | x, y, width, height: a further clip until the next one; a negative width ends it |
 
+A list can visit at most 16 screens' worth of pixels: every pixel inside
+the clip that a command's rectangle, text or triangle covers, and every step
+along a line, counts. The command that goes over fails and the rest of the
+list is skipped, so no list can hold up the machine for long.
+
 Colors with alpha below 255 blend with what's underneath. Image mode 0
 copies pixels, mode 1 blends them. A triangle mixes its corners' colors; a
 textured triangle samples the image at the corner coordinates, interpolated

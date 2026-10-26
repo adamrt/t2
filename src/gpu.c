@@ -1,6 +1,7 @@
 // The GPU runs command lists from RAM and draws into the back framebuffer.
 // Every coordinate is moved by the origin and clipped to the clip rectangles,
-// and images can only come from the source memory the kernel allows.
+// and images can only come from the source memory the kernel allows. A list
+// gets a budget of pixels to visit, so one list can't hold up the machine.
 
 #include "gpu.h"
 
@@ -17,6 +18,7 @@ typedef struct {
     Box clips[GPU_MAX_CLIPS];
     uint32_t clip_count;
     Box local;              // the list's own clip rectangle
+    uint64_t work;          // pixels visited, and steps along lines
 } Context;
 
 static uint32_t
@@ -40,6 +42,12 @@ max32(int32_t a, int32_t b)
 // Coordinates and sizes from a command list are kept small, so no sum or
 // product below can overflow, whatever the list says.
 #define LIMIT 32768
+
+static uint64_t
+box_area(Box b)
+{
+    return (uint64_t)(b.x1 - b.x0) * (uint64_t)(b.y1 - b.y0);
+}
 
 static int32_t
 coord(uint32_t v, int32_t origin)
@@ -138,12 +146,13 @@ fill_box(Context *c, Box box, uint32_t color)
         Box b = intersect(intersect(box, c->clips[i]), c->local);
         if (empty(b))
             continue;
+        c->work += box_area(b);
         for (int32_t y = b.y0; y < b.y1; y++) {
             uint32_t *row = &c->g->back[(size_t)y * c->g->width];
             for (int32_t x = b.x0; x < b.x1; x++)
                 row[x] = blend(row[x], color);
         }
-        c->g->pixels += (uint32_t)((b.x1 - b.x0) * (b.y1 - b.y0));
+        c->g->pixels += (uint32_t)box_area(b);
     }
 }
 
@@ -156,6 +165,7 @@ draw_line(Context *c, int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t c
         Box clip = intersect(c->clips[i], c->local);
         if (empty(clip))
             continue;
+        c->work += (uint64_t)max32(dx, -dy) + 1;
         int32_t x = x0, y = y0, err = dx + dy;
         for (;;) {
             plot(c, clip, x, y, color);
@@ -204,6 +214,7 @@ blit(Context *c, const uint32_t *w)
         Box b = intersect(intersect(dest, c->clips[i]), c->local);
         if (empty(b))
             continue;
+        c->work += box_area(b);
         for (int32_t y = b.y0; y < b.y1; y++) {
             uint32_t *row = &c->g->back[(size_t)y * c->g->width];
             const uint8_t *src = pixels + ((size_t)(sy + y - dy) * width + (size_t)(sx + b.x0 - dx)) * 4;
@@ -212,7 +223,7 @@ blit(Context *c, const uint32_t *w)
                 row[x] = mode == 0 ? (s | 0xff000000u) : blend(row[x], s);
             }
         }
-        c->g->pixels += (uint32_t)((b.x1 - b.x0) * (b.y1 - b.y0));
+        c->g->pixels += (uint32_t)box_area(b);
     }
     return true;
 }
@@ -235,6 +246,7 @@ text(Context *c, const uint32_t *w)
         if (ch < first || ch >= first + count)
             ch = '?' >= first && '?' < first + count ? '?' : first;
         const uint8_t *glyph = glyphs + (ch - first) * fh;
+        c->work += fw * fh;
         for (uint32_t row = 0; row < fh; row++) {
             for (uint32_t col = 0; col < fw; col++) {
                 if (glyph[row] & (0x80 >> col)) {
@@ -301,6 +313,7 @@ triangle(Context *c, Vertex v[3], const uint8_t *texture, uint32_t tw, uint32_t 
         Box b = intersect(intersect(bounds, c->clips[i]), c->local);
         if (empty(b))
             continue;
+        c->work += box_area(b);
         for (int32_t y = b.y0; y < b.y1; y++) {
             uint32_t *row = &c->g->back[(size_t)y * c->g->width];
             for (int32_t x = b.x0; x < b.x1; x++) {
@@ -364,6 +377,7 @@ run(Gpu *g, Machine *m)
     const uint8_t *list = physical(m, g->commands, (uint64_t)g->length * 4);
     if (list == NULL)
         return 1;
+    uint64_t budget = GPU_BUDGET_SCREENS * box_area(screen);
 
     for (uint32_t at = 0; at < g->length;) {
         uint32_t op = word(list + at * 4);
@@ -419,7 +433,7 @@ run(Gpu *g, Machine *m)
             }
             break;
         }
-        if (!ok)
+        if (!ok || c.work > budget)
             return at + 1;
         at += n;
     }
