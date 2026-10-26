@@ -34,6 +34,7 @@ enum N {
 
     // Expressions
     Int,            // value
+    Fixed,          // value, in 16.16
     Str,            // name: bytes, value: label number
     Name,           // name, then local or sym
     Bool,           // value
@@ -472,6 +473,12 @@ fn parse_primary() -> *Node {
     match tok.kind {
         Tok.Int => {
             n = node(N.Int);
+            n.value = tok.value;
+            next_token();
+            return n;
+        }
+        Tok.Fixed => {
+            n = node(N.Fixed);
             n.value = tok.value;
             next_token();
             return n;

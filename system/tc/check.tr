@@ -108,7 +108,8 @@ fn check_statement(st: *Node) {
             if st.op == Tok.Assign {
                 coerce(st.b, check(st.b, target), target);
             } else {
-                if !is_int(target) {
+                var fixed_ok = st.op == Tok.PlusAssign || st.op == Tok.MinusAssign || st.op == Tok.StarAssign || st.op == Tok.SlashAssign;
+                if !is_int(target) && !(is_fixed(target) && fixed_ok) {
                     fail(st, "this assignment needs an integer");
                 }
                 var operand = arith(target);
@@ -241,6 +242,11 @@ fn coerce(e: *Node, t: *Type, want: *Type) {
         return;
     }
     if t == t_untyped {
+        if is_fixed(want) {
+            e.value = e.value << 16;
+            e.ty = want;
+            return;
+        }
         if !is_int(want) {
             error_start(e.file, e.line);
             put(&errors, "a number can't be a ");
@@ -351,6 +357,10 @@ fn check_expr(e: *Node, want: *Type) -> *Type {
         N.Int => {
             set_const(e, e.value);
             return t_untyped;
+        }
+        N.Fixed => {
+            set_const(e, e.value);
+            return t_fixed;
         }
         N.Bool => {
             return t_bool;
@@ -547,6 +557,12 @@ fn check_unary(e: *Node, want: *Type) -> *Type {
         }
         return t_untyped;
     }
+    if is_fixed(t) && e.op == Tok.Minus {
+        if e.a.flags & IS_CONST != 0 {
+            set_const(e, 0 - e.a.value);
+        }
+        return t;
+    }
     if !is_int(t) {
         fail(e, "this operator needs an integer");
     }
@@ -632,10 +648,13 @@ fn check_binary(e: *Node) -> *Type {
         if (ty.kind == TypeKind.Ptr || ty.kind == TypeKind.Bool) && op != Tok.Equal && op != Tok.NotEqual {
             fail(e, "pointers and bools can only be compared with == and !=");
         }
-        if ty.kind != TypeKind.Int && ty.kind != TypeKind.Enum && ty.kind != TypeKind.Ptr && ty.kind != TypeKind.Bool {
+        if ty.kind != TypeKind.Int && ty.kind != TypeKind.Fixed && ty.kind != TypeKind.Enum && ty.kind != TypeKind.Ptr && ty.kind != TypeKind.Bool {
             fail(e, "these values can't be compared");
         }
         return t_bool;
+    }
+    if is_fixed(ty) && (op == Tok.Plus || op == Tok.Minus || op == Tok.Star || op == Tok.Slash) {
+        return ty;
     }
     if !is_int(ty) {
         fail(e, "this operator needs integers");
@@ -686,6 +705,11 @@ fn check_cast(e: *Node) -> *Type {
             set_const(e, e.a.value);
             return target;
         }
+        if is_fixed(target) {
+            e.a.ty = t_u32;
+            set_const(e, e.a.value << 16);
+            return target;
+        }
         error_start(e.file, e.line);
         put(&errors, "can't convert a number to ");
         put_type(&errors, target);
@@ -702,6 +726,9 @@ fn check_cast(e: *Node) -> *Type {
         ok = true;
     }
     if t == t_bool && is_int(target) {
+        ok = true;
+    }
+    if (is_int(t) && is_fixed(target)) || (is_fixed(t) && is_int(target)) {
         ok = true;
     }
     if !ok {

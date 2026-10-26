@@ -1,7 +1,7 @@
 # Terrarium CPU
 
 A 32-bit little-endian CPU with eight general registers, a stack pointer, and
-43 operations. Every instruction is one 32-bit word.
+45 operations. Every instruction is one 32-bit word.
 
 ## Registers
 
@@ -84,9 +84,14 @@ is the register opcode plus `0x10`, and uses `imm` in place of `c`.
 | `0x1a` | `0x2a` | shl  | `a = b << (c & 31)`            |
 | `0x1b` | `0x2b` | shr  | `a = b >> (c & 31)`, logical   |
 | `0x1c` | `0x2c` | sar  | `a = b >> (c & 31)`, arithmetic|
+| `0x1d` | `0x2d` | fmul | `a = b * c` in 16.16 fixed point |
+| `0x1e` | `0x2e` | fdiv | `a = b / c` in 16.16 fixed point |
 
 Arithmetic wraps. Division by zero faults. Signed division rounds toward zero;
 `0x80000000 / -1` gives `0x80000000` and remainder 0.
+
+`fmul` keeps the middle 32 bits of the signed 64-bit product, rounded
+down; `fdiv` divides the dividend times 65536, rounding toward zero.
 
 A move is `add` with an immediate of zero.
 

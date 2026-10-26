@@ -24,6 +24,7 @@ visible in every file, and declarations can appear in any order.
 | `u16`     | 16-bit unsigned integer                                  |
 | `u32`     | 32-bit unsigned integer                                  |
 | `i32`     | 32-bit signed integer                                    |
+| `fixed`   | 16.16 fixed point: from −32768 to just under 32768       |
 | `bool`    | `true` or `false`                                        |
 | `*T`      | pointer to a `T`, or `null`                              |
 | `[]T`     | slice: a pointer and a length                            |
@@ -32,6 +33,12 @@ visible in every file, and declarations can appear in any order.
 
 Arithmetic happens on `u32` and `i32`. A `u8` or `u16` becomes a `u32` when
 it takes part in arithmetic or a comparison.
+
+`fixed` numbers have 16 bits after the point. They add, subtract, multiply,
+divide and compare, but don't mix with integers: `x as fixed` and `f as i32`
+convert, the second rounding down. Literals with a point, like `1.5` or
+`0.25`, are `fixed`, and a whole-number constant becomes a `fixed` where one
+is needed, so `f * 2` doubles `f`.
 
 Values never change type silently, with two exceptions:
 

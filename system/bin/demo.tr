@@ -15,9 +15,6 @@ var words: [2048]u32;
 var checker_pixels: [32 * 32]u32;
 var checker: Image;
 
-// sine of each degree, times 1024
-var sines: [360]i32;
-
 fn main(memory: []u8) -> u32 {
     var window = window_open("GPU demo", WIDTH, HEIGHT);
     if window == FAILED {
@@ -25,7 +22,6 @@ fn main(memory: []u8) -> u32 {
         return 1;
     }
     canvas_init(&canvas, window, words[:], strings[:]);
-    make_sines();
     for y in 0..32 {
         for x in 0..32 {
             var color = rgb(232, 195, 90);
@@ -48,34 +44,15 @@ fn main(memory: []u8) -> u32 {
             }
         }
         draw(angle);
-        angle = (angle + 2) % 360;
+        angle += 23;
         sleep(16);
     }
     return 0;
 }
 
-// Builds the sine table by rotating a vector a degree at a time.
-fn make_sines() {
-    // cos and sin of one degree, times 2^20
-    var c: i32 = 1048416;
-    var s: i32 = 18300;
-    var x: i32 = 1 << 20;
-    var y: i32 = 0;
-    for i in 0..360 {
-        sines[i] = y >> 10;
-        var nx = (x >> 10) * (c >> 10) - (y >> 10) * (s >> 10);
-        var ny = (x >> 10) * (s >> 10) + (y >> 10) * (c >> 10);
-        x = nx;
-        y = ny;
-    }
-}
-
-fn sine(degrees: u32) -> i32 {
-    return sines[degrees % 360];
-}
-
-fn cosine(degrees: u32) -> i32 {
-    return sines[(degrees + 90) % 360];
+// A point at an angle around a center.
+fn around(center: i32, radius: fixed, wave: fixed) -> i32 {
+    return center + (wave * radius) as i32;
 }
 
 fn draw(angle: u32) {
@@ -85,30 +62,26 @@ fn draw(angle: u32) {
         draw_line(&canvas, 0, y, WIDTH, y, rgb(48, 48, 56));
     }
     // A spinning triangle with a color at each corner.
-    var cx: i32 = 110;
-    var cy: i32 = 130;
-    var r: i32 = 80;
-    var x0 = cx + cosine(angle) * r / 1024;
-    var y0 = cy + sine(angle) * r / 1024;
-    var x1 = cx + cosine(angle + 120) * r / 1024;
-    var y1 = cy + sine(angle + 120) * r / 1024;
-    var x2 = cx + cosine(angle + 240) * r / 1024;
-    var y2 = cy + sine(angle + 240) * r / 1024;
+    var third = TURN / 3;
+    var x0 = around(110, 80, cos(angle));
+    var y0 = around(130, 80, sin(angle));
+    var x1 = around(110, 80, cos(angle + third));
+    var y1 = around(130, 80, sin(angle + third));
+    var x2 = around(110, 80, cos(angle + 2 * third));
+    var y2 = around(130, 80, sin(angle + 2 * third));
     draw_triangle(&canvas, x0, y0, rgb(232, 90, 80), x1, y1, rgb(90, 200, 120), x2, y2, rgb(80, 140, 232));
 
     // A textured square, as two triangles.
-    var sx: i32 = 260;
-    var sy: i32 = 130;
-    var h: i32 = 60;
     var a = angle * 3 / 2;
-    var px0 = sx + cosine(a) * h / 1024;
-    var py0 = sy + sine(a) * h / 1024;
-    var px1 = sx + cosine(a + 90) * h / 1024;
-    var py1 = sy + sine(a + 90) * h / 1024;
-    var px2 = sx + cosine(a + 180) * h / 1024;
-    var py2 = sy + sine(a + 180) * h / 1024;
-    var px3 = sx + cosine(a + 270) * h / 1024;
-    var py3 = sy + sine(a + 270) * h / 1024;
+    var quarter = TURN / 4;
+    var px0 = around(260, 60, cos(a));
+    var py0 = around(130, 60, sin(a));
+    var px1 = around(260, 60, cos(a + quarter));
+    var py1 = around(130, 60, sin(a + quarter));
+    var px2 = around(260, 60, cos(a + 2 * quarter));
+    var py2 = around(130, 60, sin(a + 2 * quarter));
+    var px3 = around(260, 60, cos(a + 3 * quarter));
+    var py3 = around(130, 60, sin(a + 3 * quarter));
     draw_textured(&canvas, &checker, px0, py0, 0, 0, px1, py1, 64, 0, px2, py2, 64, 64, 0xffffffff);
     draw_textured(&canvas, &checker, px0, py0, 0, 0, px2, py2, 64, 64, px3, py3, 0, 64, 0xffffffff);
 

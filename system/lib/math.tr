@@ -1,0 +1,178 @@
+// Fixed-point math for graphics: the vector and matrix types the system
+// shares. Angles are in 4096ths of a turn, so 1024 is a right angle.
+
+struct Vec2 {
+    x: fixed;
+    y: fixed;
+}
+
+struct Vec3 {
+    x: fixed;
+    y: fixed;
+    z: fixed;
+}
+
+struct Vec4 {
+    x: fixed;
+    y: fixed;
+    z: fixed;
+    w: fixed;
+}
+
+// Rows of four: m[row * 4 + column]. Vectors are columns.
+struct Mat4 {
+    m: [16]fixed;
+}
+
+const TURN: u32 = 4096;
+
+var sine_table: [1025]fixed;
+var sine_ready: bool;
+
+// Fills the quarter-wave table from a polynomial: x - x^3/6 + x^5/120 - x^7/5040.
+fn make_sines() {
+    for i in 0..1025 {
+        var x = (i as fixed) * 1.5708 / 1024;
+        var x2 = x * x;
+        var term = x;
+        var sum = x;
+        term = term * x2 / 6;
+        sum -= term;
+        term = term * x2 / 20;
+        sum += term;
+        term = term * x2 / 42;
+        sum -= term;
+        sine_table[i] = sum;
+    }
+    sine_table[1024] = 1;
+    sine_ready = true;
+}
+
+fn sin(angle: u32) -> fixed {
+    if !sine_ready {
+        make_sines();
+    }
+    var a = angle % TURN;
+    if a < 1024 {
+        return sine_table[a];
+    }
+    if a < 2048 {
+        return sine_table[2048 - a];
+    }
+    if a < 3072 {
+        return -sine_table[a - 2048];
+    }
+    return -sine_table[4096 - a];
+}
+
+fn cos(angle: u32) -> fixed {
+    return sin(angle + 1024);
+}
+
+fn vec3_set(v: *Vec3, x: fixed, y: fixed, z: fixed) {
+    v.x = x;
+    v.y = y;
+    v.z = z;
+}
+
+fn dot(a: *Vec3, b: *Vec3) -> fixed {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+fn cross(a: *Vec3, b: *Vec3, out: *Vec3) {
+    var x = a.y * b.z - a.z * b.y;
+    var y = a.z * b.x - a.x * b.z;
+    var z = a.x * b.y - a.y * b.x;
+    vec3_set(out, x, y, z);
+}
+
+fn mat4_identity(m: *Mat4) {
+    for i in 0..16 {
+        m.m[i] = 0;
+    }
+    m.m[0] = 1;
+    m.m[5] = 1;
+    m.m[10] = 1;
+    m.m[15] = 1;
+}
+
+// out = a * b. out can't be a or b.
+fn mat4_multiply(out: *Mat4, a: *Mat4, b: *Mat4) {
+    for row in 0..4 {
+        for column in 0..4 {
+            var sum: fixed = 0;
+            for k in 0..4 {
+                sum += a.m[row * 4 + k] * b.m[k * 4 + column];
+            }
+            out.m[row * 4 + column] = sum;
+        }
+    }
+}
+
+// m = m * other
+fn mat4_apply(m: *Mat4, other: *Mat4) {
+    var result: Mat4;
+    mat4_multiply(&result, m, other);
+    *m = result;
+}
+
+fn mat4_rotate_x(m: *Mat4, angle: u32) {
+    var r: Mat4;
+    mat4_identity(&r);
+    var c = cos(angle);
+    var s = sin(angle);
+    r.m[5] = c;
+    r.m[6] = -s;
+    r.m[9] = s;
+    r.m[10] = c;
+    mat4_apply(m, &r);
+}
+
+fn mat4_rotate_y(m: *Mat4, angle: u32) {
+    var r: Mat4;
+    mat4_identity(&r);
+    var c = cos(angle);
+    var s = sin(angle);
+    r.m[0] = c;
+    r.m[2] = s;
+    r.m[8] = -s;
+    r.m[10] = c;
+    mat4_apply(m, &r);
+}
+
+fn mat4_rotate_z(m: *Mat4, angle: u32) {
+    var r: Mat4;
+    mat4_identity(&r);
+    var c = cos(angle);
+    var s = sin(angle);
+    r.m[0] = c;
+    r.m[1] = -s;
+    r.m[4] = s;
+    r.m[5] = c;
+    mat4_apply(m, &r);
+}
+
+fn mat4_translate(m: *Mat4, x: fixed, y: fixed, z: fixed) {
+    var t: Mat4;
+    mat4_identity(&t);
+    t.m[3] = x;
+    t.m[7] = y;
+    t.m[11] = z;
+    mat4_apply(m, &t);
+}
+
+// out = m * (v, 1)
+fn transform(m: *Mat4, v: *Vec3, out: *Vec3) {
+    var x = m.m[0] * v.x + m.m[1] * v.y + m.m[2] * v.z + m.m[3];
+    var y = m.m[4] * v.x + m.m[5] * v.y + m.m[6] * v.z + m.m[7];
+    var z = m.m[8] * v.x + m.m[9] * v.y + m.m[10] * v.z + m.m[11];
+    vec3_set(out, x, y, z);
+}
+
+// out = m * (v, 0): a direction, which translation doesn't move.
+fn transform_direction(m: *Mat4, v: *Vec3, out: *Vec3) {
+    var x = m.m[0] * v.x + m.m[1] * v.y + m.m[2] * v.z;
+    var y = m.m[4] * v.x + m.m[5] * v.y + m.m[6] * v.z;
+    var z = m.m[8] * v.x + m.m[9] * v.y + m.m[10] * v.z;
+    vec3_set(out, x, y, z);
+}

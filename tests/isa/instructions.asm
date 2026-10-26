@@ -92,6 +92,32 @@ start:
     r3 = r0 & -1        ; immediates are sign-extended
     if r3 != r0 goto fail
 
+    r2 = 42             ; fixed point: 1.5 * 2.0 = 3.0
+    r0 = 0x18000
+    r1 = 0x20000
+    r3 = r0 *f r1
+    r4 = 0x30000
+    if r3 != r4 goto fail
+    r2 = 43             ; 3.0 / 2.0 = 1.5
+    r3 = r3 /f r1
+    if r3 != r0 goto fail
+    r2 = 44             ; -1.5 * 2.0 = -3.0
+    r0 = -0x18000
+    r3 = r0 *f r1
+    r4 = -0x30000
+    if r3 != r4 goto fail
+    r2 = 45             ; products round down: -1/65536 * 0.5 = -1/65536
+    r0 = -1
+    r1 = 0x8000
+    r3 = r0 *f r1
+    if r3 != r0 goto fail
+    r2 = 46             ; division by zero faults, so only check -3.0 / 1.5
+    r0 = -0x30000
+    r1 = 0x18000
+    r3 = r0 /f r1
+    r4 = -0x20000
+    if r3 != r4 goto fail
+
     r2 = 19             ; memory
     r0 = buffer
     r1 = 0x11223344

@@ -2,6 +2,7 @@
 
 enum TypeKind {
     Int,
+    Fixed,          // 16.16 fixed point
     Bool,
     Ptr,
     Slice,
@@ -67,6 +68,7 @@ var t_u8: *Type;
 var t_u16: *Type;
 var t_u32: *Type;
 var t_i32: *Type;
+var t_fixed: *Type;
 var t_bool: *Type;
 var t_untyped: *Type;
 var t_null: *Type;
@@ -90,6 +92,8 @@ fn init_types() {
     t_u32 = make_type(TypeKind.Int, "u32", 4);
     t_i32 = make_type(TypeKind.Int, "i32", 4);
     t_i32.signed = true;
+    t_fixed = make_type(TypeKind.Fixed, "fixed", 4);
+    t_fixed.signed = true;
     t_bool = make_type(TypeKind.Bool, "bool", 1);
     t_untyped = make_type(TypeKind.Untyped, "constant", 4);
     t_null = make_type(TypeKind.Null, "null", 4);
@@ -101,6 +105,7 @@ fn builtin_type(name: []u8) -> *Type {
     if text_equal(name, "u16") { return t_u16; }
     if text_equal(name, "u32") { return t_u32; }
     if text_equal(name, "i32") { return t_i32; }
+    if text_equal(name, "fixed") { return t_fixed; }
     if text_equal(name, "bool") { return t_bool; }
     return null;
 }
@@ -143,7 +148,11 @@ fn is_int(t: *Type) -> bool {
 }
 
 fn is_scalar(t: *Type) -> bool {
-    return t.kind == TypeKind.Int || t.kind == TypeKind.Bool || t.kind == TypeKind.Ptr || t.kind == TypeKind.Enum;
+    return t.kind == TypeKind.Int || t.kind == TypeKind.Fixed || t.kind == TypeKind.Bool || t.kind == TypeKind.Ptr || t.kind == TypeKind.Enum;
+}
+
+fn is_fixed(t: *Type) -> bool {
+    return t.kind == TypeKind.Fixed;
 }
 
 fn is_aggregate(t: *Type) -> bool {

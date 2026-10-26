@@ -32,6 +32,8 @@ enum {
     OP_SHL,
     OP_SHR,
     OP_SAR,
+    OP_FMUL,
+    OP_FDIV,
 
     OP_LD = 0x30,
     OP_LD16,

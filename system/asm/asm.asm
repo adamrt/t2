@@ -70,13 +70,13 @@ D_ALIGN = 6
 D_MEMORY = 7
 D_STACK = 8
 
-OP_PLUS = 26
-OP_MINUS = 27
-OP_ASSIGN = 36
-OP_LBRACKET = 37
-OP_RBRACKET = 38
-OP_COMMA = 39
-OP_COLON = 40
+OP_PLUS = 30
+OP_MINUS = 31
+OP_ASSIGN = 40
+OP_LBRACKET = 41
+OP_RBRACKET = 42
+OP_COMMA = 43
+OP_COLON = 44
 
 ; A symbol is five words: name, name length, kind, value, line.
 S_CONST = 1
@@ -652,12 +652,16 @@ match_operator_next:
     r2 = r3
     call bytes_equal
     if r0 == 0 goto match_operator_skip
-    ; An operator ending in 's' can't run into a name: "/size" is "/" "size".
+    ; An operator ending in a letter can't run into a name: "/size" is "/"
+    ; then "size".
     r3 = u8 [r6]
     r0 = r6 + r3
     r0 = u8 [r0]
-    r1 = 's'
-    if r0 != r1 goto match_operator_found
+    r1 = char_classes
+    r1 += r0
+    r1 = u8 [r1]
+    r2 = 2
+    if r1 != r2 goto match_operator_found
     r0 = r4 + r3
     if r0 >= r5 goto match_operator_found
     r0 = u8 [r0]
@@ -2208,32 +2212,33 @@ print_decimal_next:
 
 operators:
     .byte 4, ">>s="
-    .byte 3, "<<=", 3, ">>=", 3, "/s=", 3, "%s=", 3, ">>s", 3, "<=s", 3, ">=s"
+    .byte 3, "<<=", 3, ">>=", 3, "/s=", 3, "%s=", 3, ">>s", 3, "<=s", 3, ">=s", 3, "*f="
+    .byte 3, "/f="
     .byte 2, "<<", 2, ">>", 2, "==", 2, "!=", 2, "<=", 2, ">=", 2, "+=", 2, "-="
     .byte 2, "*=", 2, "/=", 2, "%=", 2, "&=", 2, "|=", 2, "^=", 2, "/s", 2, "%s"
-    .byte 2, "<s", 2, ">s"
+    .byte 2, "<s", 2, ">s", 2, "*f", 2, "/f"
     .byte 1, "+", 1, "-", 1, "*", 1, "/", 1, "%", 1, "&", 1, "|", 1, "^"
     .byte 1, "<", 1, ">", 1, "=", 1, "[", 1, "]", 1, ",", 1, ":"
     .byte 0
 
 ; For each operator id: its arithmetic opcode as a binary operator, or 0.
 binary_ops:
-    .byte 0, 0, 0, 0, 0, 0x1c, 0, 0
-    .byte 0x1a, 0x1b, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14, 0x16, 0, 0
+    .byte 0, 0, 0, 0, 0, 0x1c, 0, 0, 0, 0, 0x1a, 0x1b, 0, 0, 0
+    .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14, 0x16, 0, 0, 0x1d, 0x1e
     .byte 0x10, 0x11, 0x12, 0x13, 0x15, 0x17, 0x18, 0x19, 0, 0, 0, 0, 0, 0, 0
 
 ; For each operator id: its arithmetic opcode as a compound assignment, or 0.
 assign_ops:
-    .byte 0x1c, 0x1a, 0x1b, 0x14, 0x16, 0, 0, 0
-    .byte 0, 0, 0, 0, 0, 0, 0x10, 0x11, 0x12, 0x13, 0x15, 0x17, 0x18, 0x19, 0, 0, 0, 0
+    .byte 0x1c, 0x1a, 0x1b, 0x14, 0x16, 0, 0, 0, 0x1d, 0x1e, 0, 0, 0, 0, 0
+    .byte 0, 0x10, 0x11, 0x12, 0x13, 0x15, 0x17, 0x18, 0x19, 0, 0, 0, 0, 0, 0
     .byte 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 ; For each operator id: 0, or a branch code. The low four bits are the branch
 ; opcode minus 0x3f; 16 is added when the operands swap.
 compare_ops:
-    .byte 0, 0, 0, 0, 0, 0, 0x16, 0x06
-    .byte 0, 0, 1, 2, 0x14, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0x15
-    .byte 0, 0, 0, 0, 0, 0, 0, 0, 3, 0x13, 0, 0, 0, 0, 0
+    .byte 0, 0, 0, 0, 0, 0, 0x16, 0x06, 0, 0, 0, 0, 0x01, 0x02, 0x14
+    .byte 0x04, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x05, 0x15, 0, 0
+    .byte 0, 0, 0, 0, 0, 0, 0, 0, 0x03, 0x13, 0, 0, 0, 0, 0
 
 keywords:
     .byte 2, "if", 4, "goto", 4, "call", 6, "return", 4, "push", 3, "pop"

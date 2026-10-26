@@ -61,9 +61,9 @@ op_format(uint32_t op)
     case OP_SYS:
         return FMT_I;
     }
-    if (op >= OP_ADD && op <= OP_SAR)
+    if (op >= OP_ADD && op <= OP_FDIV)
         return FMT_ABC;
-    if (op >= OP_ADD + OP_IMM && op <= OP_SAR + OP_IMM)
+    if (op >= OP_ADD + OP_IMM && op <= OP_FDIV + OP_IMM)
         return FMT_ABI;
     return FMT_ILLEGAL;
 }
@@ -260,6 +260,17 @@ alu(uint32_t op, uint32_t x, uint32_t y, uint32_t *out)
     case OP_SHL: *out = x << (y & 31); break;
     case OP_SHR: *out = x >> (y & 31); break;
     case OP_SAR: *out = shift_right_arith(x, y & 31); break;
+    case OP_FMUL: {
+        // 16.16 fixed point: the product's middle 32 bits, rounded down.
+        int64_t p = (int64_t)(int32_t)x * (int32_t)y;
+        *out = (uint32_t)(uint64_t)((p - (p < 0 ? 65535 : 0)) / 65536);
+        break;
+    }
+    case OP_FDIV:
+        if (y == 0)
+            return false;
+        *out = (uint32_t)(uint64_t)((int64_t)(int32_t)x * 65536 / (int32_t)y);
+        break;
     case OP_DIV:
     case OP_DIVS:
     case OP_REM:

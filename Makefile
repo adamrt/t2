@@ -10,18 +10,19 @@ SDL_LIBS := $(shell pkg-config --libs sdl3)
 
 RUNTIME = system/lib/rt.asm
 LIBRARY = system/lib/core.tr
-OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr
+OS_LIBRARY = $(LIBRARY) system/lib/os.tr system/lib/gfx.tr system/lib/math.tr
 TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
 KERNEL_SOURCE = $(LIBRARY) $(wildcard system/kernel/*.tr)
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit cube
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.
 DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 	$(BUILD)/asm.bin:/bin/asm $(BUILD)/tc.bin:/bin/tc $(BUILD)/terra.tfn:/system/font \
 	system/lib/rt.asm:/lib/rt.asm system/lib/core.tr:/lib/core.tr system/lib/os.tr:/lib/os.tr \
+	system/lib/gfx.tr:/lib/gfx.tr system/lib/math.tr:/lib/math.tr \
 	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm
 
 .PHONY: all test seed run clean

@@ -68,6 +68,13 @@ r0 = r1 /s r2
 r0 >>s= 4
 ```
 
+`*f` and `/f` multiply and divide 16.16 fixed-point numbers:
+
+```asm
+r0 = r1 *f r2
+r0 /f= r3
+```
+
 ### Memory
 
 ```asm

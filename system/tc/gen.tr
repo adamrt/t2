@@ -506,7 +506,8 @@ fn store(reg: []u8, t: *Type) {
 // Expressions ----------------------------------------------------------------
 
 fn is_constant(e: *Node) -> bool {
-    return e.flags & IS_CONST != 0 && (e.ty.kind == TypeKind.Int || e.ty.kind == TypeKind.Enum || e.ty.kind == TypeKind.Untyped);
+    var k = e.ty.kind;
+    return e.flags & IS_CONST != 0 && (k == TypeKind.Int || k == TypeKind.Fixed || k == TypeKind.Enum || k == TypeKind.Untyped);
 }
 
 fn gen_expr(e: *Node) {
@@ -599,6 +600,11 @@ fn gen_value(e: *Node) {
         N.Cast => {
             gen_expr(e.a);
             var from = e.a.ty;
+            if is_fixed(t) && is_int(from) {
+                emit("r0 <<= 16");
+            } else if is_fixed(from) && is_int(t) {
+                emit("r0 >>s= 16");
+            }
             if is_int(t) && t.size < 4 && !(is_int(from) && from.size <= t.size) {
                 if t.size == 2 {
                     emit("r0 <<= 16");
@@ -806,7 +812,7 @@ fn gen_slice(e: *Node) {
 // constant right operand goes in `immediate` instead, and this returns true.
 fn gen_operands(e: *Node, allow_immediate: bool) -> bool {
     var right = e.b;
-    if right.flags & IS_CONST != 0 && (right.ty.kind == TypeKind.Int || right.ty.kind == TypeKind.Enum) {
+    if right.flags & IS_CONST != 0 && (right.ty.kind == TypeKind.Int || right.ty.kind == TypeKind.Fixed || right.ty.kind == TypeKind.Enum) {
         gen_expr(e.a);
         var v = right.value as i32;
         if allow_immediate && v >= -32768 && v <= 32767 {
@@ -826,18 +832,19 @@ fn gen_operands(e: *Node, allow_immediate: bool) -> bool {
 
 // Emits r0 = r0 op r1, or with the immediate when use_immediate.
 fn operate(op: Tok, ty: *Type, use_immediate: bool) {
-    var signed = is_int(ty) && ty.signed;
+    var signed = ty.signed;
+    var fixed = is_fixed(ty);
     start_line();
     put(&out, "r0 = r0 ");
     match op {
         Tok.Plus => { put(&out, "+"); }
         Tok.Minus => { put(&out, "-"); }
-        Tok.Star => { put(&out, "*"); }
+        Tok.Star => { if fixed { put(&out, "*f"); } else { put(&out, "*"); } }
         Tok.Amp => { put(&out, "&"); }
         Tok.Pipe => { put(&out, "|"); }
         Tok.Caret => { put(&out, "^"); }
         Tok.Shl => { put(&out, "<<"); }
-        Tok.Slash => { if signed { put(&out, "/s"); } else { put(&out, "/"); } }
+        Tok.Slash => { if fixed { put(&out, "/f"); } else if signed { put(&out, "/s"); } else { put(&out, "/"); } }
         Tok.Percent => { if signed { put(&out, "%s"); } else { put(&out, "%"); } }
         Tok.Shr => { if signed { put(&out, ">>s"); } else { put(&out, ">>"); } }
     }
@@ -915,7 +922,7 @@ fn gen_cond(e: *Node, label: u32, when: bool) {
         if !when {
             op = negate(op);
         }
-        var signed = is_int(e.operand) && e.operand.signed;
+        var signed = e.operand.signed;
         gen_operands(e, false);
         start_line();
         put(&out, "if r0 ");

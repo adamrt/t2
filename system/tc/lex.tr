@@ -4,6 +4,7 @@ enum Tok {
     End,
     Name,
     Int,
+    Fixed,
     Str,
 
     KwFn, KwStruct, KwEnum, KwConst, KwVar, KwManifest, KwIf, KwElse, KwWhile,
@@ -218,6 +219,30 @@ fn lex_number() {
         lex_fail("bad number");
     }
     tok.value = value;
+    if base == 10 && peek_char(0) == '.' && is_digit(peek_char(1)) {
+        lex_fraction();
+    }
+}
+
+// Reads the digits after the point of a fixed-point number like 1.25.
+fn lex_fraction() {
+    lex_pos += 1;
+    var start = lex_pos;
+    while lex_pos < lex_text.len && is_digit(lex_text[lex_pos]) {
+        lex_pos += 1;
+    }
+    // Work from the last digit to the first, dividing by ten each time.
+    var fraction: u32 = 0;
+    var i = lex_pos;
+    while i > start {
+        i -= 1;
+        fraction = (fraction + (lex_text[i] - '0') * 65536) / 10;
+    }
+    if tok.value > 32767 {
+        lex_fail("fixed-point numbers must be below 32768");
+    }
+    tok.kind = Tok.Fixed;
+    tok.value = (tok.value << 16) + fraction;
 }
 
 // Reads one character of a string or character literal, decoding escapes.

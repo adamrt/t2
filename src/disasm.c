@@ -8,7 +8,7 @@ static const char *reg_names[16] = {
 };
 
 static const char *alu_ops[] = {
-    "+", "-", "*", "/", "/s", "%", "%s", "&", "|", "^", "<<", ">>", ">>s",
+    "+", "-", "*", "/", "/s", "%", "%s", "&", "|", "^", "<<", ">>", ">>s", "*f", "/f",
 };
 
 static const char *branch_ops[] = {
@@ -111,7 +111,7 @@ disasm(uint32_t ins, uint32_t pc, char *out, size_t size)
 
     if (op >= OP_BEQ && op <= OP_BGES) {
         snprintf(out, size, "if %s %s %s goto 0x%x", a, branch_ops[op - OP_BEQ], b, target);
-    } else if (op >= OP_ADD && op <= OP_SAR) {
+    } else if (op >= OP_ADD && op <= OP_FDIV) {
         snprintf(out, size, "%s = %s %s %s", a, b, alu_ops[op - OP_ADD], c);
     } else if (op == OP_ADD + OP_IMM && imm == 0) {
         snprintf(out, size, "%s = %s", a, b);
