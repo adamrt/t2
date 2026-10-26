@@ -15,7 +15,7 @@ TC_SOURCE = $(LIBRARY) $(wildcard system/tc/*.tr)
 KERNEL_SOURCE = $(LIBRARY) $(wildcard system/kernel/*.tr)
 TOOLS = $(BUILD)/asm.bin $(BUILD)/tc.bin
 
-PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo
+PROGRAMS = init sh ls cat echo mkdir rm cp ps kill mem sleep wc term demo edit
 PROGRAM_BINS = $(PROGRAMS:%=$(BUILD)/bin/%.bin)
 
 # What goes on the disk, as host-file:/disk/path.

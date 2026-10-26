@@ -10,6 +10,7 @@ const WIDTH = 360;
 const HEIGHT = 280;
 
 var canvas: Canvas;
+var strings: [1024]u8;
 var words: [2048]u32;
 var checker_pixels: [32 * 32]u32;
 var checker: Image;
@@ -23,7 +24,7 @@ fn main(memory: []u8) -> u32 {
         complain("demo", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:]);
+    canvas_init(&canvas, window, words[:], strings[:]);
     make_sines();
     for y in 0..32 {
         for x in 0..32 {

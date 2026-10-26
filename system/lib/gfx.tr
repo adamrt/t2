@@ -1,5 +1,7 @@
 // Windows and drawing. A Canvas collects GPU commands for a window, and
-// present() sends them. Coordinates are relative to the window's top left, and
+// present() sends them. The GPU reads text and images when the commands run,
+// so the canvas keeps its own copy of any text; images must stay unchanged
+// until present(). Coordinates are relative to the window's top left, and
 // colors are 0xAARRGGBB. The GPU commands are described in spec/devices.md.
 
 const EVENT_DRAW: u32 = 1;
@@ -73,12 +75,17 @@ struct Canvas {
     window: u32;
     words: []u32;
     used: u32;
+    strings: []u8;
+    strings_used: u32;
 }
 
-fn canvas_init(c: *Canvas, window: u32, words: []u32) {
+// The canvas keeps commands in words and copies of text in strings.
+fn canvas_init(c: *Canvas, window: u32, words: []u32, strings: []u8) {
     c.window = window;
     c.words = words;
     c.used = 0;
+    c.strings = strings;
+    c.strings_used = 0;
 }
 
 // Sends the collected commands to the window.
@@ -87,6 +94,7 @@ fn present(c: *Canvas) {
         window_draw(c.window, c.words[0:c.used]);
         c.used = 0;
     }
+    c.strings_used = 0;
 }
 
 // Starts a command of n words, sending earlier ones first if they won't fit.
@@ -137,13 +145,22 @@ fn draw_image(c: *Canvas, image: *Image, sx: i32, sy: i32, w: i32, h: i32, dx: i
 }
 
 fn draw_text_scaled(c: *Canvas, x: i32, y: i32, color: u32, text: []u8, scale: u32) {
+    if text.len > c.strings.len {
+        text = text[0:c.strings.len];
+    }
+    if text.len > c.strings.len - c.strings_used {
+        present(c);
+    }
+    var copied = c.strings[c.strings_used:c.strings_used + text.len];
+    copy(copied, text);
+    c.strings_used += text.len;
     canvas_begin(c, 7);
     canvas_word(c, 4);
     canvas_word(c, x as u32);
     canvas_word(c, y as u32);
     canvas_word(c, color);
-    canvas_word(c, text.ptr as u32);
-    canvas_word(c, text.len);
+    canvas_word(c, copied.ptr as u32);
+    canvas_word(c, copied.len);
     canvas_word(c, scale);
 }
 

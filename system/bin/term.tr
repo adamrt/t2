@@ -20,6 +20,7 @@ var cursor_y: u32;
 var typed: [256]u8;
 var typed_len: u32;
 var canvas: Canvas;
+var strings: [8192]u8;
 var words: [4096]u32;
 var buffer: [4096]u8;
 var font_width: i32;
@@ -40,7 +41,7 @@ fn main(memory: []u8) -> u32 {
         complain("term", "can't open a window", "");
         return 1;
     }
-    canvas_init(&canvas, window, words[:]);
+    canvas_init(&canvas, window, words[:], strings[:]);
     mem_fill(&cells[0], ' ', cells.len);
 
     var shell_input: u32;
