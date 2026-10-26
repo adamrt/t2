@@ -1,0 +1,12 @@
+Terrarium: 49152 KiB for programs
+
+Welcome to Terrarium. Type 'help' for help.
+
+/> /> /> sh: no program hw in /bin; to run the one here, type ./hw
+/> sh: no program hellow-w in /bin
+/> sh: ./hw isn't a program; asm makes programs from tc's output
+/> sh: /bin is a directory
+/> /> hw.asm:69: undefined name '_write' (programs need /lib/rt.asm first)
+/> /> hi
+/> /> /> /> sh: ./big asks for 51200 KiB of memory, and 48832 KiB is free
+/> Terrarium: every process has ended

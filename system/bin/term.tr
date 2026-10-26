@@ -2,7 +2,7 @@
 // here a line at a time, drawn after whatever the shell has printed, and
 // sent to the shell when you press Enter. Up and Down bring back earlier
 // lines, Ctrl-C stops whatever the shell is running, and dragging the strip
-// under the window resizes it.
+// under the window resizes it. Printing a form feed ('\x0c') clears it.
 
 manifest {
     memory = 512 * KiB;
@@ -292,6 +292,12 @@ fn put_char(c: u32) {
     if c == '\n' {
         cursor_x = 0;
         new_line();
+        return;
+    }
+    if c == 12 {
+        mem_fill(&cells[0], ' ', cells.len);
+        cursor_x = 0;
+        cursor_y = 0;
         return;
     }
     if c == '\t' {

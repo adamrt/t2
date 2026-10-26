@@ -2186,6 +2186,15 @@ fatal_message:
     call write_all
     r1 = quote
     call print_text
+    ; A compiled name like _write that nothing defines usually means the
+    ; runtime was left out.
+    r1 = message_undefined
+    if r4 != r1 goto fatal_end
+    r0 = u8 [r5]
+    r1 = '_'
+    if r0 != r1 goto fatal_end
+    r1 = message_runtime
+    call print_text
 fatal_end:
     r1 = newline
     call print_text
@@ -2361,6 +2370,8 @@ message_expected_value:
     .byte "expected a value", 0
 message_undefined:
     .byte "undefined name", 0
+message_runtime:
+    .byte " (programs need /lib/rt.asm first)", 0
 message_early_constant:
     .byte "constant used before its definition:", 0
 message_negated_label:

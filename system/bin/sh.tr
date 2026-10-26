@@ -345,6 +345,10 @@ fn run_builtin(stage: *Stage) -> bool {
         finished = true;
         return true;
     }
+    if text_equal(name, "clear") {
+        print("\x0c");
+        return true;
+    }
     if text_equal(name, "help") {
         if stage.count > 1 {
             show_notes(stage.words[1]);
@@ -360,7 +364,7 @@ fn run_builtin(stage: *Stage) -> bool {
             print(" ");
             i += 64;
         }
-        print("\nBuilt in: cd, exit, help. 'help name' explains a program.\n");
+        print("\nBuilt in: cd, clear, exit, help. 'help name' explains a program.\n");
         print("'|' connects commands; '<', '>' and '>>' redirect to files.\n");
         return true;
     }
@@ -507,9 +511,58 @@ fn start(stage: *Stage, input: u32, output: u32) -> u32 {
     }
     var id = spawn(path[0:n], args[0:used], input, output, STDERR);
     if id == FAILED {
-        complain("sh", "can't run", name);
+        explain_failure(name, path[0:n]);
     }
     return id;
+}
+
+// The kernel only says that a program didn't start, so this looks for why.
+fn explain_failure(name: []u8, path: []u8) {
+    var text: [256]u8;
+    var w: Writer;
+    writer_init(&w, STDERR, text[:]);
+    put(&w, "sh: ");
+    var i: FileInfo;
+    var header: [32]u8;
+    var free: u32;
+    var file = FAILED;
+    if info(path, &i) == FAILED {
+        put(&w, "no program ");
+        put(&w, name);
+        if find_slash(name) == name.len {
+            put(&w, " in /bin");
+            if info(name, &i) != FAILED {
+                put(&w, "; to run the one here, type ./");
+                put(&w, name);
+            }
+        }
+    } else if i.kind == KIND_DIR {
+        put(&w, name);
+        put(&w, " is a directory");
+    } else {
+        file = open(path, MODE_READ);
+    }
+    if file != FAILED {
+        var n = read(file, header[:]);
+        close(file);
+        memory_info(&free);
+        if n != header.len || !text_equal(header[0:4], "TRX2") {
+            put(&w, name);
+            put(&w, " isn't a program; asm makes programs from tc's output");
+        } else if read_word(header[:], 24) > free {
+            put(&w, name);
+            put(&w, " asks for ");
+            put_u32(&w, read_word(header[:], 24) / KiB);
+            put(&w, " KiB of memory, and ");
+            put_u32(&w, free / KiB);
+            put(&w, " KiB is free");
+        } else {
+            put(&w, "can't run ");
+            put(&w, name);
+        }
+    }
+    put(&w, "\n");
+    flush(&w);
 }
 
 fn find_slash(name: []u8) -> u32 {

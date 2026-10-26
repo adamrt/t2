@@ -62,6 +62,10 @@ Hello from the Terrarium language!
 /src> sh /src/scripts/build-tc
 ```
 
+`tc` writes assembly, and `asm` turns it into a program, with the runtime
+`/lib/rt.asm` first. A program in the current directory runs as `./name`;
+without a `/`, the shell looks in `/bin`. `clear` clears the terminal.
+
 The last line rebuilds the compiler inside Terrarium and checks that the
 result is byte for byte the compiler the host built. Some others to try:
 

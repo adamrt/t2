@@ -17,5 +17,5 @@ scripts/
 tc/
 tools/
 /src> /> cd: no such directory: nowhere
-/> sh: can't run nosuchprogram
+/> sh: no program nosuchprogram in /bin
 /> Terrarium: every process has ended
