@@ -10,4 +10,6 @@ wc /fruit
 mv /fruit /früchte
 ls /
 search fel /früchte
+help mv
+help nothing
 exit

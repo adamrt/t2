@@ -20,4 +20,10 @@ lib/
 src/
 system/
 /> /früchte:2: äpfel
+/> mv renames a file or directory, or moves files into a directory. Nothing
+is copied: only the names change.
+
+    mv from to
+    mv file... directory
+/> help: no notes for nothing
 /> Terrarium: every process has ended
