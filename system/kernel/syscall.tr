@@ -82,6 +82,15 @@ fn open_record(f: *FileRef) -> *OpenFile {
     return free;
 }
 
+fn has_free_record() -> bool {
+    for i in 0..MAX_OPEN_FILES {
+        if open_files[i].refs == 0 {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn file_is_open(f: *FileRef) -> bool {
     for i in 0..MAX_OPEN_FILES {
         var r = &open_files[i];
@@ -202,6 +211,15 @@ fn add_handle(p: *Process, o: *Object) -> u32 {
     }
     release_object(o);
     return FAILED;
+}
+
+fn has_free_handle(p: *Process) -> bool {
+    for i in 0..MAX_HANDLES {
+        if p.handles[i] == null {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn handle_object(p: *Process, handle: u32) -> *Object {
@@ -917,31 +935,27 @@ fn available(o: *Object) -> u32 {
 fn open_file(p: *Process, path: []u8, mode: u32) -> u32 {
     var f: FileRef;
     var exists = lookup(path, &f);
-    if exists && f.kind != KIND_FILE {
+    if mode > 2 || (exists && f.kind != KIND_FILE) || (mode == 0 && !exists) {
         return FAILED;
     }
-    if mode == 0 && !exists {
-        return FAILED;
-    }
-    if mode > 2 {
-        return FAILED;
-    }
-    if mode > 0 && !exists {
-        var dir: FileRef;
-        var name = lookup_parent(path, &dir);
-        if name.len == 0 || !add_entry(&dir, name, KIND_FILE, &f) {
-            return FAILED;
-        }
-    }
+    // Everything that can run out is checked before the disk changes.
     var o = new_object(ObjectKind.File);
     if o == null {
         return FAILED;
     }
-    o.open = open_record(&f);
-    if o.open == null {
+    if !has_free_handle(p) || ((!exists || !file_is_open(&f)) && !has_free_record()) {
         o.kind = ObjectKind.Free;
         return FAILED;
     }
+    if !exists {
+        var dir: FileRef;
+        var name = lookup_parent(path, &dir);
+        if name.len == 0 || !add_entry(&dir, name, KIND_FILE, &f) {
+            o.kind = ObjectKind.Free;
+            return FAILED;
+        }
+    }
+    o.open = open_record(&f);
     if mode == 1 {
         truncate(&o.open.file);
     }

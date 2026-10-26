@@ -185,8 +185,9 @@ From lowest to highest precedence:
 | `- ! ~ & *`                   | unary                    |
 | `f() a[i] a[i:j] a.f`         | calls, indexing, fields  |
 
-Division and `>>` are signed for `i32` and unsigned for `u32`. Arithmetic
-wraps. Division by zero stops the program.
+`&&` and `||` evaluate their right side only when the left doesn't decide
+the answer. Division and `>>` are signed for `i32` and unsigned for `u32`.
+Arithmetic wraps. Division by zero stops the program.
 
 `size_of(T)` is the size of a type in bytes.
 

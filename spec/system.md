@@ -110,7 +110,9 @@ permission can set or read, for copying between programs.
 The kernel draws each window's frame and title bar. Dragging the title bar
 moves the window, clicking a window brings it to the front, and keys go to
 the front window. After `window_resizable`, a window has a strip under it,
-and dragging the strip changes its size.
+and dragging the strip changes its size, from the least size given (but no
+more than the screen) up to the screen's size. A program only gets the
+latest size if it falls behind.
 
 ## Tracing
 

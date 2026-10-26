@@ -164,8 +164,8 @@ fn frame_of(w: *Window, r: *Rect) {
 // Lets a window be resized by dragging the strip under it, down to a size.
 fn window_resizable(w: *Window, min_w: u32, min_h: u32) {
     w.resizable = true;
-    w.min_w = max_i(min_w as i32, 40);
-    w.min_h = max_i(min_h as i32, 20);
+    w.min_w = max_i(min(min_w, screen_width as u32) as i32, 40);
+    w.min_h = max_i(min(min_h, screen_height as u32) as i32, 20);
     redraw_all();
 }
 
@@ -501,16 +501,19 @@ fn window_at(x: i32, y: i32) -> u32 {
 // Events -----------------------------------------------------------------------
 
 fn post(w: *Window, kind: EventKind, x: i32, y: i32, key: u32, modifiers: u32, buttons: u32) {
-    if w.event_count == QUEUE {
-        return;
-    }
-    // A window only needs one draw at a time.
-    if kind == EventKind.Draw {
+    // A window only needs one draw at a time, and only its latest size.
+    if kind == EventKind.Draw || kind == EventKind.Resize {
         for i in 0..w.event_count {
-            if w.events[(w.event_start + i) % QUEUE].kind == EventKind.Draw as u32 {
+            var waiting = &w.events[(w.event_start + i) % QUEUE];
+            if waiting.kind == kind as u32 {
+                waiting.x = x;
+                waiting.y = y;
                 return;
             }
         }
+    }
+    if w.event_count == QUEUE {
+        return;
     }
     var e = &w.events[(w.event_start + w.event_count) % QUEUE];
     e.kind = kind as u32;
@@ -565,8 +568,8 @@ fn receive_input() {
             mouse_y = b as i32;
             if drag != 0 && resizing {
                 var w = &windows[drag - 1];
-                var width = max_i(mouse_x - w.content.x + drag_x, w.min_w);
-                var height = max_i(mouse_y - w.content.y + drag_y, w.min_h);
+                var width = min_i(max_i(mouse_x - w.content.x + drag_x, w.min_w), screen_width);
+                var height = min_i(max_i(mouse_y - w.content.y + drag_y, w.min_h), screen_height);
                 if width != w.content.w || height != w.content.h {
                     w.content.w = width;
                     w.content.h = height;
