@@ -83,6 +83,9 @@ load_symbols(const char *program)
         char kind;
         if (sscanf(line, "%c %x %63s", &kind, &s.addr, s.name) != 3 || kind != 'c')
             continue;
+        // Compiler-made labels like L12 say nothing about where you are.
+        if (s.name[0] == 'L' && s.name[1] >= '0' && s.name[1] <= '9')
+            continue;
         if (symbol_count == cap) {
             cap = cap ? cap * 2 : 256;
             symbols = realloc(symbols, cap * sizeof(Symbol));

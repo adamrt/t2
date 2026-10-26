@@ -1,0 +1,361 @@
+// Turning source text into tokens, one at a time.
+
+enum Tok {
+    End,
+    Name,
+    Int,
+    Str,
+
+    KwFn, KwStruct, KwEnum, KwConst, KwVar, KwManifest, KwIf, KwElse, KwWhile,
+    KwFor, KwIn, KwMatch, KwBreak, KwContinue, KwReturn, KwTrue, KwFalse,
+    KwNull, KwAs, KwNew, KwSizeOf,
+
+    LParen, RParen, LBracket, RBracket, LBrace, RBrace,
+    Comma, Semicolon, Colon, Dot, DotDot, Arrow, FatArrow,
+    Assign, Plus, Minus, Star, Slash, Percent, Amp, Pipe, Caret, Tilde, Bang,
+    Less, Greater, Equal, NotEqual, LessEqual, GreaterEqual, AndAnd, OrOr,
+    Shl, Shr,
+    PlusAssign, MinusAssign, StarAssign, SlashAssign, PercentAssign,
+    AmpAssign, PipeAssign, CaretAssign, ShlAssign, ShrAssign,
+}
+
+struct Token {
+    kind: Tok;
+    text: []u8;         // the source text, or a string's decoded bytes
+    value: u32;         // a number's value
+    file: u32;
+    line: u32;
+}
+
+var tok: Token;
+var lex_file: u32;
+var lex_text: []u8;
+var lex_pos: u32;
+var lex_line: u32;
+
+fn lex_start(file: u32) {
+    lex_file = file;
+    lex_text = files[file].text;
+    lex_pos = 0;
+    lex_line = 1;
+    next_token();
+}
+
+fn lex_fail(message: []u8) {
+    error_start(lex_file, lex_line);
+    put(&errors, message);
+    error_end();
+}
+
+fn peek_char(offset: u32) -> u8 {
+    if lex_pos + offset >= lex_text.len {
+        return 0;
+    }
+    return lex_text[lex_pos + offset];
+}
+
+fn skip_space() {
+    while lex_pos < lex_text.len {
+        var c = lex_text[lex_pos];
+        if c == '\n' {
+            lex_line += 1;
+            lex_pos += 1;
+        } else if c == ' ' || c == '\t' || c == '\r' {
+            lex_pos += 1;
+        } else if c == '/' && peek_char(1) == '/' {
+            while lex_pos < lex_text.len && lex_text[lex_pos] != '\n' {
+                lex_pos += 1;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+// Reads the next token into tok.
+fn next_token() {
+    skip_space();
+    tok.file = lex_file;
+    tok.line = lex_line;
+    tok.value = 0;
+    if lex_pos >= lex_text.len {
+        tok.kind = Tok.End;
+        tok.text = "end of file";
+        return;
+    }
+    var start = lex_pos;
+    var c = lex_text[lex_pos];
+    if is_letter(c) {
+        while lex_pos < lex_text.len && (is_letter(lex_text[lex_pos]) || is_digit(lex_text[lex_pos])) {
+            lex_pos += 1;
+        }
+        tok.text = lex_text[start:lex_pos];
+        tok.kind = keyword(tok.text);
+    } else if is_digit(c) {
+        lex_number();
+    } else if c == '\'' {
+        lex_pos += 1;
+        tok.kind = Tok.Int;
+        tok.value = lex_escape();
+        if peek_char(0) != '\'' {
+            lex_fail("unterminated character");
+        }
+        lex_pos += 1;
+        tok.text = lex_text[start:lex_pos];
+    } else if c == '"' {
+        lex_string();
+    } else {
+        tok.kind = lex_operator();
+        tok.text = lex_text[start:lex_pos];
+    }
+}
+
+fn keyword(text: []u8) -> Tok {
+    match text[0] {
+        'a' => {
+            if text_equal(text, "as") { return Tok.KwAs; }
+        }
+        'b' => {
+            if text_equal(text, "break") { return Tok.KwBreak; }
+        }
+        'c' => {
+            if text_equal(text, "const") { return Tok.KwConst; }
+            if text_equal(text, "continue") { return Tok.KwContinue; }
+        }
+        'e' => {
+            if text_equal(text, "else") { return Tok.KwElse; }
+            if text_equal(text, "enum") { return Tok.KwEnum; }
+        }
+        'f' => {
+            if text_equal(text, "fn") { return Tok.KwFn; }
+            if text_equal(text, "for") { return Tok.KwFor; }
+            if text_equal(text, "false") { return Tok.KwFalse; }
+        }
+        'i' => {
+            if text_equal(text, "if") { return Tok.KwIf; }
+            if text_equal(text, "in") { return Tok.KwIn; }
+        }
+        'm' => {
+            if text_equal(text, "match") { return Tok.KwMatch; }
+            if text_equal(text, "manifest") { return Tok.KwManifest; }
+        }
+        'n' => {
+            if text_equal(text, "new") { return Tok.KwNew; }
+            if text_equal(text, "null") { return Tok.KwNull; }
+        }
+        'r' => {
+            if text_equal(text, "return") { return Tok.KwReturn; }
+        }
+        's' => {
+            if text_equal(text, "struct") { return Tok.KwStruct; }
+            if text_equal(text, "size_of") { return Tok.KwSizeOf; }
+        }
+        't' => {
+            if text_equal(text, "true") { return Tok.KwTrue; }
+        }
+        'v' => {
+            if text_equal(text, "var") { return Tok.KwVar; }
+        }
+        'w' => {
+            if text_equal(text, "while") { return Tok.KwWhile; }
+        }
+    }
+    return Tok.Name;
+}
+
+fn digit_value(c: u8) -> u32 {
+    if c >= '0' && c <= '9' {
+        return c - '0';
+    }
+    if c >= 'a' && c <= 'f' {
+        return c - 'a' + 10;
+    }
+    if c >= 'A' && c <= 'F' {
+        return c - 'A' + 10;
+    }
+    return 99;
+}
+
+fn lex_number() {
+    var start = lex_pos;
+    while lex_pos < lex_text.len && (is_letter(lex_text[lex_pos]) || is_digit(lex_text[lex_pos])) {
+        lex_pos += 1;
+    }
+    var text = lex_text[start:lex_pos];
+    tok.kind = Tok.Int;
+    tok.text = text;
+
+    var base: u32 = 10;
+    var i: u32 = 0;
+    if text.len > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') {
+        base = 16;
+        i = 2;
+    } else if text.len > 2 && text[0] == '0' && (text[1] == 'b' || text[1] == 'B') {
+        base = 2;
+        i = 2;
+    } else if text.len > 1 && text[0] == '0' {
+        lex_fail("bad number");
+    }
+    var value: u32 = 0;
+    var digits: u32 = 0;
+    while i < text.len {
+        var c = text[i];
+        i += 1;
+        if c == '_' {
+            continue;
+        }
+        var d = digit_value(c);
+        if d >= base {
+            lex_fail("bad number");
+        }
+        if value > (0xffffffff - d) / base {
+            lex_fail("number is too large");
+        }
+        value = value * base + d;
+        digits += 1;
+    }
+    if digits == 0 {
+        lex_fail("bad number");
+    }
+    tok.value = value;
+}
+
+// Reads one character of a string or character literal, decoding escapes.
+fn lex_escape() -> u32 {
+    var c = peek_char(0);
+    if lex_pos >= lex_text.len || c == '\n' {
+        lex_fail("unterminated text");
+    }
+    lex_pos += 1;
+    if c > 127 {
+        lex_fail("only ASCII is allowed in text");
+    }
+    if c != '\\' {
+        return c;
+    }
+    var e = peek_char(0);
+    lex_pos += 1;
+    match e {
+        'n' => { return 10; }
+        't' => { return 9; }
+        'r' => { return 13; }
+        '0' => { return 0; }
+        '\\' => { return 92; }
+        '\'' => { return 39; }
+        '"' => { return 34; }
+        'x' => {
+            var high = digit_value(peek_char(0));
+            var low = digit_value(peek_char(1));
+            if high > 15 || low > 15 {
+                lex_fail("bad escape");
+            }
+            lex_pos += 2;
+            return high * 16 + low;
+        }
+    }
+    lex_fail("bad escape");
+    return 0;
+}
+
+fn lex_string() {
+    lex_pos += 1;
+    // Decoded text is never longer than its source.
+    var end = lex_pos;
+    while end < lex_text.len && lex_text[end] != '"' && lex_text[end] != '\n' {
+        if lex_text[end] == '\\' {
+            end += 1;
+        }
+        end += 1;
+    }
+    var bytes = alloc_bytes(&arena, end - lex_pos);
+    var n: u32 = 0;
+    while peek_char(0) != '"' {
+        bytes[n] = lex_escape() as u8;
+        n += 1;
+    }
+    lex_pos += 1;
+    tok.kind = Tok.Str;
+    tok.text = bytes[0:n];
+}
+
+fn lex_operator() -> Tok {
+    var c = lex_text[lex_pos];
+    var c1 = peek_char(1);
+    var c2 = peek_char(2);
+    lex_pos += 1;
+    match c {
+        '(' => { return Tok.LParen; }
+        ')' => { return Tok.RParen; }
+        '[' => { return Tok.LBracket; }
+        ']' => { return Tok.RBracket; }
+        '{' => { return Tok.LBrace; }
+        '}' => { return Tok.RBrace; }
+        ',' => { return Tok.Comma; }
+        ';' => { return Tok.Semicolon; }
+        ':' => { return Tok.Colon; }
+        '~' => { return Tok.Tilde; }
+        '.' => {
+            if c1 == '.' { lex_pos += 1; return Tok.DotDot; }
+            return Tok.Dot;
+        }
+        '=' => {
+            if c1 == '>' { lex_pos += 1; return Tok.FatArrow; }
+            if c1 == '=' { lex_pos += 1; return Tok.Equal; }
+            return Tok.Assign;
+        }
+        '!' => {
+            if c1 == '=' { lex_pos += 1; return Tok.NotEqual; }
+            return Tok.Bang;
+        }
+        '<' => {
+            if c1 == '<' && c2 == '=' { lex_pos += 2; return Tok.ShlAssign; }
+            if c1 == '<' { lex_pos += 1; return Tok.Shl; }
+            if c1 == '=' { lex_pos += 1; return Tok.LessEqual; }
+            return Tok.Less;
+        }
+        '>' => {
+            if c1 == '>' && c2 == '=' { lex_pos += 2; return Tok.ShrAssign; }
+            if c1 == '>' { lex_pos += 1; return Tok.Shr; }
+            if c1 == '=' { lex_pos += 1; return Tok.GreaterEqual; }
+            return Tok.Greater;
+        }
+        '&' => {
+            if c1 == '&' { lex_pos += 1; return Tok.AndAnd; }
+            if c1 == '=' { lex_pos += 1; return Tok.AmpAssign; }
+            return Tok.Amp;
+        }
+        '|' => {
+            if c1 == '|' { lex_pos += 1; return Tok.OrOr; }
+            if c1 == '=' { lex_pos += 1; return Tok.PipeAssign; }
+            return Tok.Pipe;
+        }
+        '-' => {
+            if c1 == '>' { lex_pos += 1; return Tok.Arrow; }
+            if c1 == '=' { lex_pos += 1; return Tok.MinusAssign; }
+            return Tok.Minus;
+        }
+        '+' => {
+            if c1 == '=' { lex_pos += 1; return Tok.PlusAssign; }
+            return Tok.Plus;
+        }
+        '*' => {
+            if c1 == '=' { lex_pos += 1; return Tok.StarAssign; }
+            return Tok.Star;
+        }
+        '/' => {
+            if c1 == '=' { lex_pos += 1; return Tok.SlashAssign; }
+            return Tok.Slash;
+        }
+        '%' => {
+            if c1 == '=' { lex_pos += 1; return Tok.PercentAssign; }
+            return Tok.Percent;
+        }
+        '^' => {
+            if c1 == '=' { lex_pos += 1; return Tok.CaretAssign; }
+            return Tok.Caret;
+        }
+    }
+    lex_pos -= 1;
+    lex_fail("unexpected character");
+    return Tok.End;
+}

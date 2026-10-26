@@ -1,0 +1,459 @@
+// Types, the symbol table, and top-level declarations.
+
+enum TypeKind {
+    Int,
+    Bool,
+    Ptr,
+    Slice,
+    Array,
+    Struct,
+    Enum,
+    Untyped,        // a number that hasn't taken a type yet
+    Null,
+    Void,
+}
+
+struct Type {
+    kind: TypeKind;
+    size: u32;
+    align: u32;
+    signed: bool;
+    name: []u8;         // for builtin types
+    elem: *Type;        // what a pointer, slice or array holds
+    length: u32;        // an array's length
+    sym: *Sym;          // the struct or enum that declares it
+    fields: *Field;
+    ptr: *Type;         // the pointer to this type, once made
+    slice: *Type;       // the slice of this type, once made
+    arrays: *Type;      // arrays of this type, linked by next
+    next: *Type;
+}
+
+struct Field {
+    name: []u8;
+    offset: u32;
+    ty: *Type;
+    next: *Field;
+}
+
+enum SymKind {
+    Fn,
+    Struct,
+    Enum,
+    Const,
+    Global,
+}
+
+struct Sym {
+    kind: SymKind;
+    name: []u8;
+    node: *Node;
+    ty: *Type;          // the struct or enum, the constant's or global's type, or the result
+    value: u32;         // a constant's value
+    state: u32;         // 0 new, 1 being declared, 2 declared
+    next: *Sym;         // next in the same bucket
+    after: *Sym;        // next in declaration order
+}
+
+const BUCKETS = 4096;
+
+var buckets: [BUCKETS]*Sym;
+var first_sym: *Sym;
+var last_sym: *Sym;
+var manifest_memory: *Node;
+var manifest_stack: *Node;
+
+var t_u8: *Type;
+var t_u16: *Type;
+var t_u32: *Type;
+var t_i32: *Type;
+var t_bool: *Type;
+var t_untyped: *Type;
+var t_null: *Type;
+var t_void: *Type;
+
+fn make_type(kind: TypeKind, name: []u8, size: u32) -> *Type {
+    var t = new(&arena, Type);
+    t.kind = kind;
+    t.name = name;
+    t.size = size;
+    t.align = size;
+    if size > 4 || size == 0 {
+        t.align = 4;
+    }
+    return t;
+}
+
+fn init_types() {
+    t_u8 = make_type(TypeKind.Int, "u8", 1);
+    t_u16 = make_type(TypeKind.Int, "u16", 2);
+    t_u32 = make_type(TypeKind.Int, "u32", 4);
+    t_i32 = make_type(TypeKind.Int, "i32", 4);
+    t_i32.signed = true;
+    t_bool = make_type(TypeKind.Bool, "bool", 1);
+    t_untyped = make_type(TypeKind.Untyped, "constant", 4);
+    t_null = make_type(TypeKind.Null, "null", 4);
+    t_void = make_type(TypeKind.Void, "nothing", 0);
+}
+
+fn builtin_type(name: []u8) -> *Type {
+    if text_equal(name, "u8") { return t_u8; }
+    if text_equal(name, "u16") { return t_u16; }
+    if text_equal(name, "u32") { return t_u32; }
+    if text_equal(name, "i32") { return t_i32; }
+    if text_equal(name, "bool") { return t_bool; }
+    return null;
+}
+
+fn ptr_to(t: *Type) -> *Type {
+    if t.ptr == null {
+        t.ptr = make_type(TypeKind.Ptr, "", 4);
+        t.ptr.elem = t;
+    }
+    return t.ptr;
+}
+
+fn slice_of(t: *Type) -> *Type {
+    if t.slice == null {
+        t.slice = make_type(TypeKind.Slice, "", 8);
+        t.slice.elem = t;
+    }
+    return t.slice;
+}
+
+fn array_of(t: *Type, length: u32) -> *Type {
+    var a = t.arrays;
+    while a != null {
+        if a.length == length {
+            return a;
+        }
+        a = a.next;
+    }
+    a = make_type(TypeKind.Array, "", t.size * length);
+    a.align = t.align;
+    a.elem = t;
+    a.length = length;
+    a.next = t.arrays;
+    t.arrays = a;
+    return a;
+}
+
+fn is_int(t: *Type) -> bool {
+    return t.kind == TypeKind.Int;
+}
+
+fn is_scalar(t: *Type) -> bool {
+    return t.kind == TypeKind.Int || t.kind == TypeKind.Bool || t.kind == TypeKind.Ptr || t.kind == TypeKind.Enum;
+}
+
+fn is_aggregate(t: *Type) -> bool {
+    return t.kind == TypeKind.Struct || t.kind == TypeKind.Array;
+}
+
+// The type a value has when it takes part in arithmetic.
+fn arith(t: *Type) -> *Type {
+    if t == t_u8 || t == t_u16 {
+        return t_u32;
+    }
+    return t;
+}
+
+fn put_type(w: *Writer, t: *Type) {
+    match t.kind {
+        TypeKind.Ptr => {
+            put_byte(w, '*');
+            put_type(w, t.elem);
+        }
+        TypeKind.Slice => {
+            put(w, "[]");
+            put_type(w, t.elem);
+        }
+        TypeKind.Array => {
+            put_byte(w, '[');
+            put_u32(w, t.length);
+            put_byte(w, ']');
+            put_type(w, t.elem);
+        }
+        TypeKind.Struct, TypeKind.Enum => {
+            put(w, t.sym.name);
+        }
+        else => {
+            put(w, t.name);
+        }
+    }
+}
+
+// "expected X, found Y"
+fn fail_types(n: *Node, want: *Type, found: *Type) {
+    error_start(n.file, n.line);
+    put(&errors, "expected ");
+    put_type(&errors, want);
+    put(&errors, ", found ");
+    put_type(&errors, found);
+    error_end();
+}
+
+// Symbols --------------------------------------------------------------------
+
+fn hash(name: []u8) -> u32 {
+    var h: u32 = 0x811c9dc5;
+    for i in 0..name.len {
+        h = (h ^ name[i]) * 0x01000193;
+    }
+    return h & (BUCKETS - 1);
+}
+
+fn find_sym(name: []u8) -> *Sym {
+    var s = buckets[hash(name)];
+    while s != null {
+        if text_equal(s.name, name) {
+            return s;
+        }
+        s = s.next;
+    }
+    return null;
+}
+
+fn add_sym(kind: SymKind, n: *Node) -> *Sym {
+    if find_sym(n.name) != null || builtin_type(n.name) != null || text_equal(n.name, "KiB") || text_equal(n.name, "MiB") {
+        fail_name(n, "already defined:", n.name);
+    }
+    var s = new(&arena, Sym);
+    s.kind = kind;
+    s.name = n.name;
+    s.node = n;
+    var h = hash(n.name);
+    s.next = buckets[h];
+    buckets[h] = s;
+    if last_sym == null {
+        first_sym = s;
+    } else {
+        last_sym.after = s;
+    }
+    last_sym = s;
+    if kind == SymKind.Struct || kind == SymKind.Enum {
+        s.ty = make_type(TypeKind.Struct, "", 0);
+        s.ty.align = 1;
+        s.ty.sym = s;
+        if kind == SymKind.Enum {
+            s.ty.kind = TypeKind.Enum;
+            s.ty.size = 4;
+            s.ty.align = 4;
+        }
+    }
+    return s;
+}
+
+// Declarations ---------------------------------------------------------------
+
+fn check_program() {
+    init_types();
+    var d = declarations.first;
+    while d != null {
+        match d.kind {
+            N.Fn => { add_sym(SymKind.Fn, d); }
+            N.Struct => { add_sym(SymKind.Struct, d); }
+            N.Enum => { add_sym(SymKind.Enum, d); }
+            N.Const => { add_sym(SymKind.Const, d); }
+            N.Global => { add_sym(SymKind.Global, d); }
+            N.Manifest => {
+                var entry = d.list;
+                while entry != null {
+                    if text_equal(entry.name, "memory") {
+                        manifest_memory = entry;
+                    } else if text_equal(entry.name, "stack") {
+                        manifest_stack = entry;
+                    } else {
+                        fail_name(entry, "unknown manifest entry", entry.name);
+                    }
+                    entry = entry.next;
+                }
+            }
+        }
+        d = d.next;
+    }
+
+    var s = first_sym;
+    while s != null {
+        declare(s);
+        s = s.after;
+    }
+    if manifest_memory != null {
+        manifest_memory.value = const_value(manifest_memory.a, t_u32);
+    }
+    if manifest_stack != null {
+        manifest_stack.value = const_value(manifest_stack.a, t_u32);
+    }
+
+    s = first_sym;
+    while s != null {
+        if s.kind == SymKind.Fn && s.node.b != null {
+            check_function(s);
+        }
+        s = s.after;
+    }
+
+    var main = find_sym("main");
+    if main == null || main.kind != SymKind.Fn {
+        fail_plain("no 'main' function");
+    }
+    var p = main.node.list;
+    if p == null || p.next != null || p.ty != slice_of(t_u8) || main.ty != t_u32 {
+        fail(main.node, "main must be 'fn main(memory: []u8) -> u32'");
+    }
+}
+
+fn declare(s: *Sym) {
+    if s.state == 2 {
+        return;
+    }
+    if s.state == 1 {
+        fail_name(s.node, "depends on itself:", s.name);
+    }
+    s.state = 1;
+    var n = s.node;
+    match s.kind {
+        SymKind.Struct => {
+            var offset: u32 = 0;
+            var align: u32 = 1;
+            var last: *Field = null;
+            var f = n.list;
+            while f != null {
+                var ft = resolve(f.a);
+                var other = s.ty.fields;
+                while other != null {
+                    if text_equal(other.name, f.name) {
+                        fail_name(f, "field is already defined:", f.name);
+                    }
+                    other = other.next;
+                }
+                offset = (offset + ft.align - 1) / ft.align * ft.align;
+                var field = new(&arena, Field);
+                field.name = f.name;
+                field.offset = offset;
+                field.ty = ft;
+                if last == null {
+                    s.ty.fields = field;
+                } else {
+                    last.next = field;
+                }
+                last = field;
+                offset += ft.size;
+                if ft.align > align {
+                    align = ft.align;
+                }
+                f = f.next;
+            }
+            s.ty.size = (offset + align - 1) / align * align;
+            s.ty.align = align;
+        }
+        SymKind.Enum => {
+            var v: u32 = 0;
+            var item = n.list;
+            while item != null {
+                if item.a != null {
+                    v = const_value(item.a, t_u32);
+                }
+                var other = n.list;
+                while other != item {
+                    if text_equal(other.name, item.name) {
+                        fail_name(item, "already in the enum:", item.name);
+                    }
+                    other = other.next;
+                }
+                item.value = v;
+                v += 1;
+                item = item.next;
+            }
+        }
+        SymKind.Const => {
+            if n.a != null {
+                s.ty = resolve(n.a);
+                if !is_int(s.ty) {
+                    fail(n, "constants must be integers");
+                }
+                s.value = const_value(n.b, s.ty);
+            } else {
+                s.ty = check(n.b, null);
+                if s.ty != t_untyped && !is_int(s.ty) && s.ty.kind != TypeKind.Enum {
+                    fail(n, "constants must be integers");
+                }
+                s.value = const_value(n.b, null);
+            }
+        }
+        SymKind.Global => {
+            s.ty = resolve(n.a);
+        }
+        SymKind.Fn => {
+            var p = n.list;
+            while p != null {
+                p.ty = resolve(p.a);
+                if !is_scalar(p.ty) && p.ty.kind != TypeKind.Slice {
+                    fail(p, "parameters must be integers, bool, enums, pointers or slices");
+                }
+                p = p.next;
+            }
+            s.ty = t_void;
+            if n.a != null {
+                s.ty = resolve(n.a);
+                if !is_scalar(s.ty) && s.ty.kind != TypeKind.Slice {
+                    fail(n, "results must be integers, bool, enums, pointers or slices");
+                }
+            }
+        }
+    }
+    s.state = 2;
+}
+
+// The type a type node names, complete enough to know its size.
+fn resolve(tn: *Node) -> *Type {
+    match tn.kind {
+        N.TypePtr => {
+            return ptr_to(resolve_ref(tn.a));
+        }
+        N.TypeSlice => {
+            return slice_of(resolve_ref(tn.a));
+        }
+        N.TypeArray => {
+            var elem = resolve(tn.b);
+            return array_of(elem, const_value(tn.a, t_u32));
+        }
+    }
+    var t = resolve_ref(tn);
+    complete(t);
+    return t;
+}
+
+// Like resolve, but a struct may still be incomplete, as behind a pointer.
+fn resolve_ref(tn: *Node) -> *Type {
+    if tn.kind != N.TypeName {
+        return resolve(tn);
+    }
+    var t = builtin_type(tn.name);
+    if t != null {
+        return t;
+    }
+    var s = find_sym(tn.name);
+    if s == null || (s.kind != SymKind.Struct && s.kind != SymKind.Enum) {
+        fail_name(tn, "unknown type", tn.name);
+    }
+    return s.ty;
+}
+
+fn complete(t: *Type) {
+    if t.kind == TypeKind.Struct || t.kind == TypeKind.Enum {
+        declare(t.sym);
+    }
+}
+
+// Checks e as a constant and returns its value.
+fn const_value(e: *Node, want: *Type) -> u32 {
+    var t = check(e, want);
+    if e.flags & IS_CONST == 0 {
+        fail(e, "expected a constant");
+    }
+    if want != null {
+        coerce(e, t, want);
+    }
+    return e.value;
+}

@@ -1,0 +1,937 @@
+// Generating assembly from the checked syntax tree.
+//
+// Every expression leaves its value in r0, or a slice in r0 (pointer) and r1
+// (length), or a struct or array as its address in r0. Temporaries go on the
+// stack, and r7 points at the current function's frame.
+
+struct StringData {
+    node: *Node;
+    next: *StringData;
+}
+
+const MAX_LOOPS = 64;
+
+var out: Writer;
+var labels: u32;
+var return_label: u32;
+var bounds_label: u32;
+var break_labels: [MAX_LOOPS]u32;
+var continue_labels: [MAX_LOOPS]u32;
+var loop_depth: u32;
+var first_string: *StringData;
+var last_string: *StringData;
+var string_count: u32;
+var immediate: i32;
+
+fn generate() {
+    put(&out, ".code\n");
+    var s = first_sym;
+    while s != null {
+        if s.kind == SymKind.Fn && s.node.b != null {
+            gen_function(s);
+        }
+        s = s.after;
+    }
+
+    put(&out, "\n.data\n");
+    var d = first_string;
+    while d != null {
+        put_byte(&out, 'S');
+        put_u32(&out, d.node.value);
+        put(&out, ":\n");
+        var bytes = d.node.name;
+        for i in 0..bytes.len {
+            if i % 16 == 0 {
+                put(&out, "    .byte ");
+            } else {
+                put(&out, ", ");
+            }
+            put_u32(&out, bytes[i]);
+            if i % 16 == 15 || i == bytes.len - 1 {
+                put_byte(&out, '\n');
+            }
+        }
+        d = d.next;
+    }
+
+    put(&out, "\n.bss\n");
+    s = first_sym;
+    while s != null {
+        if s.kind == SymKind.Global {
+            emit(".align 4");
+            put_byte(&out, '_');
+            put(&out, s.name);
+            put(&out, ":\n");
+            var size = (s.ty.size + 3) & ~3;
+            if size < 4 {
+                size = 4;
+            }
+            emit_value(".zero ", size);
+        }
+        s = s.after;
+    }
+    put_byte(&out, '\n');
+    if manifest_memory != null {
+        emit_value(".memory ", manifest_memory.value);
+    }
+    if manifest_stack != null {
+        emit_value(".stack ", manifest_stack.value);
+    }
+}
+
+fn gen_function(s: *Sym) {
+    var n = s.node;
+    return_label = new_label();
+    bounds_label = 0;
+    loop_depth = 0;
+    put(&out, "\n_");
+    put(&out, n.name);
+    put(&out, ":\n");
+    emit("push r7");
+    emit("r7 = sp");
+    if n.value > 0 {
+        if n.value > 32767 {
+            fail(n, "too many local variables");
+        }
+        emit_value("sp -= ", n.value);
+    }
+    gen_block(n.b);
+    place(return_label);
+    emit("sp = r7");
+    emit("pop r7");
+    emit("return");
+    if bounds_label != 0 {
+        place(bounds_label);
+        emit("call _bounds_failed");
+    }
+}
+
+// Writing lines ----------------------------------------------------------------
+
+fn new_label() -> u32 {
+    labels += 1;
+    return labels;
+}
+
+fn bounds() -> u32 {
+    if bounds_label == 0 {
+        bounds_label = new_label();
+    }
+    return bounds_label;
+}
+
+fn emit(text: []u8) {
+    put(&out, "    ");
+    put(&out, text);
+    put_byte(&out, '\n');
+}
+
+fn start_line() {
+    put(&out, "    ");
+}
+
+fn end_line() {
+    put_byte(&out, '\n');
+}
+
+fn emit_value(text: []u8, value: u32) {
+    start_line();
+    put(&out, text);
+    put_u32(&out, value);
+    end_line();
+}
+
+fn place(label: u32) {
+    put_byte(&out, 'L');
+    put_u32(&out, label);
+    put(&out, ":\n");
+}
+
+fn emit_goto(label: u32) {
+    start_line();
+    put(&out, "goto L");
+    put_u32(&out, label);
+    end_line();
+}
+
+fn put_label(label: u32) {
+    put_byte(&out, 'L');
+    put_u32(&out, label);
+}
+
+fn size_prefix(t: *Type) -> []u8 {
+    if t.size == 1 {
+        return "u8 ";
+    }
+    if t.size == 2 {
+        return "u16 ";
+    }
+    return "";
+}
+
+// "[r7 - 12]" or "[r7 + 8]"
+fn put_frame(offset: i32) {
+    if offset < 0 {
+        put(&out, "[r7 - ");
+        put_u32(&out, (0 - offset) as u32);
+    } else {
+        put(&out, "[r7 + ");
+        put_u32(&out, offset as u32);
+    }
+    put_byte(&out, ']');
+}
+
+// "reg = r7 - 12"
+fn emit_frame_address(reg: []u8, offset: i32) {
+    start_line();
+    put(&out, reg);
+    if offset < 0 {
+        put(&out, " = r7 - ");
+        put_u32(&out, (0 - offset) as u32);
+    } else {
+        put(&out, " = r7 + ");
+        put_u32(&out, offset as u32);
+    }
+    end_line();
+}
+
+// Statements -----------------------------------------------------------------
+
+fn gen_block(b: *Node) {
+    var st = b.list;
+    while st != null {
+        gen_statement(st);
+        st = st.next;
+    }
+}
+
+fn push_loop(break_label: u32, continue_label: u32, n: *Node) {
+    if loop_depth == MAX_LOOPS {
+        fail(n, "loops are nested too deeply");
+    }
+    break_labels[loop_depth] = break_label;
+    continue_labels[loop_depth] = continue_label;
+    loop_depth += 1;
+}
+
+fn gen_statement(st: *Node) {
+    match st.kind {
+        N.Block => {
+            gen_block(st);
+        }
+        N.Var => {
+            if st.b != null {
+                gen_expr(st.b);
+                store_local(st.local, st.local.ty);
+            } else {
+                zero_local(st.local);
+            }
+        }
+        N.Assign => {
+            gen_assign(st);
+        }
+        N.ExprStmt => {
+            gen_expr(st.a);
+        }
+        N.If => {
+            var other = new_label();
+            gen_cond(st.a, other, false);
+            gen_block(st.b);
+            if st.c == null {
+                place(other);
+            } else {
+                var end = new_label();
+                emit_goto(end);
+                place(other);
+                gen_statement(st.c);
+                place(end);
+            }
+        }
+        N.While => {
+            var top = new_label();
+            var end = new_label();
+            place(top);
+            gen_cond(st.a, end, false);
+            push_loop(end, top, st);
+            gen_block(st.b);
+            loop_depth -= 1;
+            emit_goto(top);
+            place(end);
+        }
+        N.For => {
+            var top = new_label();
+            var step = new_label();
+            var end = new_label();
+            gen_expr(st.a);
+            store_local(st.local, st.local.ty);
+            gen_expr(st.b);
+            store_local(st.local2, st.local2.ty);
+            place(top);
+            load_local(st.local, "r0");
+            load_local(st.local2, "r1");
+            start_line();
+            if st.local.ty.signed {
+                put(&out, "if r0 >=s r1 goto ");
+            } else {
+                put(&out, "if r0 >= r1 goto ");
+            }
+            put_label(end);
+            end_line();
+            push_loop(end, step, st);
+            gen_block(st.c);
+            loop_depth -= 1;
+            place(step);
+            load_local(st.local, "r0");
+            emit("r0 += 1");
+            store_local(st.local, st.local.ty);
+            emit_goto(top);
+            place(end);
+        }
+        N.Match => {
+            var end = new_label();
+            gen_expr(st.a);
+            store_local(st.local, st.local.ty);
+            var arm = st.list;
+            while arm != null {
+                var body = new_label();
+                var skip = new_label();
+                var v = arm.list;
+                while v != null {
+                    load_local(st.local, "r0");
+                    emit_value("r1 = ", v.value);
+                    start_line();
+                    put(&out, "if r0 == r1 goto ");
+                    put_label(body);
+                    end_line();
+                    v = v.next;
+                }
+                emit_goto(skip);
+                place(body);
+                gen_block(arm.a);
+                emit_goto(end);
+                place(skip);
+                arm = arm.next;
+            }
+            if st.b != null {
+                gen_block(st.b);
+            }
+            place(end);
+        }
+        N.Break => {
+            emit_goto(break_labels[loop_depth - 1]);
+        }
+        N.Continue => {
+            emit_goto(continue_labels[loop_depth - 1]);
+        }
+        N.Return => {
+            if st.a != null {
+                gen_expr(st.a);
+            }
+            emit_goto(return_label);
+        }
+    }
+}
+
+// The binary operator inside a compound assignment like "+=".
+fn assign_operator(op: Tok) -> Tok {
+    match op {
+        Tok.PlusAssign => { return Tok.Plus; }
+        Tok.MinusAssign => { return Tok.Minus; }
+        Tok.StarAssign => { return Tok.Star; }
+        Tok.SlashAssign => { return Tok.Slash; }
+        Tok.PercentAssign => { return Tok.Percent; }
+        Tok.AmpAssign => { return Tok.Amp; }
+        Tok.PipeAssign => { return Tok.Pipe; }
+        Tok.CaretAssign => { return Tok.Caret; }
+        Tok.ShlAssign => { return Tok.Shl; }
+    }
+    return Tok.Shr;
+}
+
+fn gen_assign(st: *Node) {
+    var t = st.a.ty;
+    if st.op == Tok.Assign {
+        if is_aggregate(t) {
+            gen_address(st.a);
+            emit("push r0");
+            gen_expr(st.b);
+            emit("r1 = r0");
+            emit("pop r0");
+            emit_value("r2 = ", t.size);
+            emit("copy r0, r1, r2");
+            return;
+        }
+        if st.a.kind == N.Name && st.a.local != null {
+            gen_expr(st.b);
+            store_local(st.a.local, t);
+            return;
+        }
+        gen_address(st.a);
+        emit("push r0");
+        gen_expr(st.b);
+        emit("pop r2");
+        store("r2", t);
+        return;
+    }
+    gen_address(st.a);
+    emit("push r0");
+    gen_expr(st.b);
+    emit("r1 = r0");
+    emit("r0 = [sp]");
+    load("r0", t);
+    operate(assign_operator(st.op), arith(t), false);
+    emit("pop r2");
+    store("r2", t);
+}
+
+// Loading and storing ----------------------------------------------------------
+
+fn load_local(local: *Local, reg: []u8) {
+    var t = local.ty;
+    if is_aggregate(t) {
+        emit_frame_address(reg, local.offset);
+    } else if t.kind == TypeKind.Slice {
+        start_line();
+        put(&out, "r1 = ");
+        put_frame(local.offset + 4);
+        end_line();
+        start_line();
+        put(&out, "r0 = ");
+        put_frame(local.offset);
+        end_line();
+    } else {
+        start_line();
+        put(&out, reg);
+        put(&out, " = ");
+        put(&out, size_prefix(t));
+        put_frame(local.offset);
+        end_line();
+    }
+}
+
+fn store_local(local: *Local, t: *Type) {
+    if is_aggregate(t) {
+        emit("r1 = r0");
+        emit_frame_address("r0", local.offset);
+        emit_value("r2 = ", t.size);
+        emit("copy r0, r1, r2");
+    } else if t.kind == TypeKind.Slice {
+        start_line();
+        put_frame(local.offset);
+        put(&out, " = r0");
+        end_line();
+        start_line();
+        put_frame(local.offset + 4);
+        put(&out, " = r1");
+        end_line();
+    } else {
+        start_line();
+        put(&out, size_prefix(t));
+        put_frame(local.offset);
+        put(&out, " = r0");
+        end_line();
+    }
+}
+
+fn zero_local(local: *Local) {
+    var t = local.ty;
+    if is_aggregate(t) {
+        emit_frame_address("r0", local.offset);
+        emit("r1 = 0");
+        emit_value("r2 = ", (t.size + 3) & ~3);
+        emit("fill r0, r1, r2");
+        return;
+    }
+    emit("r0 = 0");
+    if t.kind == TypeKind.Slice {
+        emit("r1 = 0");
+    }
+    store_local(local, t);
+}
+
+// Loads a value of type t from the address in reg into r0 (and r1).
+fn load(reg: []u8, t: *Type) {
+    if is_aggregate(t) {
+        if !text_equal(reg, "r0") {
+            start_line();
+            put(&out, "r0 = ");
+            put(&out, reg);
+            end_line();
+        }
+    } else if t.kind == TypeKind.Slice {
+        start_line();
+        put(&out, "r1 = [");
+        put(&out, reg);
+        put(&out, " + 4]");
+        end_line();
+        start_line();
+        put(&out, "r0 = [");
+        put(&out, reg);
+        put_byte(&out, ']');
+        end_line();
+    } else {
+        start_line();
+        put(&out, "r0 = ");
+        put(&out, size_prefix(t));
+        put_byte(&out, '[');
+        put(&out, reg);
+        put_byte(&out, ']');
+        end_line();
+    }
+}
+
+// Stores r0 (and r1) at the address in reg.
+fn store(reg: []u8, t: *Type) {
+    if t.kind == TypeKind.Slice {
+        start_line();
+        put_byte(&out, '[');
+        put(&out, reg);
+        put(&out, "] = r0");
+        end_line();
+        start_line();
+        put_byte(&out, '[');
+        put(&out, reg);
+        put(&out, " + 4] = r1");
+        end_line();
+    } else {
+        start_line();
+        put(&out, size_prefix(t));
+        put_byte(&out, '[');
+        put(&out, reg);
+        put(&out, "] = r0");
+        end_line();
+    }
+}
+
+// Expressions ----------------------------------------------------------------
+
+fn is_constant(e: *Node) -> bool {
+    return e.flags & IS_CONST != 0 && (e.ty.kind == TypeKind.Int || e.ty.kind == TypeKind.Enum || e.ty.kind == TypeKind.Untyped);
+}
+
+fn gen_expr(e: *Node) {
+    if is_constant(e) {
+        emit_value("r0 = ", e.value);
+    } else {
+        gen_value(e);
+    }
+    if e.flags & TO_SLICE != 0 {
+        emit_value("r1 = ", e.ty.length);
+    }
+}
+
+fn gen_value(e: *Node) {
+    var t = e.ty;
+    match e.kind {
+        N.Bool => {
+            emit_value("r0 = ", e.value);
+        }
+        N.Null => {
+            emit("r0 = 0");
+        }
+        N.Str => {
+            string_count += 1;
+            e.value = string_count;
+            var d = new(&arena, StringData);
+            d.node = e;
+            if last_string == null {
+                first_string = d;
+            } else {
+                last_string.next = d;
+            }
+            last_string = d;
+            emit_value("r0 = S", e.value);
+            emit_value("r1 = ", e.name.len);
+        }
+        N.Name => {
+            if e.local != null {
+                load_local(e.local, "r0");
+            } else {
+                start_line();
+                put(&out, "r0 = _");
+                put(&out, e.sym.name);
+                end_line();
+                load("r0", t);
+            }
+        }
+        N.Member => {
+            if e.a.ty.kind == TypeKind.Slice {
+                gen_expr(e.a);
+                if text_equal(e.name, "len") {
+                    emit("r0 = r1");
+                }
+            } else {
+                gen_address(e);
+                load("r0", t);
+            }
+        }
+        N.Index => {
+            gen_address(e);
+            load("r0", t);
+        }
+        N.Slice => {
+            gen_slice(e);
+        }
+        N.Call => {
+            gen_call(e);
+        }
+        N.Unary => {
+            if e.op == Tok.Amp {
+                gen_address(e.a);
+            } else if e.op == Tok.Star {
+                gen_expr(e.a);
+                load("r0", t);
+            } else {
+                gen_expr(e.a);
+                if e.op == Tok.Minus {
+                    emit("r0 ^= -1");
+                    emit("r0 += 1");
+                } else if e.op == Tok.Tilde {
+                    emit("r0 ^= -1");
+                } else {
+                    emit("r0 ^= 1");
+                }
+            }
+        }
+        N.Binary => {
+            gen_binary(e);
+        }
+        N.Cast => {
+            gen_expr(e.a);
+            var from = e.a.ty;
+            if is_int(t) && t.size < 4 && !(is_int(from) && from.size <= t.size) {
+                if t.size == 2 {
+                    emit("r0 <<= 16");
+                    emit("r0 >>= 16");
+                } else {
+                    emit("r0 &= 255");
+                }
+            }
+        }
+        N.New => {
+            var elem = resolve(e.b);
+            if e.c == null {
+                emit_value("r0 = ", elem.size);
+                emit("push r0");
+                gen_expr(e.a);
+                emit("push r0");
+                emit_call(e.sym);
+                emit("sp += 8");
+            } else {
+                gen_expr(e.c);
+                emit("push r0");
+                scale("r0", elem.size);
+                emit("push r0");
+                gen_expr(e.a);
+                emit("push r0");
+                emit_call(e.sym);
+                emit("sp += 8");
+                emit("pop r1");
+            }
+        }
+        else => {
+            fail(e, "can't generate this expression");
+        }
+    }
+}
+
+fn emit_call(s: *Sym) {
+    start_line();
+    put(&out, "call _");
+    put(&out, s.name);
+    end_line();
+}
+
+// Multiplies reg by size, which is a constant.
+fn scale(reg: []u8, size: u32) {
+    if size == 1 {
+        return;
+    }
+    start_line();
+    put(&out, reg);
+    if size == 0 {
+        put(&out, " = 0");
+    } else if size & (size - 1) == 0 {
+        put(&out, " <<= ");
+        var shift: u32 = 0;
+        var bit: u32 = 1;
+        while bit != size {
+            bit <<= 1;
+            shift += 1;
+        }
+        put_u32(&out, shift);
+    } else {
+        put(&out, " *= ");
+        put_u32(&out, size);
+    }
+    end_line();
+}
+
+// Pushes the arguments from last to first. Returns the bytes they take.
+fn push_args(a: *Node, p: *Node) -> u32 {
+    if a == null {
+        return 0;
+    }
+    var size = push_args(a.next, p.next);
+    gen_expr(a);
+    if p.ty.kind == TypeKind.Slice {
+        emit("push r1");
+        size += 4;
+    }
+    emit("push r0");
+    return size + 4;
+}
+
+fn gen_call(e: *Node) {
+    var size = push_args(e.list, e.sym.node.list);
+    emit_call(e.sym);
+    if size > 0 {
+        emit_value("sp += ", size);
+    }
+}
+
+// Leaves the address of e in r0.
+fn gen_address(e: *Node) {
+    match e.kind {
+        N.Name => {
+            if e.local != null {
+                emit_frame_address("r0", e.local.offset);
+            } else {
+                start_line();
+                put(&out, "r0 = _");
+                put(&out, e.sym.name);
+                end_line();
+            }
+        }
+        N.Member => {
+            if e.a.ty.kind == TypeKind.Ptr {
+                gen_expr(e.a);
+            } else {
+                gen_address(e.a);
+            }
+            if e.value != 0 {
+                emit_value("r0 += ", e.value);
+            }
+        }
+        N.Index => {
+            var elem = e.ty;
+            var base = e.a.ty;
+            if base.kind == TypeKind.Array {
+                gen_address(e.a);
+                if e.b.flags & IS_CONST != 0 {
+                    if e.b.value >= base.length {
+                        fail(e, "index is past the end of the array");
+                    }
+                    if e.b.value != 0 {
+                        emit_value("r0 += ", e.b.value * elem.size);
+                    }
+                    return;
+                }
+                emit("push r0");
+                gen_expr(e.b);
+                emit("r1 = r0");
+                emit("pop r0");
+                emit_value("r2 = ", base.length);
+            } else {
+                gen_expr(e.a);
+                emit("push r1");
+                emit("push r0");
+                gen_expr(e.b);
+                emit("r1 = r0");
+                emit("pop r0");
+                emit("pop r2");
+            }
+            start_line();
+            put(&out, "if r1 >= r2 goto ");
+            put_label(bounds());
+            end_line();
+            scale("r1", elem.size);
+            emit("r0 += r1");
+        }
+        N.Unary => {
+            gen_expr(e.a);
+        }
+        else => {
+            fail(e, "can't take the address of this");
+        }
+    }
+}
+
+fn gen_slice(e: *Node) {
+    var base = e.a.ty;
+    if base.kind == TypeKind.Array {
+        gen_address(e.a);
+        emit("push r0");
+        emit_value("r0 = ", base.length);
+        emit("push r0");
+    } else if base.kind == TypeKind.Slice {
+        gen_expr(e.a);
+        emit("push r0");
+        emit("push r1");
+    } else {
+        gen_expr(e.a);
+        emit("push r0");
+    }
+    if e.b != null {
+        gen_expr(e.b);
+    } else {
+        emit("r0 = 0");
+    }
+    emit("push r0");
+    if e.c != null {
+        gen_expr(e.c);
+    } else {
+        emit("r0 = [sp + 4]");
+    }
+    emit("r1 = r0");
+    emit("pop r2");
+    if base.kind != TypeKind.Ptr {
+        emit("pop r3");
+        start_line();
+        put(&out, "if r1 > r3 goto ");
+        put_label(bounds());
+        end_line();
+    }
+    emit("pop r0");
+    start_line();
+    put(&out, "if r2 > r1 goto ");
+    put_label(bounds());
+    end_line();
+    emit("r1 -= r2");
+    scale("r2", base.elem.size);
+    emit("r0 += r2");
+}
+
+// Leaves the left operand in r0 and the right in r1. When allowed, a small
+// constant right operand goes in `immediate` instead, and this returns true.
+fn gen_operands(e: *Node, allow_immediate: bool) -> bool {
+    var right = e.b;
+    if right.flags & IS_CONST != 0 && (right.ty.kind == TypeKind.Int || right.ty.kind == TypeKind.Enum) {
+        gen_expr(e.a);
+        var v = right.value as i32;
+        if allow_immediate && v >= -32768 && v <= 32767 {
+            immediate = v;
+            return true;
+        }
+        emit_value("r1 = ", right.value);
+        return false;
+    }
+    gen_expr(e.a);
+    emit("push r0");
+    gen_expr(right);
+    emit("r1 = r0");
+    emit("pop r0");
+    return false;
+}
+
+// Emits r0 = r0 op r1, or with the immediate when use_immediate.
+fn operate(op: Tok, ty: *Type, use_immediate: bool) {
+    var signed = is_int(ty) && ty.signed;
+    start_line();
+    put(&out, "r0 = r0 ");
+    match op {
+        Tok.Plus => { put(&out, "+"); }
+        Tok.Minus => { put(&out, "-"); }
+        Tok.Star => { put(&out, "*"); }
+        Tok.Amp => { put(&out, "&"); }
+        Tok.Pipe => { put(&out, "|"); }
+        Tok.Caret => { put(&out, "^"); }
+        Tok.Shl => { put(&out, "<<"); }
+        Tok.Slash => { if signed { put(&out, "/s"); } else { put(&out, "/"); } }
+        Tok.Percent => { if signed { put(&out, "%s"); } else { put(&out, "%"); } }
+        Tok.Shr => { if signed { put(&out, ">>s"); } else { put(&out, ">>"); } }
+    }
+    if use_immediate {
+        put_byte(&out, ' ');
+        put_i32(&out, immediate);
+    } else {
+        put(&out, " r1");
+    }
+    end_line();
+}
+
+fn gen_binary(e: *Node) {
+    var op = e.op;
+    if op == Tok.AndAnd || op == Tok.OrOr || is_comparison(op) {
+        var false_label = new_label();
+        var end = new_label();
+        gen_cond(e, false_label, false);
+        emit("r0 = 1");
+        emit_goto(end);
+        place(false_label);
+        emit("r0 = 0");
+        place(end);
+        return;
+    }
+    var use_immediate = gen_operands(e, true);
+    operate(op, e.ty, use_immediate);
+}
+
+fn negate(op: Tok) -> Tok {
+    match op {
+        Tok.Equal => { return Tok.NotEqual; }
+        Tok.NotEqual => { return Tok.Equal; }
+        Tok.Less => { return Tok.GreaterEqual; }
+        Tok.LessEqual => { return Tok.Greater; }
+        Tok.Greater => { return Tok.LessEqual; }
+    }
+    return Tok.Less;
+}
+
+fn compare_text(op: Tok, signed: bool) -> []u8 {
+    match op {
+        Tok.Equal => { return "=="; }
+        Tok.NotEqual => { return "!="; }
+        Tok.Less => { if signed { return "<s"; } return "<"; }
+        Tok.LessEqual => { if signed { return "<=s"; } return "<="; }
+        Tok.Greater => { if signed { return ">s"; } return ">"; }
+    }
+    if signed {
+        return ">=s";
+    }
+    return ">=";
+}
+
+// Jumps to label when e is `when`.
+fn gen_cond(e: *Node, label: u32, when: bool) {
+    if e.kind == N.Binary && (e.op == Tok.AndAnd || e.op == Tok.OrOr) {
+        if (e.op == Tok.AndAnd) != when {
+            gen_cond(e.a, label, when);
+            gen_cond(e.b, label, when);
+        } else {
+            var skip = new_label();
+            gen_cond(e.a, skip, !when);
+            gen_cond(e.b, label, when);
+            place(skip);
+        }
+        return;
+    }
+    if e.kind == N.Unary && e.op == Tok.Bang {
+        gen_cond(e.a, label, !when);
+        return;
+    }
+    if e.kind == N.Binary && is_comparison(e.op) {
+        var op = e.op;
+        if !when {
+            op = negate(op);
+        }
+        var signed = is_int(e.operand) && e.operand.signed;
+        gen_operands(e, false);
+        start_line();
+        put(&out, "if r0 ");
+        put(&out, compare_text(op, signed));
+        put(&out, " r1 goto ");
+        put_label(label);
+        end_line();
+        return;
+    }
+    gen_expr(e);
+    start_line();
+    if when {
+        put(&out, "if r0 != 0 goto ");
+    } else {
+        put(&out, "if r0 == 0 goto ");
+    }
+    put_label(label);
+    end_line();
+}

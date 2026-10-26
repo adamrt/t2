@@ -1,0 +1,154 @@
+// tc, the Terrarium compiler.
+//
+//     tc -o program.asm file.tr...
+//
+// Reads every file, checks the whole program, and writes assembly for the
+// Terrarium assembler. The language is described in spec/language.md.
+
+manifest {
+    memory = 32 * MiB;
+    stack = 256 * KiB;
+}
+
+const MAX_FILES = 64;
+
+struct SourceFile {
+    name: []u8;
+    text: []u8;
+}
+
+var arena: Arena;
+var files: [MAX_FILES]SourceFile;
+var file_count: u32;
+var errors: Writer;
+var error_buffer: [512]u8;
+
+fn main(memory: []u8) -> u32 {
+    arena_init(&arena, memory);
+    writer_init(&errors, STDERR, error_buffer[:]);
+
+    var output: []u8;
+    var i: u32 = 0;
+    while i < arg_count() {
+        var text = argument(i);
+        i += 1;
+        if text_equal(text, "-o") {
+            if i == arg_count() {
+                usage();
+            }
+            output = argument(i);
+            i += 1;
+        } else {
+            if file_count == MAX_FILES {
+                fail_plain("too many files");
+            }
+            files[file_count].name = text;
+            files[file_count].text = read_source(text);
+            file_count += 1;
+        }
+    }
+    if output.len == 0 || file_count == 0 {
+        usage();
+    }
+
+    for f in 0..file_count {
+        parse_file(f);
+    }
+    check_program();
+
+    var file = open(output, 1);
+    if file == FAILED {
+        fail_path("can't write", output);
+    }
+    var buffer = alloc_bytes(&arena, 64 * KiB);
+    writer_init(&out, file, buffer);
+    generate();
+    flush(&out);
+    close(file);
+    return 0;
+}
+
+fn usage() {
+    fail_plain("usage: tc -o program.asm file.tr...");
+}
+
+fn argument(index: u32) -> []u8 {
+    var buffer = alloc_bytes(&arena, 256);
+    var n = arg(index, buffer);
+    if n > buffer.len {
+        fail_plain("argument is too long");
+    }
+    return buffer[0:n];
+}
+
+// Reads a whole file into the arena.
+fn read_source(path: []u8) -> []u8 {
+    var file = open(path, 0);
+    if file == FAILED {
+        fail_path("can't read", path);
+    }
+    var start = (arena.used + 3) & ~3;
+    var free = arena.memory[start:];
+    var n: u32 = 0;
+    while true {
+        if n == free.len {
+            fail_path("out of memory reading", path);
+        }
+        var got = read(file, free[n:]);
+        if got == FAILED {
+            fail_path("can't read", path);
+        }
+        if got == 0 {
+            break;
+        }
+        n += got;
+    }
+    close(file);
+    arena.used = start + n;
+    return free[0:n];
+}
+
+// Errors ---------------------------------------------------------------------
+
+// Starts an error message at a place in the source. Finish it with error_end().
+fn error_start(file: u32, line: u32) {
+    put(&errors, files[file].name);
+    put_byte(&errors, ':');
+    put_u32(&errors, line);
+    put(&errors, ": ");
+}
+
+fn error_end() {
+    put_byte(&errors, '\n');
+    flush(&errors);
+    exit(1);
+}
+
+fn fail(n: *Node, message: []u8) {
+    error_start(n.file, n.line);
+    put(&errors, message);
+    error_end();
+}
+
+fn fail_name(n: *Node, message: []u8, name: []u8) {
+    error_start(n.file, n.line);
+    put(&errors, message);
+    put(&errors, " '");
+    put(&errors, name);
+    put(&errors, "'");
+    error_end();
+}
+
+fn fail_plain(message: []u8) {
+    put(&errors, "tc: ");
+    put(&errors, message);
+    error_end();
+}
+
+fn fail_path(message: []u8, path: []u8) {
+    put(&errors, "tc: ");
+    put(&errors, message);
+    put(&errors, " ");
+    put(&errors, path);
+    error_end();
+}

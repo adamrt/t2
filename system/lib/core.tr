@@ -1,0 +1,166 @@
+// The core library: memory, text and output.
+
+const STDIN: u32 = 0;
+const STDOUT: u32 = 1;
+const STDERR: u32 = 2;
+const FAILED: u32 = 0xffffffff;
+
+fn exit(status: u32);
+fn read(file: u32, buffer: []u8) -> u32;
+fn write(file: u32, bytes: []u8) -> u32;
+fn open(path: []u8, mode: u32) -> u32;
+fn close(file: u32) -> u32;
+fn arg_count() -> u32;
+fn arg(index: u32, buffer: []u8) -> u32;
+fn mem_copy(to: *u8, from: *u8, count: u32);
+fn mem_fill(to: *u8, value: u32, count: u32);
+fn stop();
+
+fn panic(message: []u8) {
+    write(STDERR, "panic: ");
+    write(STDERR, message);
+    write(STDERR, "\n");
+    stop();
+}
+
+// Memory ---------------------------------------------------------------------
+
+// An arena hands out memory from one block and frees it all at once.
+struct Arena {
+    memory: []u8;
+    used: u32;
+}
+
+fn arena_init(a: *Arena, memory: []u8) {
+    a.memory = memory;
+    a.used = 0;
+}
+
+// Returns size bytes aligned to 4. The memory is zero, because a program's
+// memory starts zeroed and reset() zeroes what it gives back.
+fn alloc(a: *Arena, size: u32) -> *u8 {
+    var start = (a.used + 3) & ~3;
+    if size > a.memory.len || start > a.memory.len - size {
+        panic("out of memory");
+    }
+    a.used = start + size;
+    return (a.memory.ptr as u32 + start) as *u8;
+}
+
+// Takes a block of size bytes, for example to give to another arena.
+fn alloc_bytes(a: *Arena, size: u32) -> []u8 {
+    return alloc(a, size)[0:size];
+}
+
+fn reset(a: *Arena) {
+    mem_fill(a.memory.ptr, 0, a.used);
+    a.used = 0;
+}
+
+// Text -----------------------------------------------------------------------
+
+fn text_equal(a: []u8, b: []u8) -> bool {
+    if a.len != b.len {
+        return false;
+    }
+    for i in 0..a.len {
+        if a[i] != b[i] {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn copy(to: []u8, from: []u8) {
+    if to.len < from.len {
+        panic("copy doesn't fit");
+    }
+    mem_copy(to.ptr, from.ptr, from.len);
+}
+
+fn is_digit(c: u8) -> bool {
+    return c >= '0' && c <= '9';
+}
+
+fn is_letter(c: u8) -> bool {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+// Output ---------------------------------------------------------------------
+
+// Collects output in a buffer and writes it in large pieces.
+struct Writer {
+    file: u32;
+    buffer: []u8;
+    used: u32;
+}
+
+fn writer_init(w: *Writer, file: u32, buffer: []u8) {
+    w.file = file;
+    w.buffer = buffer;
+    w.used = 0;
+}
+
+fn flush(w: *Writer) {
+    if w.used > 0 {
+        write(w.file, w.buffer[0:w.used]);
+        w.used = 0;
+    }
+}
+
+fn put(w: *Writer, text: []u8) {
+    if text.len > w.buffer.len - w.used {
+        flush(w);
+        if text.len > w.buffer.len {
+            write(w.file, text);
+            return;
+        }
+    }
+    copy(w.buffer[w.used:], text);
+    w.used += text.len;
+}
+
+fn put_byte(w: *Writer, c: u8) {
+    if w.used == w.buffer.len {
+        flush(w);
+    }
+    w.buffer[w.used] = c;
+    w.used += 1;
+}
+
+fn put_u32(w: *Writer, value: u32) {
+    var digits: [10]u8;
+    var n: u32 = 10;
+    var v = value;
+    while true {
+        n -= 1;
+        digits[n] = (v % 10 + '0') as u8;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    put(w, digits[n:]);
+}
+
+fn put_i32(w: *Writer, value: i32) {
+    if value < 0 {
+        put_byte(w, '-');
+        put_u32(w, (0 - value) as u32);
+        return;
+    }
+    put_u32(w, value as u32);
+}
+
+fn put_hex(w: *Writer, value: u32) {
+    var shift: u32 = 32;
+    while shift > 0 {
+        shift -= 4;
+        put_byte(w, "0123456789abcdef"[(value >> shift) & 15]);
+    }
+}
+
+// Writes text straight to standard output.
+fn print(text: []u8) {
+    write(STDOUT, text);
+}
