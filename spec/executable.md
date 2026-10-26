@@ -30,6 +30,7 @@ The development monitor also runs `TRX1` files, an earlier form with no
 | 16  | processes | list and stop other processes                        |
 | 32  | recovery  | use the memory kept back for recovery                |
 | 64  | audio     | play sound                                           |
+| 128 | network   | open, accept and use network connections             |
 
 A program gets the permissions its manifest asks for, but never more than
 the program that started it has. A call it isn't allowed to make fails, and

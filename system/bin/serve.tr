@@ -1,0 +1,178 @@
+// serve shares the files under the current directory over the web, on the
+// host's own address.
+//
+//     serve 8080
+//
+// Then on the host, open http://localhost:8080/ in a browser.
+
+manifest {
+    memory = 256 * KiB;
+    stack = 32 * KiB;
+    allow = "read network";
+}
+
+var request: [4096]u8;
+var buffer: [16384]u8;
+var listing: [16384]u8;
+var path: [512]u8;
+
+fn main(memory: []u8) -> u32 {
+    var text: [16]u8;
+    var n = arg(0, text[:]);
+    var port = parse_u32(text[0:min(n, 16)]);
+    if arg_count() != 1 || port == FAILED {
+        complain("serve", "usage: serve port", "");
+        return 2;
+    }
+    var listener = listen(port);
+    if listener == FAILED {
+        complain("serve", "can't listen on that port", "");
+        return 1;
+    }
+    print("serving on http://localhost:");
+    print(text[0:min(n, 16)]);
+    print("/\n");
+    while true {
+        var client = accept(listener);
+        if client == FAILED {
+            break;
+        }
+        answer(client);
+        close(client);
+    }
+    return 0;
+}
+
+fn min(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a;
+    }
+    return b;
+}
+
+fn answer(client: u32) {
+    // Read until the blank line that ends the request.
+    var got: u32 = 0;
+    while got < request.len {
+        var n = read(client, request[got:]);
+        if n == 0 || n == FAILED {
+            break;
+        }
+        got += n;
+        if ends_request(request[0:got]) {
+            break;
+        }
+    }
+    var line = request[0:got];
+    var end: u32 = 0;
+    while end < line.len && line[end] != '\r' && line[end] != '\n' {
+        end += 1;
+    }
+    line = line[0:end];
+    print(line);
+    print("\n");
+    if line.len < 5 || !text_equal(line[0:4], "GET ") {
+        respond(client, "400 Bad Request", "text/plain", "bad request\n");
+        return;
+    }
+    var target = line[4:];
+    var space: u32 = 0;
+    while space < target.len && target[space] != ' ' {
+        space += 1;
+    }
+    target = target[0:space];
+    // The path is under the current directory, and can't climb out of it.
+    for i in 0..target.len {
+        if target[i] == '.' && i + 1 < target.len && target[i + 1] == '.' {
+            respond(client, "403 Forbidden", "text/plain", "no\n");
+            return;
+        }
+    }
+    path[0] = '.';
+    copy(path[1:], target[0:min(target.len, path.len - 1)]);
+    var name = path[0:1 + min(target.len, path.len - 1)];
+    var f: FileInfo;
+    if info(name, &f) == FAILED {
+        respond(client, "404 Not Found", "text/plain", "not found\n");
+        return;
+    }
+    if f.kind == KIND_DIR {
+        send_listing(client, name, target);
+        return;
+    }
+    var file = open(name, MODE_READ);
+    if file == FAILED {
+        respond(client, "404 Not Found", "text/plain", "not found\n");
+        return;
+    }
+    send_header(client, "200 OK", content_type(name), f.size);
+    while true {
+        var n = read(file, buffer[:]);
+        if n == 0 || n == FAILED {
+            break;
+        }
+        if !write_all(client, buffer[0:n]) {
+            break;
+        }
+    }
+    close(file);
+}
+
+fn ends_request(bytes: []u8) -> bool {
+    if bytes.len < 4 {
+        return false;
+    }
+    var tail = bytes[bytes.len - 4:];
+    return tail[0] == '\r' && tail[1] == '\n' && tail[2] == '\r' && tail[3] == '\n';
+}
+
+fn content_type(name: []u8) -> []u8 {
+    if name.len > 5 && text_equal(name[name.len - 5:], ".html") {
+        return "text/html";
+    }
+    if name.len > 4 && text_equal(name[name.len - 4:], ".tim") {
+        return "application/octet-stream";
+    }
+    return "text/plain";
+}
+
+fn send_header(client: u32, status: []u8, kind: []u8, length: u32) {
+    var header: [256]u8;
+    var w: Writer;
+    writer_init(&w, client, header[:]);
+    put(&w, "HTTP/1.0 ");
+    put(&w, status);
+    put(&w, "\r\nContent-Type: ");
+    put(&w, kind);
+    put(&w, "\r\nContent-Length: ");
+    put_u32(&w, length);
+    put(&w, "\r\nServer: Terrarium\r\n\r\n");
+    flush(&w);
+}
+
+fn respond(client: u32, status: []u8, kind: []u8, body: []u8) {
+    send_header(client, status, kind, body.len);
+    write_all(client, body);
+}
+
+fn send_listing(client: u32, dir: []u8, target: []u8) {
+    var raw: [8192]u8;
+    var n = list(dir, raw[:]);
+    var w: Writer;
+    writer_init(&w, STDOUT, listing[:]);
+    var i: u32 = 0;
+    while i + 64 <= n {
+        var e = &raw[i] as *ListEntry;
+        put(&w, target);
+        if target.len == 0 || target[target.len - 1] != '/' {
+            put_byte(&w, '/');
+        }
+        put(&w, entry_name(e));
+        if e.kind == KIND_DIR {
+            put_byte(&w, '/');
+        }
+        put_byte(&w, '\n');
+        i += 64;
+    }
+    respond(client, "200 OK", "text/plain", listing[0:w.used]);
+}

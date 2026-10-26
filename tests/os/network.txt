@@ -1,0 +1,6 @@
+cd /src
+serve 47123 &
+sleep 200
+fetch localhost 47123 /hello.tr
+kill 3
+exit

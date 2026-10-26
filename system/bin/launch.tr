@@ -3,7 +3,7 @@
 manifest {
     memory = 128 * KiB;
     stack = 16 * KiB;
-    allow = "read write spawn window processes audio";
+    allow = "read write spawn window processes audio network";
 }
 
 const WIDTH = 150;

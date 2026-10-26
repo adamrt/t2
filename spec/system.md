@@ -37,11 +37,14 @@ monitor, so the same tools run on both.
 | 27 | trace_spawns | r0 the writing end of a pipe, or -1 to stop     | 0                          |
 | 28 | audio_play | r0 samples, r1 bytes                              | 0, or -1 if the queue is full |
 | 29 | audio_status |                                                 | bytes waiting to play; samples per second in r1 |
+| 30 | connect    | r0 host, r1 length, r2 port                       | handle                     |
+| 31 | listen     | r0 port                                           | handle                     |
+| 32 | accept     | r0 listening handle                               | handle for the next connection |
 
 ## Handles
 
 A handle is a small number naming something a process can read or write:
-the console, a file, or one end of a pipe. Every process starts with
+the console, a file, one end of a pipe, a network connection, or a window. Every process starts with
 handles 0, 1 and 2 for its input, output and errors, chosen by whoever
 spawned it.
 

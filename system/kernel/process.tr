@@ -28,6 +28,7 @@ const ALLOW_WINDOW: u32 = 8;
 const ALLOW_PROCESSES: u32 = 16;
 const ALLOW_RECOVERY: u32 = 32;
 const ALLOW_AUDIO: u32 = 64;
+const ALLOW_NETWORK: u32 = 128;
 
 struct Process {
     state: State;
@@ -217,6 +218,9 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
 }
 
 fn exit_process(p: *Process, status: u32) {
+    if running == p {
+        running = null;
+    }
     for i in 0..MAX_HANDLES {
         if p.handles[i] != null {
             release_object(p.handles[i]);

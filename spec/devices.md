@@ -24,7 +24,7 @@ Interrupt bit 1 is raised when input arrives or ends.
 | `0x22` | r | microseconds since the machine started (wraps after 71 minutes) |
 | `0x23` | w | raise interrupt bit 0 after this many microseconds; 0 cancels |
 
-Interrupt bits: 0 timer, 1 console, 2 input, 3 vertical blank.
+Interrupt bits: 0 timer, 1 console, 2 input, 3 vertical blank, 4 network.
 
 ## Disk
 
@@ -144,6 +144,35 @@ holds at most two seconds.
 
 Without a window, the machine has a silent sound device that empties its
 queue at the same pace.
+
+## Network
+
+TCP connections, made with the host's sockets. Nothing waits: a receive
+with no data returns at once, and interrupt bit 4 is raised when a
+connection becomes readable or a listener has someone waiting.
+
+| Port   |   | Meaning                                                    |
+| ------ | - | ---------------------------------------------------------- |
+| `0x70` | w | physical address of a host name, for connecting            |
+| `0x71` | w | its length                                                 |
+| `0x72` | w | port number, for connecting or listening                   |
+| `0x73` | w | which connection the next command is for                   |
+| `0x74` | w | physical address of a buffer                               |
+| `0x75` | w | its length                                                 |
+| `0x76` | w | run a command                                              |
+| `0x77` | r | the command's result                                       |
+
+| Command   | Result                                                       |
+| --------- | ------------------------------------------------------------ |
+| 1 connect | a connection number                                          |
+| 2 listen  | a connection number, listening on the host's own address only |
+| 3 accept  | a new connection, or `0xfffffffe` if nobody is waiting yet   |
+| 4 send    | bytes sent, 0 if the host's buffer is full                   |
+| 5 receive | bytes received, or `0xfffffffe` if none have arrived yet     |
+| 6 close   | 0                                                            |
+
+Failures, including a connection the other side closed, return
+`0xffffffff`.
 
 ## Starting
 

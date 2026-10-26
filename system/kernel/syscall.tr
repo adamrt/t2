@@ -11,6 +11,7 @@ enum ObjectKind {
     PipeReader,
     PipeWriter,
     Window,
+    Connection,
 }
 
 struct Object {
@@ -21,6 +22,34 @@ struct Object {
     writable: bool;
     pipe: *Pipe;
     window: *Window;
+    connection: u32;            // the network device's number for it
+}
+
+const PORT_NET_HOST: u32 = 0x70;
+const PORT_NET_HOST_LENGTH: u32 = 0x71;
+const PORT_NET_PORT: u32 = 0x72;
+const PORT_NET_ID: u32 = 0x73;
+const PORT_NET_ADDRESS: u32 = 0x74;
+const PORT_NET_LENGTH: u32 = 0x75;
+const PORT_NET_COMMAND: u32 = 0x76;
+const PORT_NET_RESULT: u32 = 0x77;
+const NET_CONNECT: u32 = 1;
+const NET_LISTEN: u32 = 2;
+const NET_ACCEPT: u32 = 3;
+const NET_SEND: u32 = 4;
+const NET_RECEIVE: u32 = 5;
+const NET_CLOSE: u32 = 6;
+const NOT_YET: u32 = 0xfffffffe;
+
+// Runs a network command on a connection, with a buffer.
+fn net_command(command: u32, id: u32, buffer: []u8) -> u32 {
+    io_write(PORT_NET_ID, id);
+    if buffer.ptr != null {
+        io_write(PORT_NET_ADDRESS, physical(buffer));
+        io_write(PORT_NET_LENGTH, buffer.len);
+    }
+    io_write(PORT_NET_COMMAND, command);
+    return io_read(PORT_NET_RESULT);
 }
 
 const PIPE_SIZE = 4096;
@@ -71,6 +100,9 @@ enum Call {
     TraceSpawns,
     AudioPlay,
     AudioStatus,
+    Connect,
+    Listen,
+    Accept,
 }
 
 fn new_object(kind: ObjectKind) -> *Object {
@@ -101,6 +133,10 @@ fn release_object(o: *Object) {
     }
     if o.kind == ObjectKind.Window {
         window_close(o.window);
+    }
+    if o.kind == ObjectKind.Connection {
+        var none: []u8;
+        net_command(NET_CLOSE, o.connection, none);
     }
     o.kind = ObjectKind.Free;
     wake_all();
@@ -233,13 +269,16 @@ fn needs(p: *Process, call: Call) -> bool {
         Call.AudioPlay => {
             return allowed(p, ALLOW_AUDIO, "play sound");
         }
+        Call.Connect, Call.Listen, Call.Accept => {
+            return allowed(p, ALLOW_NETWORK, "use the network");
+        }
     }
     return true;
 }
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.AudioStatus as u32 && !needs(p, number as Call) {
+    if number <= Call.Accept as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -442,6 +481,33 @@ fn system_call(p: *Process, number: u32) {
             r[1] = io_read(0x60);
             result = io_read(0x64);
         }
+        Call.Connect => {
+            var host = user_bytes(p, r[0], r[1]);
+            if host.ptr != null && host.len < 256 {
+                io_write(PORT_NET_HOST, physical(host));
+                io_write(PORT_NET_HOST_LENGTH, host.len);
+                io_write(PORT_NET_PORT, r[2]);
+                io_write(PORT_NET_COMMAND, NET_CONNECT);
+                result = add_connection(p, io_read(PORT_NET_RESULT));
+            }
+        }
+        Call.Listen => {
+            io_write(PORT_NET_PORT, r[0]);
+            io_write(PORT_NET_COMMAND, NET_LISTEN);
+            result = add_connection(p, io_read(PORT_NET_RESULT));
+        }
+        Call.Accept => {
+            var o = handle_object(p, r[0]);
+            if o != null && o.kind == ObjectKind.Connection {
+                var none: []u8;
+                var id = net_command(NET_ACCEPT, o.connection, none);
+                if id == NOT_YET {
+                    block(p);
+                } else {
+                    result = add_connection(p, id);
+                }
+            }
+        }
         Call.ScreenInfo => {
             var info = user_bytes(p, r[0], 16);
             if info.ptr != null && has_screen() {
@@ -496,6 +562,9 @@ fn call_name(number: u32) -> []u8 {
         27 => { return "trace_spawns"; }
         28 => { return "audio_play"; }
         29 => { return "audio_status"; }
+        30 => { return "connect"; }
+        31 => { return "listen"; }
+        32 => { return "accept"; }
     }
     return "call";
 }
@@ -581,6 +650,17 @@ fn read_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             o.position += n;
             return n;
         }
+        ObjectKind.Connection => {
+            var n = net_command(NET_RECEIVE, o.connection, bytes);
+            if n == NOT_YET {
+                block(p);
+                return 0;
+            }
+            if n == FAILED {
+                return 0;
+            }
+            return n;
+        }
         ObjectKind.PipeReader => {
             var pipe = o.pipe;
             if pipe.count == 0 {
@@ -619,6 +699,13 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             o.position += n;
             return n;
         }
+        ObjectKind.Connection => {
+            var n = net_command(NET_SEND, o.connection, bytes);
+            if n == 0 && bytes.len > 0 {
+                block(p);
+            }
+            return n;
+        }
         ObjectKind.PipeWriter => {
             var pipe = o.pipe;
             if pipe.readers == 0 {
@@ -638,6 +725,21 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
         }
     }
     return FAILED;
+}
+
+// Gives a process a handle for a connection the network device opened.
+fn add_connection(p: *Process, id: u32) -> u32 {
+    if id == FAILED {
+        return FAILED;
+    }
+    var o = new_object(ObjectKind.Connection);
+    if o == null {
+        var none: []u8;
+        net_command(NET_CLOSE, id, none);
+        return FAILED;
+    }
+    o.connection = id;
+    return add_handle(p, o);
 }
 
 fn open_window(p: *Process, title: []u8, width: u32, height: u32) -> u32 {

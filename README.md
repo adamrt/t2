@@ -14,6 +14,11 @@ make test
 terminal becomes Terrarium's console, with its own shell. In the terminal,
 try `edit /src/hello.tr`, `cube`, `fractal`, `monitor` or `demo`.
 
+`serve 8080` in Terrarium shares the current directory on the web, so
+`curl localhost:8080/` works from the host, and `fetch host port /path`
+goes the other way. `trace program` shows every system call a program
+makes, and `manifest program` what it's allowed to do.
+
 `build/mkimage.bin` turns BMP pictures into Terrarium's TIM1 images, which
 `view` shows:
 

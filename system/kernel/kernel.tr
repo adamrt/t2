@@ -52,6 +52,11 @@ var clock_last: u32;
 var clock_micros: u32;
 var clock_millis: u32;
 
+// The process whose turn it is. It keeps the CPU until it waits for
+// something or its slice of time runs out.
+var running: *Process;
+var slice_over: bool;
+
 fn main(memory: []u8) -> u32 {
     arena_init(&arena, memory);
     writer_init(&log, STDOUT, log_buffer[:]);
@@ -82,7 +87,15 @@ fn main(memory: []u8) -> u32 {
 fn schedule() {
     while true {
         handle_interrupts();
-        var p = next_ready();
+        var p = running;
+        if p == null || p.state != State.Ready || slice_over {
+            p = next_ready();
+            running = p;
+            slice_over = false;
+            if p != null {
+                io_write(PORT_TIMER, SLICE);
+            }
+        }
         if p != null {
             run(p);
             continue;
@@ -108,6 +121,9 @@ fn handle_interrupts() {
         return;
     }
     io_write(PORT_PENDING, pending);
+    if pending & IRQ_TIMER != 0 {
+        slice_over = true;
+    }
     if pending & IRQ_CONSOLE != 0 {
         receive_console();
     }
@@ -159,7 +175,6 @@ fn run(p: *Process) {
     io_write(PORT_USER_DATA_BASE, p.region + p.code_size);
     io_write(PORT_USER_DATA_SIZE, data_size);
     io_write(PORT_USER_STACK_LIMIT, GUARD + data_size - p.stack_size);
-    io_write(PORT_TIMER, SLICE);
     var before = io_read(0x0a);
     resume_user();
     p.cycles += io_read(0x0a) - before;

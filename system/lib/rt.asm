@@ -224,6 +224,26 @@ _audio_status:
     [r2] = r1
     return
 
+; fn connect(host: []u8, port: u32) -> u32;
+_connect:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    r2 = [sp + 12]
+    sys 30
+    return
+
+; fn listen(port: u32) -> u32;
+_listen:
+    r0 = [sp + 4]
+    sys 31
+    return
+
+; fn accept(listener: u32) -> u32;
+_accept:
+    r0 = [sp + 4]
+    sys 32
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

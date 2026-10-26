@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "gui.h"
 #include "host.h"
+#include "net.h"
 
 #include <poll.h>
 #include <stdlib.h>
@@ -41,6 +42,7 @@ enum {
     IRQ_CONSOLE = 2,
     IRQ_INPUT = 4,
     IRQ_VBLANK = 8,
+    IRQ_NET = 16,
 };
 
 enum {
@@ -71,6 +73,7 @@ typedef struct {
     bool vblank;            // the kernel wants vertical blank interrupts
     uint64_t next_vblank;
 
+    Net net;
     Audio *audio;
     uint32_t audio_address;
     uint32_t audio_length;
@@ -138,6 +141,8 @@ device_read(Machine *m, uint32_t port, uint32_t *value)
         *value = h->audio_status;
         return true;
     }
+    if (net_read(&h->net, port, value))
+        return true;
     return gpu_read(&h->gpu, port, value);
 }
 
@@ -206,6 +211,8 @@ device_write(Machine *m, uint32_t port, uint32_t value)
             h->audio_status = audio_queue(h->audio, m->ram + h->audio_address, h->audio_length) ? 0 : 1;
         return true;
     }
+    if (net_write(&h->net, m, port, value))
+        return true;
     return gpu_write(&h->gpu, m, port, value);
 }
 
@@ -417,6 +424,7 @@ boot(const BootOptions *o)
             return 2;
     }
     h.audio = audio_open(!o->window || o->mute);
+    net_init(&h.net);
     if (!gpu_init(&h.gpu, width, height)) {
         fprintf(stderr, "terrarium: out of memory\n");
         return 2;
@@ -457,11 +465,15 @@ boot(const BootOptions *o)
         if (h.gui != NULL && !gui_poll(h.gui, &h.events))
             break;
         check_video(&m, &h);
+        if (net_poll(&h.net))
+            m.pending |= IRQ_NET;
         Stop stop = machine_run(&m, 100000);
         if (h.gui != NULL)
             gui_show(h.gui, &h.gpu);
         if (stop == STOP_WAIT) {
             int timeout = idle_time(&h);
+            if (net_active(&h.net) && (timeout < 0 || timeout > 10))
+                timeout = 10;
             if (h.input_closed && timeout < 0) {
                 fprintf(stderr, "terrarium: idle with no input left, stopping\n");
                 break;

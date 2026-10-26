@@ -33,6 +33,12 @@ fn trace_spawns(handle: u32) -> u32;
 fn audio_play(samples: []u8) -> u32;
 // Bytes of sound waiting to be played; the samples per second go in rate.
 fn audio_status(rate: *u32) -> u32;
+// Opens a TCP connection; read and write it like a file.
+fn connect(host: []u8, port: u32) -> u32;
+// Listens for connections on the host's own address.
+fn listen(port: u32) -> u32;
+// Waits for the next connection to a listening handle.
+fn accept(listener: u32) -> u32;
 
 // A directory listing record, as list() returns them.
 struct ListEntry {

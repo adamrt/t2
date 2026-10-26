@@ -351,6 +351,8 @@ fn permissions(e: *Node) -> u32 {
             bits |= 32;
         } else if text_equal(word, "audio") {
             bits |= 64;
+        } else if text_equal(word, "network") {
+            bits |= 128;
         } else {
             fail_name(e, "unknown permission", word);
         }
