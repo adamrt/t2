@@ -34,7 +34,10 @@ the host's build byte for byte.
 that or refuses to start it, and `main` gets the whole heap as a slice to
 divide into arenas. Each process's memory is one unbroken run of physical
 memory, which the kernel slides together when free memory is in pieces
-(`tests/os/compact.txt`). There is no paging and no swapping.
+(`tests/os/compact.txt`). There is no paging and no swapping. Since memory
+starts zeroed, the highest word a program wrote shows how much of its heap
+it used, and the lowest how much stack; `trace` and `--stats` report both,
+so a manifest can ask for what a program really needs.
 
 **Graphics, as you suggested.** There is one shared, double-buffered
 framebuffer in VRAM. Windows keep no pixels of their own. A program sends

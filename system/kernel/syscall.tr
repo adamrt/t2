@@ -736,14 +736,42 @@ fn trace_call(p: *Process, number: u32, result: u32) {
         io.put_u32(&w, result);
     }
     io.put_byte(&w, '\n');
+    trace_send(p, w.used);
+}
+
+// Reports how much of its memory a process used, as it ends.
+fn trace_memory(p: *Process) {
+    var w: io.Writer;
+    io.writer_init(&w, io.STDOUT, trace_text[:]);
+    io.put(&w, p.name[0:p.name_len]);
+    io.put(&w, ": used ");
+    put_kib(&w, heap_used(p));
+    io.put(&w, " of ");
+    put_kib(&w, GUARD + p.memory - p.code_size - p.stack_size - p.heap_start);
+    io.put(&w, " heap, ");
+    put_kib(&w, stack_used(p));
+    io.put(&w, " of ");
+    put_kib(&w, p.stack_size);
+    io.put(&w, " stack\n");
+    trace_send(p, w.used);
+}
+
+// Bytes as KiB, rounded up.
+fn put_kib(w: *io.Writer, bytes: u32) {
+    io.put_u32(w, bytes / 1024 + (bytes % 1024 + 1023) / 1024);
+    io.put(w, " KiB");
+}
+
+// Sends the first n bytes of trace_text to the tracing pipe, unless it's full.
+fn trace_send(p: *Process, n: u32) {
     var pipe = p.trace.pipe;
-    if pipe.readers == 0 || pipe.count + w.used > PIPE_SIZE {
+    if pipe.readers == 0 || pipe.count + n > PIPE_SIZE {
         return;
     }
-    for i in 0..w.used {
+    for i in 0..n {
         pipe.data[(pipe.start + pipe.count + i) % PIPE_SIZE] = trace_text[i];
     }
-    pipe.count += w.used;
+    pipe.count += n;
     wake_all();
 }
 
@@ -1141,7 +1169,7 @@ fn list_processes(buffer: []u8) -> u32 {
         set_word(record, 12, q.memory);
         set_word(record, 16, q.cycles);
         if q.memory > 0 {
-            set_word(record, 20, GUARD + q.memory - q.code_size - q.stack_low);
+            set_word(record, 20, stack_used(q));
         }
         set_word(record, 24, q.bytes_read);
         set_word(record, 28, q.bytes_written);

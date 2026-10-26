@@ -15,8 +15,8 @@ Welcome to Terrarium. Type 'help' for help.
   data    76 bytes
   allows  nothing
 /> /bin/tc
-  memory  32768 KiB
-  stack   256 KiB
+  memory  8192 KiB
+  stack   64 KiB
   code    77124 bytes
   data    27635 bytes
   allows  read write 

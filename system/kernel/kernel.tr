@@ -189,9 +189,6 @@ fn run(p: *Process) {
         p.regs[i] = io_read(PORT_USER_R0 + i);
     }
     p.pc = io_read(PORT_USER_PC);
-    if p.regs[8] < p.stack_low {
-        p.stack_low = p.regs[8];
-    }
 
     var cause = io_read(PORT_CAUSE);
     if cause == CAUSE_SYS {

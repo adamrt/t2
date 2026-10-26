@@ -58,7 +58,7 @@ struct Process {
     permissions: u32;
     trace: *Object;         // where to report this process's system calls
     trace_spawns: *Object;  // where to report those of processes it starts
-    stack_low: u32;         // the lowest sp seen, for the stack's high-water mark
+    heap_start: u32;        // where its heap begins, after data and bss
     bytes_read: u32;
     bytes_written: u32;
 }
@@ -190,9 +190,9 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     p.permissions = permissions;
     p.pc = entry;
     p.regs[0] = GUARD + align4(data) + align4(bss);
+    p.heap_start = p.regs[0];
     p.regs[1] = GUARD + data_size - stack;
     p.regs[8] = GUARD + data_size;
-    p.stack_low = p.regs[8];
 
     var slash = path.len;
     while slash > 0 && path[slash - 1] != '/' {
@@ -245,6 +245,7 @@ fn exit_process(p: *Process, status: u32) {
         }
     }
     if p.trace != null {
+        trace_memory(p);
         release_object(p.trace);
         p.trace = null;
     }
@@ -293,6 +294,36 @@ fn memory_init(start: u32, end: u32) {
 
 fn physical_bytes(base: u32, size: u32) -> []u8 {
     return ((base + GUARD) as *u8)[0:size];
+}
+
+// A process's memory starts zeroed, so how far it has written into its heap
+// and its stack shows how much of each it has used. Memory written only
+// with zeros counts as unused.
+
+// The heap a process has used, up to the highest word it wrote.
+fn heap_used(p: *Process) -> u32 {
+    var words = data_words(p);
+    var start = (p.heap_start - GUARD) / 4;
+    var end = (p.memory - p.code_size - p.stack_size) / 4;
+    while end > start && words[end - 1] == 0 {
+        end -= 1;
+    }
+    return (end - start) * 4;
+}
+
+// The most stack a process has used, from the lowest word it wrote.
+fn stack_used(p: *Process) -> u32 {
+    var words = data_words(p);
+    var low = (p.memory - p.code_size - p.stack_size) / 4;
+    while low < words.len && words[low] == 0 {
+        low += 1;
+    }
+    return (words.len - low) * 4;
+}
+
+// A process's data space as words: word i is at address GUARD + 4 * i.
+fn data_words(p: *Process) -> []u32 {
+    return ((p.region + GUARD + p.code_size) as *u32)[0:(p.memory - p.code_size) / 4];
 }
 
 fn memory_used() -> u32 {

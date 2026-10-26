@@ -21,6 +21,9 @@ enum {
     SYS_ARG,
 };
 
+// Where the program's heap starts, for --stats.
+static uint32_t heap_start;
+
 static bool
 load_program(Machine *m, const char *path)
 {
@@ -52,7 +55,33 @@ load_program(Machine *m, const char *path)
     m->r[REG_SP] = NULL_GUARD + data_space;
     m->r[0] = NULL_GUARD + align4(exe.data) + align4(exe.bss);
     m->r[1] = m->space.stack_limit;
+    heap_start = m->r[0];
     return true;
+}
+
+static uint32_t
+kib(uint32_t bytes)
+{
+    return (bytes + 1023) / 1024;
+}
+
+// Memory starts zeroed, so how far the program wrote into its heap and its
+// stack shows how much of each it used. The kernel's trace reports the same.
+static void
+print_memory_used(Machine *m)
+{
+    const uint8_t *data = m->ram + m->space.data.base;
+    uint32_t start = heap_start - NULL_GUARD;
+    uint32_t limit = m->space.stack_limit - NULL_GUARD;
+    uint32_t top = m->space.data.size;
+    uint32_t end = limit;
+    while (end > start && data[end - 1] == 0)
+        end--;
+    uint32_t low = limit;
+    while (low < top && data[low] == 0)
+        low++;
+    fprintf(stderr, "memory: used %u KiB of %u KiB heap, %u KiB of %u KiB stack\n",
+            kib(end - start), kib(limit - start), kib(top - low), kib(top - limit));
 }
 
 static uint32_t
@@ -223,8 +252,10 @@ main(int argc, char **argv)
         }
     }
 
-    if (stats)
+    if (stats) {
         fprintf(stderr, "cycles: %llu\n", (unsigned long long)m.cycles);
+        print_memory_used(&m);
+    }
     machine_free(&m);
     return status;
 }

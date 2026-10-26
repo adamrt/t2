@@ -82,7 +82,8 @@ result is byte for byte the compiler the host built. Some others to try:
 - `monitor`, `ps`, `mem` — memory reserved and instructions used; the
   monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
-- `trace ls` — every system call a program makes; `search text files...`
+- `trace ls` — every system call a program makes, and how much memory it
+  used; `search text files...`
   — the lines that contain some text; `sort`; `hex file` — its bytes
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
   on the host. `fetch host port /path` goes the other way.
@@ -103,8 +104,8 @@ build/terrarium build/mksound.bin -o sound.tsn recording.wav     # WAV to TSN1
 ```
 
 `build/terrarium [--trace] [--stats] program.bin [arguments...]` runs a
-program on the monitor. `--trace` prints every instruction and `--stats`
-the cycle count; a `program.sym` next to the program (the assembler writes
+program on the monitor. `--trace` prints every instruction, and `--stats`
+the cycles it ran and how much of its heap and stack it used; a `program.sym` next to the program (the assembler writes
 one with `-s`) puts label names in traces and fault reports.
 
 `build/terrarium boot [--headless] [--fullscreen] [--mute] disk.img

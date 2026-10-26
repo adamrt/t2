@@ -16,9 +16,11 @@ ls: arg(0) = 4
 ls: info("/src") = 0
 ls: list("/src") = 576
 ls: write(1) = 64
+ls: used 1 KiB of 168 KiB heap, 1 KiB of 16 KiB stack
 /> cat: can't read /nothing
 cat: args() = 1
 cat: arg(0) = 8
 cat: open("/nothing") = failed
 cat: write(2) = 25
+cat: used 1 KiB of 93 KiB heap, 2 KiB of 16 KiB stack
 /> Terrarium: every process has ended

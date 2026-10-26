@@ -13,8 +13,8 @@ import os;
 import text;
 
 manifest {
-    memory = 32 * MiB;
-    stack = 256 * KiB;
+    memory = 8 * MiB;
+    stack = 64 * KiB;
     allow = "read write";
 }
 
