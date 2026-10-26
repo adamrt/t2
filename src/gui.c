@@ -3,9 +3,55 @@
 
 #include "gui.h"
 
-#include <SDL3/SDL.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef HEADLESS
+
+// Built without SDL there is no window, and the machine runs only with
+// --headless or --screen. The other calls happen only with a window.
+
+Gui *
+gui_open(bool fullscreen, uint32_t *width, uint32_t *height)
+{
+    (void)fullscreen;
+    (void)width;
+    (void)height;
+    fprintf(stderr, "terrarium: built without a window; use boot --headless or --screen WxH\n");
+    return NULL;
+}
+
+void
+gui_close(Gui *gui)
+{
+    (void)gui;
+}
+
+bool
+gui_poll(Gui *gui, InputQueue *queue)
+{
+    (void)gui;
+    (void)queue;
+    return false;
+}
+
+void
+gui_wait(Gui *gui, int timeout_ms)
+{
+    (void)gui;
+    (void)timeout_ms;
+}
+
+void
+gui_show(Gui *gui, Gpu *g)
+{
+    (void)gui;
+    (void)g;
+}
+
+#else
+
+#include <SDL3/SDL.h>
 
 enum {
     KEY_LEFT = 0x100,
@@ -303,3 +349,5 @@ gui_show(Gui *gui, Gpu *g)
     }
     SDL_RenderPresent(gui->renderer);
 }
+
+#endif

@@ -2,13 +2,20 @@
 
 #include "audio.h"
 
-#include <SDL3/SDL.h>
+#include <stdlib.h>
 #include <time.h>
+
+#ifndef HEADLESS
+#include <SDL3/SDL.h>
+#endif
 
 #define MAX_QUEUED (AUDIO_RATE * 2 * 2)
 
+// Built without SDL, every device is silent.
 struct Audio {
+#ifndef HEADLESS
     SDL_AudioStream *stream;
+#endif
     // For the silent device: bytes queued, and when that was last worked out.
     uint32_t queued;
     uint64_t since;
@@ -25,14 +32,20 @@ micros(void)
 Audio *
 audio_open(bool silent)
 {
-    Audio *a = SDL_calloc(1, sizeof(Audio));
+    Audio *a = calloc(1, sizeof(Audio));
+    if (a == NULL)
+        return NULL;
     a->since = micros();
+#ifndef HEADLESS
     if (silent || !SDL_InitSubSystem(SDL_INIT_AUDIO))
         return a;
     SDL_AudioSpec spec = { .format = SDL_AUDIO_S16LE, .channels = 1, .freq = AUDIO_RATE };
     a->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (a->stream != NULL)
         SDL_ResumeAudioStreamDevice(a->stream);
+#else
+    (void)silent;
+#endif
     return a;
 }
 
@@ -41,18 +54,22 @@ audio_close(Audio *a)
 {
     if (a == NULL)
         return;
+#ifndef HEADLESS
     if (a->stream != NULL)
         SDL_DestroyAudioStream(a->stream);
-    SDL_free(a);
+#endif
+    free(a);
 }
 
 uint32_t
 audio_queued(Audio *a)
 {
+#ifndef HEADLESS
     if (a->stream != NULL) {
         int n = SDL_GetAudioStreamQueued(a->stream);
         return n > 0 ? (uint32_t)n : 0;
     }
+#endif
     uint64_t now = micros();
     uint64_t played = (now - a->since) * AUDIO_RATE * 2 / 1000000;
     if (played >= a->queued) {
@@ -71,8 +88,12 @@ audio_queue(Audio *a, const uint8_t *samples, uint32_t bytes)
 {
     if (audio_queued(a) + bytes > MAX_QUEUED)
         return false;
+#ifndef HEADLESS
     if (a->stream != NULL)
         return SDL_PutAudioStreamData(a->stream, samples, (int)bytes);
+#else
+    (void)samples;
+#endif
     a->queued += bytes;
     return true;
 }

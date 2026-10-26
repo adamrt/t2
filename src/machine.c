@@ -328,7 +328,7 @@ step(Machine *m)
 
     // The value written to register a, if any. Writes to sp are checked
     // against the stack limit before anything changes.
-    uint32_t value;
+    uint32_t value = 0;
     bool write = true;
 
     switch (op) {

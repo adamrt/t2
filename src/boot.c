@@ -2,6 +2,7 @@
 // loop runs it with its devices. The console is the host terminal.
 
 #define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE         // for tm_gmtoff, the local time's offset, on glibc
 
 #include "audio.h"
 #include "gui.h"

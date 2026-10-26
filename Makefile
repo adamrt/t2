@@ -5,8 +5,20 @@ VM = $(BUILD)/terrarium
 ASM = $(VM) $(BUILD)/asm.bin
 TC = $(VM) $(BUILD)/tc.bin
 MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c src/gpu.c src/gui.c src/audio.c src/net.c
-SDL_CFLAGS := $(shell pkg-config --cflags sdl3)
-SDL_LIBS := $(shell pkg-config --libs sdl3)
+# SDL3 gives the machine a window and sound. Without it, or with
+# make HEADLESS=1, everything still builds, and the machine runs with
+# --headless or --screen.
+ifeq ($(HEADLESS),)
+SDL_LIBS := $(shell pkg-config --libs sdl3 2>/dev/null)
+SDL_CFLAGS := $(shell pkg-config --cflags sdl3 2>/dev/null)
+ifeq ($(SDL_LIBS),)
+HEADLESS = 1
+endif
+endif
+ifneq ($(HEADLESS),)
+SDL_CFLAGS = -DHEADLESS
+SDL_LIBS =
+endif
 
 RUNTIME = system/lib/rt.asm
 # The modules programs import, like io and gfx.
@@ -34,11 +46,16 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 SOURCES = $(wildcard system/tc/*.tr system/kernel/*.tr system/kernel/*.asm system/bin/*.tr system/tools/*.tr \
 	system/asm/*.asm system/fonts/*.txt) system/scripts/build-tc system/scripts/build-asm
 
-.PHONY: all test run clean
+.PHONY: all test run clean FORCE
 
 all: $(VM) $(TOOLS) $(BUILD)/disk.img $(BUILD)/mkimage.bin $(BUILD)/mksound.bin
 
-$(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h src/audio.h src/net.h
+# Changing between a build with SDL and one without rebuilds the machine.
+$(BUILD)/vm.flags: FORCE
+	@mkdir -p $(BUILD)
+	@echo '$(SDL_CFLAGS) $(SDL_LIBS)' | cmp -s - $@ || echo '$(SDL_CFLAGS) $(SDL_LIBS)' > $@
+
+$(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h src/audio.h src/net.h $(BUILD)/vm.flags
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(MACHINE) $(SDL_LIBS)
 
@@ -88,8 +105,9 @@ $(BUILD)/run.img: $(BUILD)/disk.img
 	cp $< $@
 
 # The machine fills the screen; make run WINDOW=1 opens a window instead.
+# Built without SDL, it runs in this terminal.
 run: all $(BUILD)/run.img
-	$(VM) boot $(if $(WINDOW),,--fullscreen) $(BUILD)/run.img $(BUILD)/kernel.sym
+	$(VM) boot $(if $(HEADLESS),--headless,$(if $(WINDOW),,--fullscreen)) $(BUILD)/run.img $(BUILD)/kernel.sym
 
 test: all $(ASM0) $(TC0)
 	tests/run.sh

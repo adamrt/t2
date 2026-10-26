@@ -3,9 +3,7 @@ Terrarium: 49152 KiB for programs
 Welcome to Terrarium. Type 'help' for help.
 
 /> /src> [3]
-/src> serving on http://localhost:47123/
-/src> GET /hello.tr HTTP/1.0
-HTTP/1.0 200 OK
+/src> /src> HTTP/1.0 200 OK
 Content-Type: text/plain
 Content-Length: 106
 Server: Terrarium
@@ -16,4 +14,6 @@ fn main(memory []u8) u32 {
     io.print("Hello from the Terrarium language!\n")
     return 0
 }
-/src> /src> Terrarium: every process has ended
+/src> /src> serving on http://localhost:47123/
+GET /hello.tr HTTP/1.0
+/src> Terrarium: every process has ended

@@ -15,8 +15,11 @@ make run        # boot Terrarium fullscreen; this terminal becomes its console
 make test       # instructions, faults, the language, and whole-system sessions
 ```
 
-It needs a C99 compiler and SDL3, nothing else: even the assembler and
-compiler are built from source, by their C versions in `bootstrap/`. Terrarium fills the screen at a
+It needs a C99 compiler, nothing else: even the assembler and compiler are
+built from source, by their C versions in `bootstrap/`. SDL3, if it's
+installed, gives the machine a window and sound. Without it (or with
+`make HEADLESS=1`) everything still builds and every test passes, and the
+machine runs in the terminal. Terrarium fills the screen at a
 whole-number scale (Cmd-Q quits on a Mac); `make run WINDOW=1` opens a
 window instead.
 

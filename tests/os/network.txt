@@ -1,6 +1,7 @@
 cd /src
-serve 47123 &
+serve 47123 > /serve.log &
 sleep 200
 fetch localhost 47123 /hello.tr
 kill 3
+cat /serve.log
 exit
