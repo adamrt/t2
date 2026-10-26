@@ -17,7 +17,7 @@ enum ObjectKind {
 struct Object {
     kind: ObjectKind;
     refs: u32;
-    file: FileRef;
+    open: *OpenFile;
     position: u32;
     writable: bool;
     pipe: *Pipe;
@@ -50,6 +50,46 @@ fn net_command(command: u32, id: u32, buffer: []u8) -> u32 {
     }
     io_write(PORT_NET_COMMAND, command);
     return io_read(PORT_NET_RESULT);
+}
+
+// Every handle on the same file shares one of these, so a write through one
+// handle, or emptying the file, is seen by all of them.
+struct OpenFile {
+    file: FileRef;
+    refs: u32;
+}
+
+const MAX_OPEN_FILES = 64;
+var open_files: [MAX_OPEN_FILES]OpenFile;
+
+// The shared record for a file, which is known by where its entry is.
+fn open_record(f: *FileRef) -> *OpenFile {
+    var free: *OpenFile = null;
+    for i in 0..MAX_OPEN_FILES {
+        var r = &open_files[i];
+        if r.refs > 0 && r.file.parent == f.parent && r.file.index == f.index {
+            r.refs += 1;
+            return r;
+        }
+        if r.refs == 0 && free == null {
+            free = r;
+        }
+    }
+    if free != null {
+        free.file = *f;
+        free.refs = 1;
+    }
+    return free;
+}
+
+fn file_is_open(f: *FileRef) -> bool {
+    for i in 0..MAX_OPEN_FILES {
+        var r = &open_files[i];
+        if r.refs > 0 && r.file.parent == f.parent && r.file.index == f.index {
+            return true;
+        }
+    }
+    return false;
 }
 
 const PIPE_SIZE = 4096;
@@ -134,6 +174,9 @@ fn release_object(o: *Object) {
     if o.kind == ObjectKind.Window {
         window_close(o.window);
     }
+    if o.kind == ObjectKind.File {
+        o.open.refs -= 1;
+    }
     if o.kind == ObjectKind.Connection {
         var none: []u8;
         net_command(NET_CLOSE, o.connection, none);
@@ -195,6 +238,11 @@ fn resolve_path(p: *Process, path: []u8, out: []u8) -> []u8 {
         }
         if part.len == 0 || text_equal(part, ".") {
             continue;
+        }
+        for i in 0..part.len {
+            if part[i] == 0 {
+                return empty;
+            }
         }
         if text_equal(part, "..") {
             while n > 0 && out[n - 1] != '/' {
@@ -364,7 +412,7 @@ fn system_call(p: *Process, number: u32) {
         }
         Call.Remove => {
             path = path_argument(p, r[0], r[1], path_buffer[:]);
-            if path.len > 1 && lookup(path, &f) && (f.kind == KIND_FILE || directory_empty(&f)) {
+            if path.len > 1 && lookup(path, &f) && !file_is_open(&f) && (f.kind == KIND_FILE || directory_empty(&f)) {
                 remove_entry(&f);
                 result = 0;
             }
@@ -450,7 +498,7 @@ fn system_call(p: *Process, number: u32) {
         Call.Seek => {
             var o = handle_object(p, r[0]);
             if o != null && o.kind == ObjectKind.File {
-                o.position = min(r[1], o.file.size);
+                o.position = min(r[1], o.open.file.size);
                 result = o.position;
             }
         }
@@ -646,7 +694,7 @@ fn read_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             return n;
         }
         ObjectKind.File => {
-            var n = read_at(&o.file, o.position, bytes);
+            var n = read_at(&o.open.file, o.position, bytes);
             o.position += n;
             return n;
         }
@@ -695,7 +743,7 @@ fn write_object(p: *Process, o: *Object, bytes: []u8) -> u32 {
             if !o.writable {
                 return FAILED;
             }
-            var n = write_at(&o.file, o.position, bytes);
+            var n = write_at(&o.open.file, o.position, bytes);
             o.position += n;
             return n;
         }
@@ -753,7 +801,9 @@ fn open_window(p: *Process, title: []u8, width: u32, height: u32) -> u32 {
         return FAILED;
     }
     var handle = add_handle(p, o);
-    o.window.handle = handle;
+    if handle != FAILED {
+        o.window.handle = handle;
+    }
     return handle;
 }
 
@@ -805,7 +855,10 @@ fn available(o: *Object) -> u32 {
             return o.pipe.count;
         }
         ObjectKind.File => {
-            return o.file.size - o.position;
+            if o.position >= o.open.file.size {
+                return 0;
+            }
+            return o.open.file.size - o.position;
         }
     }
     return FAILED;
@@ -832,17 +885,22 @@ fn open_file(p: *Process, path: []u8, mode: u32) -> u32 {
         if name.len == 0 || !add_entry(&dir, name, KIND_FILE, &f) {
             return FAILED;
         }
-    } else if mode == 1 {
-        truncate(&f);
     }
     var o = new_object(ObjectKind.File);
     if o == null {
         return FAILED;
     }
-    o.file = f;
+    o.open = open_record(&f);
+    if o.open == null {
+        o.kind = ObjectKind.Free;
+        return FAILED;
+    }
+    if mode == 1 {
+        truncate(&o.open.file);
+    }
     o.writable = mode > 0;
     if mode == 2 {
-        o.position = f.size;
+        o.position = o.open.file.size;
     }
     return add_handle(p, o);
 }
@@ -889,10 +947,11 @@ fn spawn(p: *Process) -> u32 {
     if path.len == 0 || args.ptr == null {
         return FAILED;
     }
+    // A window belongs to the process that opened it, so it can't be handed on.
     var handles: [3]*Object;
     for i in 0..3 {
         handles[i] = handle_object(p, r[4 + i]);
-        if handles[i] == null {
+        if handles[i] == null || handles[i].kind == ObjectKind.Window {
             return FAILED;
         }
     }
@@ -921,7 +980,7 @@ fn make_pipe(p: *Process) -> u32 {
     }
     var writer = new_object(ObjectKind.PipeWriter);
     if writer == null {
-        release_object(reader);
+        reader.kind = ObjectKind.Free;
         return FAILED;
     }
     pipe.used = true;

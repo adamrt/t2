@@ -418,12 +418,15 @@ step(Machine *m)
         const uint8_t *p = (sp & 3) ? NULL : machine_data(m, sp, 4);
         if (p == NULL)
             return fault(m, FAULT_DATA_ADDRESS, sp);
-        r[REG_SP] = sp + 4;
+        // The stack pointer moves up, unless the pop is into sp itself.
         if (op == OP_RET) {
+            r[REG_SP] = sp + 4;
             next = load32(p);
             write = false;
         } else {
             value = load32(p);
+            if (a != REG_SP)
+                r[REG_SP] = sp + 4;
         }
         break;
     }

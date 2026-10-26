@@ -37,6 +37,24 @@ max32(int32_t a, int32_t b)
     return a > b ? a : b;
 }
 
+// Coordinates and sizes from a command list are kept small, so no sum or
+// product below can overflow, whatever the list says.
+#define LIMIT 32768
+
+static int32_t
+coord(uint32_t v, int32_t origin)
+{
+    int64_t x = (int64_t)(int32_t)v + origin;
+    return (int32_t)(x < -LIMIT ? -LIMIT : x > LIMIT ? LIMIT : x);
+}
+
+static int32_t
+extent(uint32_t v)
+{
+    int32_t s = (int32_t)v;
+    return s < 0 ? 0 : s > 2 * LIMIT ? 2 * LIMIT : s;
+}
+
 static Box
 intersect(Box a, Box b)
 {
@@ -160,11 +178,13 @@ static bool
 blit(Context *c, const uint32_t *w)
 {
     uint32_t image = w[0], width = w[1], height = w[2];
-    int32_t sx = (int32_t)w[3], sy = (int32_t)w[4], bw = (int32_t)w[5], bh = (int32_t)w[6];
-    int32_t dx = (int32_t)w[7] + c->g->origin_x, dy = (int32_t)w[8] + c->g->origin_y;
+    int32_t sx = coord(w[3], 0), sy = coord(w[4], 0), bw = extent(w[5]), bh = extent(w[6]);
+    int32_t dx = coord(w[7], c->g->origin_x), dy = coord(w[8], c->g->origin_y);
     uint32_t mode = w[9];
+    if (width > 2 * LIMIT || height > 2 * LIMIT || mode > 1)
+        return false;
     const uint8_t *pixels = source(c, image, (uint64_t)width * height * 4);
-    if (pixels == NULL || mode > 1)
+    if (pixels == NULL)
         return false;
     // Keep the source rectangle inside the image.
     if (sx < 0) {
@@ -200,7 +220,7 @@ blit(Context *c, const uint32_t *w)
 static bool
 text(Context *c, const uint32_t *w)
 {
-    int32_t x = (int32_t)w[0] + c->g->origin_x, y = (int32_t)w[1] + c->g->origin_y;
+    int32_t x = coord(w[0], c->g->origin_x), y = coord(w[1], c->g->origin_y);
     uint32_t color = w[2], length = w[4], scale = w[5];
     const uint8_t *chars = source(c, w[3], length);
     const uint8_t *font = physical(c->m, c->g->font, 20);
@@ -210,7 +230,7 @@ text(Context *c, const uint32_t *w)
     const uint8_t *glyphs = physical(c->m, c->g->font + 20, (uint64_t)count * fh);
     if (glyphs == NULL || fw > 8 || count == 0)
         return false;
-    for (uint32_t i = 0; i < length; i++, x += (int32_t)(fw * scale)) {
+    for (uint32_t i = 0; i < length && x < (int32_t)c->g->width; i++, x += (int32_t)(fw * scale)) {
         uint32_t ch = chars[i];
         if (ch < first || ch >= first + count)
             ch = '?' >= first && '?' < first + count ? '?' : first;
@@ -264,10 +284,6 @@ modulate(uint32_t texel, uint32_t tint)
 static void
 triangle(Context *c, Vertex v[3], const uint8_t *texture, uint32_t tw, uint32_t th, uint32_t tint)
 {
-    for (int i = 0; i < 3; i++) {
-        v[i].x += c->g->origin_x;
-        v[i].y += c->g->origin_y;
-    }
     int64_t area = edge(&v[0], &v[1], v[2].x, v[2].y);
     if (area == 0)
         return;
@@ -341,8 +357,8 @@ run(Gpu *g, Machine *m)
         return 1;
     for (uint32_t i = 0; i < g->clip_count; i++) {
         const uint8_t *r = clips + i * 16;
-        int32_t x = (int32_t)word(r), y = (int32_t)word(r + 4);
-        Box b = { x, y, x + (int32_t)word(r + 8), y + (int32_t)word(r + 12) };
+        int32_t x = coord(word(r), 0), y = coord(word(r + 4), 0);
+        Box b = { x, y, x + extent(word(r + 8)), y + extent(word(r + 12)) };
         c.clips[c.clip_count++] = intersect(b, screen);
     }
     const uint8_t *list = physical(m, g->commands, (uint64_t)g->length * 4);
@@ -361,13 +377,12 @@ run(Gpu *g, Machine *m)
         bool ok = true;
         switch (op) {
         case GPU_FILL: {
-            int32_t x = (int32_t)w[0] + ox, y = (int32_t)w[1] + oy;
-            if ((int32_t)w[2] > 0 && (int32_t)w[3] > 0)
-                fill_box(&c, (Box){ x, y, x + (int32_t)w[2], y + (int32_t)w[3] }, w[4]);
+            int32_t x = coord(w[0], ox), y = coord(w[1], oy);
+            fill_box(&c, (Box){ x, y, x + extent(w[2]), y + extent(w[3]) }, w[4]);
             break;
         }
         case GPU_LINE:
-            draw_line(&c, (int32_t)w[0] + ox, (int32_t)w[1] + oy, (int32_t)w[2] + ox, (int32_t)w[3] + oy, w[4]);
+            draw_line(&c, coord(w[0], ox), coord(w[1], oy), coord(w[2], ox), coord(w[3], oy), w[4]);
             break;
         case GPU_BLIT:
             ok = blit(&c, w);
@@ -378,20 +393,20 @@ run(Gpu *g, Machine *m)
         case GPU_TRIANGLE: {
             Vertex v[3];
             for (int i = 0; i < 3; i++)
-                v[i] = (Vertex){ (int32_t)w[i * 3], (int32_t)w[i * 3 + 1], w[i * 3 + 2], 0, 0 };
+                v[i] = (Vertex){ coord(w[i * 3], ox), coord(w[i * 3 + 1], oy), w[i * 3 + 2], 0, 0 };
             triangle(&c, v, NULL, 0, 0, 0);
             break;
         }
         case GPU_TEXTURED: {
             uint32_t tw = w[1], th = w[2];
-            const uint8_t *texture = source(&c, w[0], (uint64_t)tw * th * 4);
+            const uint8_t *texture = tw > 2 * LIMIT || th > 2 * LIMIT ? NULL : source(&c, w[0], (uint64_t)tw * th * 4);
             if (texture == NULL || tw == 0 || th == 0) {
                 ok = false;
                 break;
             }
             Vertex v[3];
             for (int i = 0; i < 3; i++)
-                v[i] = (Vertex){ (int32_t)w[3 + i * 4], (int32_t)w[4 + i * 4], 0, (int32_t)w[5 + i * 4], (int32_t)w[6 + i * 4] };
+                v[i] = (Vertex){ coord(w[3 + i * 4], ox), coord(w[4 + i * 4], oy), 0, coord(w[5 + i * 4], 0), coord(w[6 + i * 4], 0) };
             triangle(&c, v, texture, tw, th, w[15]);
             break;
         }
@@ -399,8 +414,8 @@ run(Gpu *g, Machine *m)
             if ((int32_t)w[2] < 0 || (int32_t)w[3] < 0) {
                 c.local = screen;
             } else {
-                int32_t x = (int32_t)w[0] + ox, y = (int32_t)w[1] + oy;
-                c.local = intersect((Box){ x, y, x + (int32_t)w[2], y + (int32_t)w[3] }, screen);
+                int32_t x = coord(w[0], ox), y = coord(w[1], oy);
+                c.local = intersect((Box){ x, y, x + extent(w[2]), y + extent(w[3]) }, screen);
             }
             break;
         }

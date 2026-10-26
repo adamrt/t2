@@ -135,7 +135,8 @@ instruction, so a branch reaches 32768 instructions in either direction.
 | `0x60` | push  | R      | `sp = sp - 4; u32 [sp] = a`                |
 | `0x61` | pop   | R      | `a = u32 [sp]; sp = sp + 4`                |
 
-`push sp` stores the value sp had before the push.
+`push sp` stores the value sp had before the push, and `pop sp` sets sp to
+the value popped.
 
 ### Bulk memory
 

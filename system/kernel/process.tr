@@ -59,6 +59,7 @@ struct Process {
 var processes: [MAX_PROCESSES]Process;
 var next_id: u32;
 var last_run: u32;
+var spawn_args: [ARGS_SIZE]u8;
 
 fn next_ready() -> *Process {
     for i in 0..MAX_PROCESSES {
@@ -137,13 +138,21 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     if parent != null {
         permissions &= parent.permissions;
     }
+    // Each size is checked on its own first, so the sums below can't wrap.
+    if memory > memory_end - memory_start || code > memory || code > f.size || data > f.size {
+        return null;
+    }
     var data_size = memory - code;
-    if code % 4 != 0 || memory % 4 != 0 || memory < code || HEADER + code + data > f.size {
+    if code % 4 != 0 || memory % 4 != 0 || HEADER + code + data > f.size || data > data_size || bss > data_size || stack > data_size {
         return null;
     }
     if align4(data) + align4(bss) + stack > data_size || entry < GUARD || entry - GUARD >= code || args.len > ARGS_SIZE {
         return null;
     }
+    // The arguments may be in the parent's memory, which reserving memory
+    // can move, so they're copied first.
+    copy(spawn_args[:], args);
+    var saved_args = spawn_args[0:args.len];
 
     var p: *Process = null;
     for i in 0..MAX_PROCESSES {
@@ -183,10 +192,10 @@ fn spawn_process(parent: *Process, path: []u8, args: []u8, handles: []*Object) -
     }
     p.name_len = min(path.len - slash, PROCESS_NAME_SIZE);
     copy(p.name[:], path[slash:slash + p.name_len]);
-    copy(p.args[:], args);
-    p.args_len = args.len;
-    for i in 0..args.len {
-        if args[i] == 0 {
+    copy(p.args[:], saved_args);
+    p.args_len = saved_args.len;
+    for i in 0..saved_args.len {
+        if saved_args[i] == 0 {
             p.arg_count += 1;
         }
     }
