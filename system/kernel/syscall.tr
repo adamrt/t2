@@ -143,7 +143,13 @@ enum Call {
     Connect,
     Listen,
     Accept,
+    ClipboardSet,
+    ClipboardGet,
 }
+
+// Text copied by one program for another to paste.
+var clipboard: [64 * KiB]u8;
+var clipboard_len: u32;
 
 fn new_object(kind: ObjectKind) -> *Object {
     for i in 0..MAX_OBJECTS {
@@ -320,13 +326,16 @@ fn needs(p: *Process, call: Call) -> bool {
         Call.Connect, Call.Listen, Call.Accept => {
             return allowed(p, ALLOW_NETWORK, "use the network");
         }
+        Call.ClipboardSet, Call.ClipboardGet => {
+            return allowed(p, ALLOW_WINDOW, "use the clipboard");
+        }
     }
     return true;
 }
 
 fn system_call(p: *Process, number: u32) {
     var r = p.regs[:];
-    if number <= Call.Accept as u32 && !needs(p, number as Call) {
+    if number <= Call.ClipboardGet as u32 && !needs(p, number as Call) {
         r[0] = FAILED;
         return;
     }
@@ -529,6 +538,21 @@ fn system_call(p: *Process, number: u32) {
             r[1] = io_read(0x60);
             result = io_read(0x64);
         }
+        Call.ClipboardSet => {
+            var bytes = user_bytes(p, r[0], r[1]);
+            if bytes.ptr != null && bytes.len <= clipboard.len {
+                copy(clipboard[:], bytes);
+                clipboard_len = bytes.len;
+                result = 0;
+            }
+        }
+        Call.ClipboardGet => {
+            var buffer = user_bytes(p, r[0], r[1]);
+            if buffer.ptr != null {
+                copy(buffer, clipboard[0:min(clipboard_len, buffer.len)]);
+                result = clipboard_len;
+            }
+        }
         Call.Connect => {
             var host = user_bytes(p, r[0], r[1]);
             if host.ptr != null && host.len < 256 {
@@ -613,6 +637,8 @@ fn call_name(number: u32) -> []u8 {
         30 => { return "connect"; }
         31 => { return "listen"; }
         32 => { return "accept"; }
+        33 => { return "clipboard_set"; }
+        34 => { return "clipboard_get"; }
     }
     return "call";
 }

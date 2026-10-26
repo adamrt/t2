@@ -40,6 +40,8 @@ monitor, so the same tools run on both.
 | 30 | connect    | r0 host, r1 length, r2 port                       | handle                     |
 | 31 | listen     | r0 port                                           | handle                     |
 | 32 | accept     | r0 listening handle                               | handle for the next connection |
+| 33 | clipboard_set | r0 text, r1 length (at most 64 KiB)            | 0                          |
+| 34 | clipboard_get | r0 buffer, r1 length                           | the clipboard's length     |
 
 ## Handles
 
@@ -93,6 +95,9 @@ relative to the window; keys are as in [devices.md](devices.md).
 
 `screen_info` gives the screen's width and height, and the system font's
 glyph width and height. It fails when there is no screen.
+
+The clipboard holds one piece of text that any program with the `window`
+permission can set or read, for copying between programs.
 
 The kernel draws each window's frame and title bar. Dragging the title bar
 moves the window, clicking a window brings it to the front, and keys go to

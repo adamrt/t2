@@ -67,7 +67,8 @@ result is byte for byte the compiler the host built. Some others to try:
 - `edit file` — a text editor; `files` — a file browser
 - `cube`, `fractal`, `demo` — fixed-point 3D, Mandelbrot, the GPU
 - `worm`, `piano` — a game and an instrument
-- `monitor`, `ps`, `mem` — memory reserved and instructions used
+- `monitor`, `ps`, `mem` — memory reserved and instructions used; the
+  monitor can stop a process
 - `manifest /bin/edit` — what a program declares about itself
 - `trace ls` — every system call a program makes
 - `serve 8080` — share the current directory; then `curl localhost:8080/`
@@ -94,7 +95,9 @@ one with `-s`) puts label names in traces and fault reports.
 `build/terrarium boot [--headless] [--fullscreen] [--mute] disk.img
 [kernel.sym]` starts the whole machine. For testing, `--screen WxH` gives it
 a screen without a window, `--type text` presses keys once it has started,
-`--run-for ms` stops it, and `--screenshot out.png` saves the screen.
+`--run-for ms` stops it, and `--screenshot out.png` saves the screen. In
+`--type`, a newline is Enter, `\x1b` is Escape, and other control characters
+are Ctrl with a letter.
 
 The assembler and compiler build themselves from seeds in `bootstrap/`; see
 its README.

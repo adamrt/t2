@@ -244,6 +244,20 @@ _accept:
     sys 32
     return
 
+; fn clipboard_set(text: []u8) -> u32;
+_clipboard_set:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 33
+    return
+
+; fn clipboard_get(buffer: []u8) -> u32;
+_clipboard_get:
+    r0 = [sp + 4]
+    r1 = [sp + 8]
+    sys 34
+    return
+
 ; fn mem_copy(to: *u8, from: *u8, count: u32);
 _mem_copy:
     r0 = [sp + 4]

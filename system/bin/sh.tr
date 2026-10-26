@@ -6,8 +6,9 @@
 // Words are separated by spaces, and quotes keep spaces inside a word. "|"
 // feeds one command's output to the next, "<" reads input from a file, and
 // ">" writes output to one (">>" adds to its end). A line ending in "&"
-// runs in the background. A line starting with "#" is a comment. Programs
-// without a "/" in their name come from /bin.
+// runs in the background. A word with "*" in it, outside quotes, becomes the
+// names it matches, as in "tc -o all.asm /lib/core.tr *.tr". A line starting
+// with "#" is a comment. Programs without a "/" in their name come from /bin.
 
 manifest {
     memory = 256 * KiB;
@@ -27,7 +28,8 @@ struct Stage {
 }
 
 var line: [1024]u8;
-var text: [2048]u8;             // the words, with quotes removed
+var text: [8192]u8;             // the words, with quotes removed
+var listing: [16384]u8;
 var text_used: u32;
 var stages: [MAX_STAGES]Stage;
 var stage_count: u32;
@@ -172,9 +174,11 @@ fn parse(line_text: []u8) -> bool {
             }
         }
         var start = text_used;
+        var quoted = false;
         while i < input.len && input[i] != ' ' && input[i] != '\t' && !is_special(input[i]) {
             var q = input[i];
             if q == '"' || q == '\'' {
+                quoted = true;
                 i += 1;
                 while i < input.len && input[i] != q {
                     add_text(input[i]);
@@ -203,6 +207,9 @@ fn parse(line_text: []u8) -> bool {
             }
             continue;
         }
+        if !quoted && has_star(word) && expand(stage, word) {
+            continue;
+        }
         if stage.count == MAX_WORDS {
             complain("sh", "too many words", "");
             return false;
@@ -215,6 +222,95 @@ fn parse(line_text: []u8) -> bool {
         return false;
     }
     return true;
+}
+
+fn has_star(word: []u8) -> bool {
+    for i in 0..word.len {
+        if word[i] == '*' {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether a name fits a pattern, where "*" stands for any run of characters.
+fn matches(pattern: []u8, name: []u8) -> bool {
+    if pattern.len == 0 {
+        return name.len == 0;
+    }
+    if pattern[0] == '*' {
+        for skip in 0..name.len + 1 {
+            if matches(pattern[1:], name[skip:]) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return name.len > 0 && pattern[0] == name[0] && matches(pattern[1:], name[1:]);
+}
+
+// Adds the names in a directory that fit the pattern, sorted. Returns false
+// if none do, so the word stays as it was typed.
+fn expand(stage: *Stage, word: []u8) -> bool {
+    var slash = word.len;
+    while slash > 0 && word[slash - 1] != '/' {
+        slash -= 1;
+    }
+    var dir = word[0:slash];
+    var pattern = word[slash:];
+    var path = ".";
+    if dir.len > 0 {
+        path = dir;
+    }
+    var n = list(path, listing[:]);
+    if n == FAILED {
+        return false;
+    }
+    var first = stage.count;
+    var i: u32 = 0;
+    while i + 64 <= n {
+        var e = &listing[i] as *ListEntry;
+        var name = entry_name(e);
+        i += 64;
+        if !matches(pattern, name) || (name.len > 0 && name[0] == '.' && pattern[0] != '.') {
+            continue;
+        }
+        if stage.count == MAX_WORDS || text_used + dir.len + name.len > text.len {
+            break;
+        }
+        var start = text_used;
+        for k in 0..dir.len {
+            add_text(dir[k]);
+        }
+        for k in 0..name.len {
+            add_text(name[k]);
+        }
+        stage.words[stage.count] = text[start:text_used];
+        stage.count += 1;
+    }
+    // Sort the new words.
+    for a in first + 1..stage.count {
+        var b = a;
+        while b > first && before(stage.words[b], stage.words[b - 1]) {
+            var t = stage.words[b];
+            stage.words[b] = stage.words[b - 1];
+            stage.words[b - 1] = t;
+            b -= 1;
+        }
+    }
+    return stage.count > first;
+}
+
+fn before(x: []u8, y: []u8) -> bool {
+    for i in 0..x.len {
+        if i == y.len {
+            return false;
+        }
+        if x[i] != y[i] {
+            return x[i] < y[i];
+        }
+    }
+    return x.len < y.len;
 }
 
 fn new_stage() -> *Stage {

@@ -122,6 +122,10 @@ fn handle_key(e: *Event) -> bool {
         typed_len = 0;
         return true;
     }
+    if (e.modifiers & (MOD_CTRL | MOD_SUPER)) != 0 && e.key == 'v' {
+        paste();
+        return true;
+    }
     if e.key == KEY_UP || e.key == KEY_DOWN {
         recall(e.key == KEY_UP);
         return true;
@@ -142,6 +146,21 @@ fn handle_key(e: *Event) -> bool {
         return true;
     }
     return false;
+}
+
+// Adds the clipboard to the typed line, up to its first line break.
+fn paste() {
+    var text: [256]u8;
+    var n = min(clipboard_get(text[:]), text.len);
+    for i in 0..n {
+        if text[i] == '\n' || typed_len + 1 >= typed.len {
+            return;
+        }
+        if text[i] >= 32 && text[i] < 127 {
+            typed[typed_len] = text[i];
+            typed_len += 1;
+        }
+    }
 }
 
 // Keeps the typed line, unless it's empty or the same as the last one.

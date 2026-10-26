@@ -1,0 +1,6 @@
+cd /src/tc
+echo *.tr
+ls /src/scripts/build-*
+echo nomatch*
+tc -o /tmp.asm /lib/core.tr *.tr
+exit

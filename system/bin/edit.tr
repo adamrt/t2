@@ -3,7 +3,9 @@
 //     edit [file]
 //
 // Arrows, Home, End, Page Up and Page Down move; the mouse places the cursor
-// and the wheel scrolls. Ctrl-S (or Cmd-S) saves. Tab inserts four spaces.
+// and the wheel scrolls. Tab inserts four spaces. With Ctrl (or Cmd): S
+// saves, C copies the line, X cuts it, V pastes, and F finds text (Enter
+// finds the next, Escape stops).
 //
 // The text lives in a gap buffer: one array with the unused space kept at the
 // cursor, so typing only ever touches the gap.
@@ -39,6 +41,10 @@ var modified: bool;
 var path: [256]u8;
 var path_len: u32;
 var message: []u8;
+var finding: bool;
+var find_text: [64]u8;
+var find_len: u32;
+var clip: [64 * KiB]u8;
 
 var canvas: Canvas;
 var strings: [8192]u8;
@@ -255,6 +261,11 @@ fn save() {
 
 fn handle(e: *Event) {
     message = "";
+    if finding && (e.kind == EVENT_TEXT || e.kind == EVENT_KEY_DOWN) {
+        handle_find(e);
+        keep_cursor_visible();
+        return;
+    }
     if e.kind == EVENT_TEXT {
         insert(e.key as u8);
     } else if e.kind == EVENT_KEY_DOWN {
@@ -284,6 +295,12 @@ fn key(code: u32, modifiers: u32) {
     if (modifiers & (MOD_CTRL | MOD_SUPER)) != 0 {
         if code == 's' {
             save();
+        } else if code == 'c' || code == 'x' {
+            copy_line(code == 'x');
+        } else if code == 'v' {
+            paste();
+        } else if code == 'f' {
+            finding = true;
         }
         return;
     }
@@ -331,6 +348,85 @@ fn key(code: u32, modifiers: u32) {
             move_to_column(line_start(target), column);
         }
     }
+}
+
+// Copies the cursor's line, with its line break, and cuts it too if asked.
+fn copy_line(cut: bool) {
+    var start = line_start(cursor);
+    var end = line_end(cursor);
+    if end < length() {
+        end += 1;
+    }
+    var n = min(end - start, clip.len);
+    for i in 0..n {
+        clip[i] = char_at(start + i);
+    }
+    clipboard_set(clip[0:n]);
+    if cut {
+        cursor = start + n;
+        for i in 0..n {
+            delete_before();
+        }
+        message = "cut the line";
+    } else {
+        message = "copied the line";
+    }
+}
+
+// Pastes at the cursor; whole lines go in above the cursor's line.
+fn paste() {
+    var n = min(clipboard_get(clip[:]), clip.len);
+    if n > 0 && clip[n - 1] == '\n' {
+        cursor = line_start(cursor);
+    }
+    for i in 0..n {
+        if clip[i] != '\r' {
+            insert(clip[i]);
+        }
+    }
+}
+
+fn handle_find(e: *Event) {
+    if e.kind == EVENT_TEXT {
+        if find_len < find_text.len {
+            find_text[find_len] = e.key as u8;
+            find_len += 1;
+        }
+        return;
+    }
+    if e.key == KEY_ESCAPE {
+        finding = false;
+    } else if e.key == KEY_BACKSPACE && find_len > 0 {
+        find_len -= 1;
+    } else if e.key == KEY_ENTER {
+        find_next();
+    }
+}
+
+// Moves the cursor to the next place the text appears, wrapping around.
+fn find_next() {
+    var n = length();
+    if find_len == 0 || find_len > n {
+        return;
+    }
+    for step in 1..n + 1 {
+        var p = (cursor + step) % n;
+        if p + find_len > n {
+            continue;
+        }
+        var found = true;
+        for i in 0..find_len {
+            if char_at(p + i) != find_text[i] {
+                found = false;
+                break;
+            }
+        }
+        if found {
+            cursor = p;
+            return;
+        }
+    }
+    message = "not found";
 }
 
 fn keep_cursor_visible() {
@@ -457,7 +553,10 @@ fn draw_status(width: i32) {
     put_u32(&w, line_of(cursor) + 1);
     put(&w, ", column ");
     put_u32(&w, cursor - line_start(cursor) + 1);
-    if message.len > 0 {
+    if finding {
+        put(&w, "  find: ");
+        put(&w, find_text[0:find_len]);
+    } else if message.len > 0 {
         put(&w, "  ");
         put(&w, message);
     }

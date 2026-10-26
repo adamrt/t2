@@ -66,6 +66,10 @@ fn window_draw(window: u32, commands: []u32) -> u32;
 fn event_wait(event: *Event, timeout: u32) -> u32;
 fn available(handle: u32) -> u32;
 fn screen_info(info: *ScreenInfo) -> u32;
+// Keeps text for another program to paste (at most 64 KiB).
+fn clipboard_set(text: []u8) -> u32;
+// Copies the clipboard into buffer and returns its whole length.
+fn clipboard_get(buffer: []u8) -> u32;
 
 fn rgb(r: u32, g: u32, b: u32) -> u32 {
     return 0xff000000 | (r << 16) | (g << 8) | b;
