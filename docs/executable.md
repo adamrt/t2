@@ -16,8 +16,6 @@ program's manifest: anyone can read what it needs and what it may do.
 | 28     | allow  | what the program may do (below)                 |
 
 The code follows at offset 32, then the data. Nothing else is in the file.
-The development monitor also runs `TRX1` files, an earlier form with no
-`allow` word and a 28-byte header.
 
 ## Permissions
 
@@ -73,9 +71,11 @@ it divides the heap however it likes.
 
 ## Development system calls
 
-Until Terrarium has a kernel, the development monitor (`build/terrarium`)
-runs one program and answers these system calls itself. They let tools work
-with files on the host.
+The development monitor, `build/terrarium program.bin`, runs one program on
+the host, without the kernel, and answers these system calls itself, so
+tools like `tc` work with the host's files. They are the first seven of
+Terrarium's own calls ([system.md](system.md)), so the same program runs in
+both places.
 
 | Number | Call  | Arguments                                   | Result in r0                      |
 | ------ | ----- | ------------------------------------------- | --------------------------------- |

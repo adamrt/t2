@@ -3,7 +3,7 @@
 //
 //     mkdisk -o disk.img [-m megabytes] [-k kernel.bin] host-file:/disk/path...
 //
-// The layout is described in spec/filesystem.md. Every file lands in one
+// The layout is described in docs/filesystem.md. Every file lands in one
 // unbroken run of blocks.
 
 import io

@@ -1,5 +1,5 @@
 // Files and streams: opening, reading and writing them, with buffered output
-// and line-by-line input on top. The system calls are in spec/system.md.
+// and line-by-line input on top. The system calls are in docs/system.md.
 
 import mem
 

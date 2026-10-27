@@ -3,7 +3,7 @@
 #include "machine.h"
 
 // The network device: TCP connections made with the host's sockets. See
-// spec/devices.md.
+// docs/devices.md.
 
 enum {
     PORT_NET_HOST = 0x70,

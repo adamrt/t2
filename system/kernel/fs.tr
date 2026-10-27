@@ -1,4 +1,4 @@
-// The file system on the disk, described in spec/filesystem.md.
+// The file system on the disk, described in docs/filesystem.md.
 
 import mem
 import text

@@ -7,7 +7,7 @@
 // along with the library's runtime.asm (or the one -r names) and any .asm
 // files. With only .asm files, it just assembles those. -S writes the
 // compiled assembly instead of a program, and -s writes the program's
-// labels, for the debugger. The language is described in spec/language.md.
+// labels, for the debugger. The language is described in docs/language.md.
 
 import asm
 import io

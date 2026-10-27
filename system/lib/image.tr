@@ -1,4 +1,4 @@
-// TIM1 images (spec/formats.md): pictures cut into tiles that each decode on
+// TIM1 images (docs/formats.md): pictures cut into tiles that each decode on
 // their own, so a program can show part of a picture without holding all of it.
 
 import io

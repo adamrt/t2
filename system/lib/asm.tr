@@ -1,5 +1,5 @@
-// Assembling: Terrarium assembly in, a program out. spec/assembly.md
-// describes the language, and spec/executable.md the program. tc assembles
+// Assembling: Terrarium assembly in, a program out. docs/assembly.md
+// describes the language, and docs/executable.md the program. tc assembles
 // what it compiles with this.
 //
 // The sources are read twice. The first pass learns where every label is
@@ -30,7 +30,7 @@ const DATA = 1
 const BSS = 2
 const CONSTANT = 3
 
-// Opcodes, named as in spec/isa.md.
+// Opcodes, named as in docs/isa.md.
 const LI = 0x01
 const LIH = 0x02
 const ADDI = 0x20

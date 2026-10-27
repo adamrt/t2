@@ -15,8 +15,8 @@ Register numbers 9–15 are illegal.
 
 ## Memory
 
-The machine has 52 MiB of RAM and 12 MiB of VRAM (VRAM arrives with the video
-device).
+The machine has 52 MiB of RAM and 12 MiB of VRAM (VRAM belongs to the video
+device; see [devices.md](devices.md)).
 
 A program sees two separate address spaces:
 

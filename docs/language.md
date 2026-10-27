@@ -183,7 +183,7 @@ import gfx
 ```
 
 Outside a module, its names are qualified with the module's name:
-`io.print("hi\n")`, `var w: io.Writer;`, `gfx.EVENT_CLOSE`. Inside the
+`io.print("hi\n")`, `var w io.Writer`, `gfx.EVENT_CLOSE`. Inside the
 module they're written plainly. Each module has names of its own, so
 `text.equal` and a program's own `equal` don't clash.
 

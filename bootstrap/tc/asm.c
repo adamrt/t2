@@ -1,5 +1,5 @@
 // Assembling: Terrarium assembly in, a program out. The port of
-// system/lib/asm.tr; spec/assembly.md describes the language.
+// system/lib/asm.tr; docs/assembly.md describes the language.
 //
 // The sources are read twice. The first pass learns where every label is
 // and how big each section is; the second encodes every instruction.
@@ -22,7 +22,7 @@ enum {
 // The sections, which number the offsets, and a symbol's kind besides.
 enum { CODE, DATA, BSS, CONSTANT };
 
-// Opcodes, named as in spec/isa.md.
+// Opcodes, named as in docs/isa.md.
 enum {
     LI = 0x01, LIH = 0x02, ADDI = 0x20, LD = 0x30, ST = 0x34, BZ = 0x46, BNZ = 0x47,
     JMP = 0x50, CALL = 0x51, CALLR = 0x52, RET = 0x53, PUSH = 0x60, POP = 0x61,

@@ -3,7 +3,7 @@
 #include "machine.h"
 
 // The video device: two framebuffers in VRAM and a GPU that draws into the
-// back one. See spec/devices.md.
+// back one. See docs/devices.md.
 
 enum {
     PORT_VIDEO_WIDTH = 0x40,

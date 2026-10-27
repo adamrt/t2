@@ -120,11 +120,18 @@ The clipboard holds one piece of text that any program with the `window`
 permission can set or read, for copying between programs.
 
 The kernel draws each window's frame and title bar. Dragging the title bar
-moves the window, clicking a window brings it to the front, and keys go to
-the front window. After `window_resizable`, a window has a strip under it,
-and dragging the strip changes its size, from the least size given (but no
-more than the screen) up to the screen's size. A program only gets the
-latest size if it falls behind.
+moves the window, always keeping the title bar on the screen; clicking a
+window brings it to the front, and keys go to the front window. The box at
+the right end of the title bar sends the close event. After
+`window_resizable`, a window has a strip under it, and dragging the strip
+changes its size, from the least size given (but no more than the screen)
+up to the screen's size. A program only gets the latest size if it falls
+behind. A new window goes in the first place where it covers no other
+window, or else where it covers the least.
+
+After the kernel uncovers part of the screen, it shows the next frame only
+once the windows there have painted, or after 100 ms, so windows don't
+flicker; a program has finished painting when it next calls `event_wait`.
 
 ## Tracing
 

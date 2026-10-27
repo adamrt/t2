@@ -1,4 +1,4 @@
-// TSN1 sounds (spec/formats.md): 16-bit samples squeezed to 4 bits each with
+// TSN1 sounds (docs/formats.md): 16-bit samples squeezed to 4 bits each with
 // IMA ADPCM, in blocks that each decode on their own.
 
 import io

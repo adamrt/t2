@@ -2,7 +2,7 @@
 ; operations the language needs from assembly. tc assembles it first in
 ; every program. The kernel has its own, kruntime.asm, defining some of the
 ; same functions differently. Functions follow the calling convention in
-; spec/language.md: arguments start at [sp + 4].
+; docs/language.md: arguments start at [sp + 4].
 
 start:
     r1 -= r0                    ; main(memory: []u8) gets the whole heap
@@ -59,7 +59,7 @@ _os.arg:
     sys 6
     return
 
-; The rest are Terrarium's own system calls (spec/system.md). The
+; The rest are Terrarium's own system calls (docs/system.md). The
 ; development monitor doesn't have them.
 
 ; fn os.spawn(path []u8, args []u8, input u32, output u32, errors u32) u32

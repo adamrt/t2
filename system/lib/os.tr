@@ -1,6 +1,6 @@
 // The program and the system around it: arguments, stopping, starting
 // other programs, directories, processes and the time. The system calls are
-// in spec/system.md.
+// in docs/system.md.
 
 import io
 import mem

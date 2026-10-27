@@ -1,7 +1,7 @@
 ; Kernel runtime: startup, the instructions the language can't reach, and the
 ; core library's system functions, which in the kernel mostly go to the
 ; console. It takes the place of /lib/runtime.asm (tc -r). Arguments start
-; at [sp + 4], as in spec/language.md.
+; at [sp + 4], as in docs/language.md.
 
 CONSOLE_WRITE = 0x20
 

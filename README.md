@@ -29,12 +29,12 @@ window instead.
 | Part                          | Written in | Lines |
 | ----------------------------- | ---------- | ----- |
 | The machine (`src/`)          | C99        | 3,300 |
-| The compiler in C (`bootstrap/`) | C99     | 5,200 |
+| The compiler in C (`bootstrap/`) | C99     | 5,300 |
 | The compiler (`system/tc/`)   | the language | 3,900 |
 | Its assembler (`system/lib/asm.tr`) | the language | 1,100 |
-| The kernel (`system/kernel/`) | the language | 3,000 |
-| Other library modules (`system/lib/`) | both | 1,900 |
-| 41 programs (`system/bin/`)   | the language | 6,100 |
+| The kernel (`system/kernel/`) | the language | 3,700 |
+| Other library modules (`system/lib/`) | both | 2,200 |
+| 41 programs (`system/bin/`)   | the language | 6,200 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
   16.16 fixed-point multiply and divide instead of floating point. Each
@@ -49,7 +49,8 @@ window instead.
   together in memory when free space is in pieces.
 - **The GPU** draws PS1-style: fills, lines, text, images, and shaded or
   affine-textured triangles. Windows draw straight into the one shared
-  framebuffer, clipped to the parts other windows don't cover.
+  framebuffer, clipped to the parts other windows don't cover, and the
+  screen waits for them to finish, so nothing flickers.
 - **Text is UTF-8** everywhere. Terra, the system font, is drawn as text in
   `system/fonts/terra.txt` and covers ASCII and Latin-1.
 
@@ -110,32 +111,39 @@ build/terrarium build/mksound.bin -o sound.tsn recording.wav     # WAV to TSN1
 
 `build/terrarium [--trace] [--stats] program.bin [arguments...]` runs a
 program on the monitor. `--trace` prints every instruction, and `--stats`
-the cycles it ran and how much of its heap and stack it used; a `program.sym` next to the program (`tc` writes one with
-`-s`) puts label names in traces and fault reports.
+the cycles it ran and how much of its heap and stack it used; a
+`program.sym` next to the program (`tc` writes one with `-s`) puts label
+names in traces and fault reports.
 
 `build/terrarium boot [--headless] [--fullscreen] [--mute] disk.img
 [kernel.sym]` starts the whole machine. For testing, `--screen WxH` gives it
 a screen without a window, `--type text` presses keys once it has started,
 `--run-for ms` stops it, and `--screenshot out.png` saves the screen. In
 `--type`, a newline is Enter, `\x1b` is Escape, `\b` is Backspace, and other
-control characters are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
-typing, and `--date seconds` stops the clock at one moment.
+control characters are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the
+mouse after the typing (the same point twice clicks), and `--date seconds`
+stops the clock at one moment.
 
 The compiler is built by its C version in `bootstrap/`, then rebuilds
 itself; see its README.
 
 ## Documentation
 
-| Spec                                   |                                     |
-| -------------------------------------- | ----------------------------------- |
-| [isa.md](spec/isa.md)                  | the CPU, kernel mode, ports         |
-| [devices.md](spec/devices.md)          | console, timer, disk, video, GPU, input, sound, network |
-| [assembly.md](spec/assembly.md)        | the assembly language               |
-| [language.md](spec/language.md)        | the Terrarium language              |
-| [executable.md](spec/executable.md)    | programs, memory, permissions       |
-| [system.md](spec/system.md)            | system calls, windows, tracing      |
-| [filesystem.md](spec/filesystem.md)    | the disk                            |
-| [formats.md](spec/formats.md)          | images and the other file formats   |
+Everything is in `docs/`, and on the disk in `/docs`.
 
-[docs/notes.md](docs/notes.md) explains the decisions behind the design,
-where it differs from the original plan, and what it doesn't do yet.
+| Design                                 |                                     |
+| -------------------------------------- | ----------------------------------- |
+| [design.md](docs/design.md)            | why each part is built the way it is, its limits, and what's not built yet |
+| [building.md](docs/building.md)        | building the whole system again from nothing, step by step |
+| [time.md](docs/time.md)                | the design for dates and clocks, not built yet |
+
+| Reference                              |                                     |
+| -------------------------------------- | ----------------------------------- |
+| [isa.md](docs/isa.md)                  | the CPU, kernel mode, ports         |
+| [devices.md](docs/devices.md)          | console, timer, disk, video, GPU, input, sound, network |
+| [executable.md](docs/executable.md)    | programs, memory, permissions       |
+| [assembly.md](docs/assembly.md)        | the assembly language               |
+| [language.md](docs/language.md)        | the Terrarium language              |
+| [system.md](docs/system.md)            | system calls, windows, tracing      |
+| [filesystem.md](docs/filesystem.md)    | the disk                            |
+| [formats.md](docs/formats.md)          | images and the other file formats   |

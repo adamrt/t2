@@ -1,9 +1,9 @@
-# Time: a plan
+# Time
 
-Not built yet. Today `os.time()` counts milliseconds since the machine
-started, and `os.date()` gives the host's local time in seconds since 1970.
-This is what time should become: two kinds of time, each in two 32-bit
-words, so nothing needs 64-bit arithmetic.
+This is the design for dates and clocks. It is not built yet: the system
+has `os.time()`, milliseconds since the machine started, and `os.date()`,
+the host's local time in seconds since 1970. Time will become two kinds of
+time, each in two 32-bit words, so nothing needs 64-bit arithmetic.
 
 ## Two types
 
@@ -48,7 +48,7 @@ represented. They can't be predicted from a formula, and they're being
 abandoned: none will be added after 2035. Around one, the host's clock may
 repeat a second or stretch it, and Time follows the host. That is harmless
 for labelling moments and would be wrong for keeping time, which is why
-nothing keeps time with Time. RFC 7164 reached the same conclusion for
+nothing keeps time with Time. RFC 7164 reaches the same conclusion for
 streaming media: RTP's media clock runs steadily, and only its mapping to
 wall-clock time is disturbed by leap seconds.
 
@@ -87,7 +87,8 @@ The host turns its own clock into a Time at the device. 1970-01-01 is day
 
 ## A clock for tests
 
-Since we own the machine, the monotonic clock can follow the CPU's cycle
-counter instead of the host's clock, so a program sees the same Instants
-every run: replayable games, timeouts that test the same way each time. The
-wall clock can already be stopped at one moment with `--date`.
+Since the machine is Terrarium's own, the monotonic clock can follow the
+CPU's cycle counter instead of the host's clock, so a program sees the same
+Instants every run: replayable games, and timeouts that test the same way
+each time. The wall clock can already be stopped at one moment with
+`--date`.

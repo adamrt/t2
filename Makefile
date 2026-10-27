@@ -36,7 +36,7 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 	$(BUILD)/tc.bin:/bin/tc $(BUILD)/terra.tfn:/system/font \
 	$(RUNTIME):/lib/runtime.asm $(foreach f,$(LIBRARIES),$(f):/lib/$(notdir $(f))) \
 	examples/hello.tr:/src/hello.tr examples/hello.asm:/src/hello.asm \
-	$(foreach f,$(wildcard spec/*.md),$(f):/docs/$(notdir $(f))) README.md:/docs/README.md \
+	$(foreach f,$(wildcard docs/*.md),$(f):/docs/$(notdir $(f))) README.md:/docs/README.md \
 	$(foreach f,$(SOURCES),$(f):/src/$(patsubst system/%,%,$(f)))
 
 # The system's own source goes on the disk too, so Terrarium can rebuild it.
@@ -80,7 +80,7 @@ $(BUILD)/mk%.bin: system/tools/mk%.tr $(LIBRARIES) $(RUNTIME) $(BUILD)/tc.bin
 $(BUILD)/terra.tfn: system/fonts/terra.txt $(BUILD)/mkfont.bin
 	$(VM) $(BUILD)/mkfont.bin -o $@ system/fonts/terra.txt
 
-$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(BUILD)/tc.bin $(LIBRARIES) $(RUNTIME) examples/hello.tr $(SOURCES) $(wildcard spec/*.md) README.md
+$(BUILD)/disk.img: $(BUILD)/mkdisk.bin $(BUILD)/terra.tfn $(BUILD)/kernel.bin $(PROGRAM_BINS) $(BUILD)/tc.bin $(LIBRARIES) $(RUNTIME) examples/hello.tr $(SOURCES) $(wildcard docs/*.md) README.md
 	$(VM) $(BUILD)/mkdisk.bin -o $@ -k $(BUILD)/kernel.bin $(DISK_FILES)
 
 # Terrarium runs on a copy of the disk, so what you do in it lasts until the
