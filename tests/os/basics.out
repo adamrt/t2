@@ -6,11 +6,11 @@ Welcome to Terrarium. Type 'help' for help.
 second line
 /home> 2 4 23
 /home> 2026-09-21 14:13        23  notes.txt
-/home> /src> /src> /src> Hello from the Terrarium language!
-/src> /src> asm/
-bin/
+/home> /src> /src> Hello from the Terrarium language!
+/src> bin/
 fonts/
 hello
+hello.asm
 hello.tr
 kernel/
 scripts/

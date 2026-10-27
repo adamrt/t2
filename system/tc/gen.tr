@@ -78,7 +78,6 @@ fn generate() {
     s = first_sym
     while s != null {
         if s.kind == SymKind.Global && s.used {
-            emit(".align 4")
             put_symbol(s)
             io.put(&out, ":\n")
             var size = (s.ty.size + 3) & ~3

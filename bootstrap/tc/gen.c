@@ -1032,7 +1032,6 @@ generate(void)
     put_c(&out, "\n.bss\n");
     for (Sym *s = first_sym; s != NULL; s = s->after) {
         if (s->kind == SYM_GLOBAL && s->used) {
-            emit(".align 4");
             put_symbol(s);
             put_c(&out, ":\n");
             uint32_t size = (s->ty->size + 3) & ~3u;

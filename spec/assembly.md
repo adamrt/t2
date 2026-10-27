@@ -1,5 +1,8 @@
 # Terrarium Assembly
 
+`tc` assembles `.asm` files, and the code it compiles, with the assembler in
+`/lib/asm.tr`: `tc -o hello hello.asm`.
+
 Each line holds at most one statement, optionally preceded by a label.
 A `;` starts a comment that runs to the end of the line.
 
@@ -25,7 +28,9 @@ A name starts with a letter or `_`, followed by letters, digits, `_` and
 `.`, as in `_io.write`.
 Register names (`r0`–`r7`, `sp`) and keywords (`if`, `goto`, `call`,
 `return`, `push`, `pop`, `copy`, `fill`, `sys`, `halt`, `io`, `resume`,
-`wait`, `u8`, `u16`, `u32`) can't be used as names.
+`wait`, `u8`, `u16`) can't be used as names. Names `tc` makes start with
+`_` (`_main`, `_io.write`), so a program's names never collide with these,
+or with labels written in assembly, like `start`.
 
 A **value** is a number, a character, or a name, optionally preceded by `-`:
 
@@ -57,7 +62,7 @@ r0 = r1             ; copy a register
 ```asm
 r0 = r1 + r2        ; or + - * / % & | ^ << >>
 r0 = r1 + 4         ; the second operand can be imm
-r0 += r1            ; shorthand for r0 = r0 + r1
+r0 += r1            ; shorthand for r0 = r0 + r1, for every operator
 r0 -= 1
 ```
 
@@ -88,8 +93,6 @@ r0 = u16 [r1 + 2]   ; load 16 bits, zero-extended
 u8 [r1] = r0        ; store the low byte
 u16 [r1] = r0       ; store the low 16 bits
 ```
-
-`u32 [...]` is also accepted and means the same as `[...]`.
 
 ### Control flow
 
@@ -147,17 +150,18 @@ Code can't be read as data, so strings and tables go in `.data`.
 ## Directives
 
 ```asm
-.byte 1, 2, 'x', "text"     ; bytes and strings (no terminator is added)
-.word 1, -1, message        ; 32-bit values, including label addresses
+.byte 1, -1, 'x', "text"    ; bytes and strings (no terminator is added)
 .zero 256                   ; zero bytes
-.align 4                    ; pad with zeros to a multiple of 4
 .memory 0x100000            ; total memory the program needs
 .stack 0x4000               ; stack size within that memory
 .allow 3                    ; permissions, see executable.md
 ```
 
-`.byte` and `.word` belong in `.data`. `.zero` and `.align` work in `.data`
-and `.bss`.
+`.byte` belongs in `.data`, and `.zero` works in `.data` and `.bss`.
+Nothing is padded for you: a label is where the bytes before it end. 16-
+and 32-bit values must be aligned to their size (see [isa.md](isa.md)), so
+put them first, or pad with `.zero`. `tc` rounds every global up to a
+multiple of 4 bytes.
 
 `.memory` covers everything: code, data, bss, heap and stack. Without it, a
 program gets exactly enough for its code, data, bss and stack, and no heap.

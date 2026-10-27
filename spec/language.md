@@ -141,7 +141,8 @@ fn write(file u32, bytes []u8) u32      // implemented in assembly
 ```
 
 A function without a body is implemented in assembly, following the calling
-convention below.
+convention below. The library's are in `/lib/runtime.asm`, which `tc`
+assembles with every program.
 
 Function parameters and results can be integers, `bool`, enums, pointers or
 slices. Pass structs and arrays by pointer.
@@ -206,6 +207,7 @@ each one once, however many files import it. The library has these:
 | `math`  | fixed-point vectors and matrices, `sin` and `cos`              |
 | `image` | TIM1 images                                                    |
 | `sound` | TSN1 sounds, and playing samples                               |
+| `asm`   | assembling: Terrarium assembly in, a program out               |
 
 ## Statements
 
@@ -268,6 +270,8 @@ so a program that uses `new` needs the module `mem`.
 ## Calling convention
 
 Compiled code is plain assembly, so assembly can call it and be called.
+`tc` assembles it after the runtime and any `.asm` files on its command
+line; `tc -S` writes it out instead.
 
 - The caller pushes arguments from last to first, calls, then removes them.
   Each argument takes 4 bytes, except slices, which take 8: the pointer at

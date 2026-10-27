@@ -1,12 +1,15 @@
 // tc, the Terrarium compiler.
 //
-//     tc [-L library] -o program.asm file.tr...
+//     tc [-S] [-L library] [-r runtime.asm] [-s program.sym] -o program file...
 //
-// Reads every file, and the modules they import from the library (/lib
-// unless -L names another), checks the whole program, and writes assembly
-// for the Terrarium assembler. The language is described in
-// spec/language.md.
+// Compiles the .tr files, with the modules they import from the library
+// (/lib unless -L names another), and assembles the result into a program,
+// along with the library's runtime.asm (or the one -r names) and any .asm
+// files. With only .asm files, it just assembles those. -S writes the
+// compiled assembly instead of a program, and -s writes the program's
+// labels, for the debugger. The language is described in spec/language.md.
 
+import asm
 import io
 import mem
 import os
@@ -21,6 +24,7 @@ manifest {
 const MAX_FILES = 64
 const MAX_MODULES = 32
 const MAX_IMPORTS = 16
+const MAX_ASSEMBLY = 2 * MiB        // the compiled assembly of one program
 
 struct SourceFile {
     name []u8
@@ -39,57 +43,122 @@ var library []u8
 var errors io.Writer
 var error_buffer [512]u8
 
+// What to assemble: the runtime, the .asm files, then the compiled code.
+var pieces [MAX_FILES]asm.Source
+var piece_count u32
+
 fn main(memory []u8) u32 {
     mem.arena_init(&arena, memory)
     io.writer_init(&errors, io.STDERR, error_buffer[:])
 
     var output []u8
+    var runtime []u8
+    var symbols []u8
+    var assembly_only = false
     library = "/lib"
     module_count = 1
+    piece_count = 1                 // the runtime's place
     var i u32 = 0
     while i < os.arg_count() {
         var word = argument(i)
         i += 1
-        if text.equal(word, "-o") || text.equal(word, "-L") {
+        if text.equal(word, "-S") {
+            assembly_only = true
+        } else if word.len == 2 && word[0] == '-' {
             if i == os.arg_count() {
                 usage()
             }
-            if text.equal(word, "-o") {
-                output = argument(i)
-            } else {
-                library = argument(i)
-            }
+            var value = argument(i)
             i += 1
+            match word[1] {
+                'o' => { output = value }
+                'L' => { library = value }
+                'r' => { runtime = value }
+                's' => { symbols = value }
+                else => { usage() }
+            }
+        } else if word.len > 4 && text.equal(word[word.len - 4:], ".asm") {
+            add_piece(word, read_source(word))
         } else {
             add_file(word, 0)
         }
     }
-    if output.len == 0 || file_count == 0 {
+    if output.len == 0 || file_count + piece_count == 1 {
+        usage()
+    }
+    if assembly_only && (file_count == 0 || piece_count > 1) {
         usage()
     }
 
-    // Parsing a file can load the modules it imports, which adds files.
-    var f u32 = 0
-    while f < file_count {
-        parse_file(f)
-        f += 1
-    }
-    check_program()
+    // With only .asm files there's nothing to compile, and no runtime.
+    var first u32 = 1
+    if file_count > 0 {
+        // Parsing a file can load the modules it imports, which adds files.
+        var f u32 = 0
+        while f < file_count {
+            parse_file(f)
+            f += 1
+        }
+        check_program()
 
-    var file = io.open(output, 1)
-    if file == io.FAILED {
-        fail_path("can't write", output)
+        // A Writer whose file is FAILED keeps the assembly in its buffer,
+        // and fails if it fills up.
+        var buffer = mem.alloc_bytes(&arena, MAX_ASSEMBLY)
+        io.writer_init(&out, io.FAILED, buffer)
+        generate()
+        if out.failed {
+            fail_plain("the program is too large")
+        }
+        if assembly_only {
+            write_file(output, buffer[0:out.used])
+            return 0
+        }
+        if runtime.len == 0 {
+            runtime = library_path("runtime.asm")
+        }
+        pieces[0].name = runtime
+        pieces[0].text = read_source(runtime)
+        add_piece("compiled code", buffer[0:out.used])
+        first = 0
     }
-    var buffer = mem.alloc_bytes(&arena, 64 * KiB)
-    io.writer_init(&out, file, buffer)
-    generate()
-    io.flush(&out)
-    io.close(file)
+
+    write_file(output, asm.assemble(&arena, pieces[first:piece_count]))
+    if symbols.len > 0 {
+        var file = io.open(symbols, io.MODE_WRITE)
+        if file == io.FAILED {
+            fail_path("can't write", symbols)
+        }
+        var w io.Writer
+        io.writer_init(&w, file, mem.alloc_bytes(&arena, 16 * KiB))
+        asm.put_symbols(&w)
+        io.flush(&w)
+        io.close(file)
+        if w.failed {
+            fail_path("can't write", symbols)
+        }
+    }
     return 0
 }
 
+fn add_piece(name []u8, bytes []u8) {
+    if piece_count == MAX_FILES {
+        fail_plain("too many files")
+    }
+    pieces[piece_count].name = name
+    pieces[piece_count].text = bytes
+    piece_count += 1
+}
+
 fn usage() {
-    fail_plain("usage: tc [-L library] -o program.asm file.tr...")
+    fail_plain("usage: tc [-S] [-L library] [-r runtime.asm] [-s program.sym] -o program file...")
+}
+
+fn write_file(path []u8, bytes []u8) {
+    var file = io.open(path, io.MODE_WRITE)
+    if file == io.FAILED || !io.write_all(file, bytes) {
+        fail_path("can't write", path)
+    }
+    io.close(file)
 }
 
 fn add_file(path []u8, module u32) {
@@ -130,16 +199,24 @@ fn load_module(name []u8) u32 {
 
 // The path of a module's file in the library, or nothing if it isn't there.
 fn module_path(name []u8) []u8 {
-    var path = mem.alloc_bytes(&arena, library.len + name.len + 4)
-    mem.copy(path, library)
-    path[library.len] = '/'
-    mem.copy(path[library.len + 1:], name)
-    mem.copy(path[library.len + 1 + name.len:], ".tr")
+    var file_name = mem.alloc_bytes(&arena, name.len + 3)
+    mem.copy(file_name, name)
+    mem.copy(file_name[name.len:], ".tr")
+    var path = library_path(file_name)
     var file = io.open(path, io.MODE_READ)
     if file == io.FAILED {
         return path[0:0]
     }
     io.close(file)
+    return path
+}
+
+// A file in the library: library/name.
+fn library_path(name []u8) []u8 {
+    var path = mem.alloc_bytes(&arena, library.len + 1 + name.len)
+    mem.copy(path, library)
+    path[library.len] = '/'
+    mem.copy(path[library.len + 1:], name)
     return path
 }
 

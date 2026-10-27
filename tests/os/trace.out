@@ -2,8 +2,7 @@ Terrarium: 49152 KiB for programs
 
 Welcome to Terrarium. Type 'help' for help.
 
-/> asm/
-bin/
+/> bin/
 fonts/
 hello.asm
 hello.tr
@@ -14,9 +13,9 @@ tools/
 ls: args() = 1
 ls: arg(0) = 4
 ls: info("/src") = 0
-ls: list("/src") = 576
-ls: write(1) = 64
-ls: used 1 KiB of 168 KiB heap, 1 KiB of 16 KiB stack
+ls: list("/src") = 512
+ls: write(1) = 59
+ls: used 1 KiB of 167 KiB heap, 1 KiB of 16 KiB stack
 /> cat: can't read /nothing
 cat: args() = 1
 cat: arg(0) = 8

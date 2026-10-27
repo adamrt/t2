@@ -138,15 +138,15 @@ start:
     if r3 != r4 goto fail
     r2 = 22
     r0 += 8
-    r3 = u32 [r0 - 4]
+    r3 = [r0 - 4]
     if r3 != r4 goto fail
     r2 = 23
     r0 = table
-    r1 = [r0 + 4]
-    r3 = second
+    r1 = [r0]
+    r3 = 0x04030201
     if r1 != r3 goto fail
     r2 = 24
-    r1 = [r0 + 8]
+    r1 = [r0 + 4]
     r3 = -5
     if r1 != r3 goto fail
 
@@ -252,15 +252,12 @@ double:
     return
 
 .data
+table:                          ; two words, first in .data so they're aligned
+    .byte 1, 2, 3, 4, -5, -1, -1, -1
 message:
     .byte "hello"
 ok:
     .byte "ok\n"
-    .align 4
-table:
-    .word 1, second, -5
-second:
-    .word 0
 
 .bss
 buffer:

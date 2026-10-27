@@ -3,7 +3,6 @@ Terrarium: 49152 KiB for programs
 Welcome to Terrarium. Type 'help' for help.
 
 /> /src/tc> check.tr gen.tr lex.tr main.tr parse.tr types.tr
-/src/tc> /src/scripts/build-asm
-/src/scripts/build-tc
+/src/tc> /src/scripts/build-tc
 /src/tc> nomatch*
 /src/tc> /src/tc> Terrarium: every process has ended

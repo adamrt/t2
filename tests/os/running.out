@@ -4,9 +4,10 @@ Welcome to Terrarium. Type 'help' for help.
 
 /> /> /> sh: no program hw in /bin; to run the one here, type ./hw
 /> sh: no program hellow-w in /bin
-/> sh: ./hw isn't a program; asm makes programs from tc's output
+/> hi
 /> sh: /bin is a directory
-/> /> hw.asm:69: undefined name '_io.write' (programs need /lib/rt.asm first)
+/> /> sh: ./hw.asm isn't a program; tc makes programs from .tr and .asm files
+/> hw.asm:69: undefined name '_io.write' (functions without a body are defined in assembly, as in /lib/runtime.asm)
 /> /> hi
-/> /> /> /> sh: ./big asks for 51200 KiB of memory, and 48832 KiB is free
+/> /> /> sh: ./big asks for 51200 KiB of memory, and 48832 KiB is free
 /> Terrarium: every process has ended

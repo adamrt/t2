@@ -2,14 +2,14 @@ Terrarium: 49152 KiB for programs
 
 Welcome to Terrarium. Type 'help' for help.
 
-/> [3]
-/> [4]
-/> [5]
+/> /> /> [5]
 /> [6]
+/> [7]
+/> [8]
 /> 49152 KiB for programs, 7808 KiB free
 /> /> /> 49152 KiB for programs, 28288 KiB free
 /> Terrarium: compacting memory
-/> Hello, Terrarium!
+big enough
 /> hold done
 hold done
 /> 49152 KiB for programs, 48768 KiB free

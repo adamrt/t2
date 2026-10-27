@@ -4,12 +4,12 @@ hw
 hellow-w
 ./hw
 /bin
-mv hw hw.asm
-asm -o hw hw.asm
-asm -o hw /lib/rt.asm hw.asm
-./hw
+tc -S -o hw.asm hw.tr
+./hw.asm
+tc -o hw2 hw.asm
+tc -o hw2 /lib/runtime.asm hw.asm
+./hw2
 echo 'manifest { memory = 50 * MiB } fn main(memory []u8) u32 { return 0 }' > big.tr
-tc -o big.asm big.tr
-asm -o big /lib/rt.asm big.asm
+tc -o big big.tr
 ./big
 exit

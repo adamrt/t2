@@ -6,10 +6,8 @@ cat notes.txt
 cat notes.txt | wc
 ls -l
 cd /src
-tc -o hello.asm hello.tr
-asm -o hello /lib/rt.asm hello.asm
+tc -o hello hello.tr
 ./hello
-rm hello.asm
 ls
 cd ..
 cd nowhere

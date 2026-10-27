@@ -41,7 +41,7 @@ fn resume_user()
 fn wait_interrupt()
 fn power_off()
 
-var free_memory u32                 // set at startup by krt.asm
+var free_memory u32                 // set at startup by kruntime.asm
 var ram_size u32
 var arena mem.Arena
 var log io.Writer

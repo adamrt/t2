@@ -3,20 +3,21 @@
 A tiny computer built from scratch, small enough to understand from its
 first instruction to its desktop. The machine — a 32-bit CPU, a GPU, sound,
 disk and network devices — is C. Everything that runs on it is written in
-Terrarium's own assembly and language: the assembler, the compiler, the
-kernel, the window system, the shell and the programs.
+Terrarium's own language, over a few hundred lines of its assembly: the
+compiler and its assembler, the kernel, the window system, the shell and
+the programs.
 
 ![The Terrarium desktop: a terminal compiling a program, a monitor, a
 spinning cube and a fractal](docs/images/desktop.png)
 
 ```sh
-make            # the machine, the tools (built by themselves), and a disk
+make            # the machine, the compiler (built by itself), and a disk
 make run        # boot Terrarium fullscreen; this terminal becomes its console
 make test       # instructions, faults, the language, and whole-system sessions
 ```
 
-It needs a C99 compiler, nothing else: even the assembler and compiler are
-built from source, by their C versions in `bootstrap/`. SDL3, if it's
+It needs a C99 compiler, nothing else: even Terrarium's compiler is built
+from source, by its C version in `bootstrap/`. SDL3, if it's
 installed, gives the machine a window and sound. Without it (or with
 `make HEADLESS=1`) everything still builds and every test passes, and the
 machine runs in the terminal. Terrarium fills the screen at a
@@ -27,12 +28,12 @@ window instead.
 
 | Part                          | Written in | Lines |
 | ----------------------------- | ---------- | ----- |
-| The machine (`src/`)          | C99        | 3,000 |
-| The tools in C (`bootstrap/`) | C99        | 5,200 |
-| The assembler (`system/asm/`) | assembly   | 2,500 |
-| The compiler (`system/tc/`)   | the language | 3,800 |
-| The kernel (`system/kernel/`) | the language | 2,800 |
-| Library modules (`system/lib/`) | both     | 1,900 |
+| The machine (`src/`)          | C99        | 3,300 |
+| The compiler in C (`bootstrap/`) | C99     | 5,200 |
+| The compiler (`system/tc/`)   | the language | 3,900 |
+| Its assembler (`system/lib/asm.tr`) | the language | 1,100 |
+| The kernel (`system/kernel/`) | the language | 3,000 |
+| Other library modules (`system/lib/`) | both | 1,900 |
 | 41 programs (`system/bin/`)   | the language | 6,100 |
 
 - **The CPU** has eight registers, 45 instructions of one word each, and
@@ -63,16 +64,16 @@ The desktop starts with a launcher and a terminal. Programs live in `/bin`
 
 ```
 /> cd /src
-/src> tc -o hello.asm hello.tr
-/src> asm -o hello /lib/rt.asm hello.asm
+/src> tc -o hello hello.tr
 /src> ./hello
 Hello from the Terrarium language!
 /src> sh /src/scripts/build-tc
 ```
 
-`tc` writes assembly, finding the modules a program imports, like `io`, in
-`/lib`. `asm` turns it into a program, with the runtime `/lib/rt.asm`
-first. A program in the current directory runs as `./name`;
+`tc` compiles a program, finding the modules it imports, like `io`, in
+`/lib`, and assembles it with the runtime, `/lib/runtime.asm`. `tc -S`
+writes the assembly instead, and given `.asm` files, `tc` assembles them
+too. A program in the current directory runs as `./name`;
 without a `/`, the shell looks in `/bin`. `clear` clears the terminal.
 
 The last line rebuilds the compiler inside Terrarium and checks that the
@@ -101,8 +102,7 @@ The tools are Terrarium programs too. On the host they run on the
 development monitor, which runs one program and lends it the host's files:
 
 ```sh
-build/terrarium build/tc.bin -L system/lib -o build/hello.asm examples/hello.tr
-build/terrarium build/asm.bin -o build/hello.bin system/lib/rt.asm build/hello.asm
+build/terrarium build/tc.bin -L system/lib -o build/hello.bin examples/hello.tr
 build/terrarium build/hello.bin
 build/terrarium build/mkimage.bin -o picture.tim picture.bmp    # BMP to TIM1
 build/terrarium build/mksound.bin -o sound.tsn recording.wav     # WAV to TSN1
@@ -110,8 +110,8 @@ build/terrarium build/mksound.bin -o sound.tsn recording.wav     # WAV to TSN1
 
 `build/terrarium [--trace] [--stats] program.bin [arguments...]` runs a
 program on the monitor. `--trace` prints every instruction, and `--stats`
-the cycles it ran and how much of its heap and stack it used; a `program.sym` next to the program (the assembler writes
-one with `-s`) puts label names in traces and fault reports.
+the cycles it ran and how much of its heap and stack it used; a `program.sym` next to the program (`tc` writes one with
+`-s`) puts label names in traces and fault reports.
 
 `build/terrarium boot [--headless] [--fullscreen] [--mute] disk.img
 [kernel.sym]` starts the whole machine. For testing, `--screen WxH` gives it
@@ -121,8 +121,8 @@ a screen without a window, `--type text` presses keys once it has started,
 control characters are Ctrl with a letter. `--drag x0,y0,x1,y1` drags the mouse after the
 typing, and `--date seconds` stops the clock at one moment.
 
-The assembler and compiler are built by their C versions in `bootstrap/`,
-then rebuild themselves; see its README.
+The compiler is built by its C version in `bootstrap/`, then rebuilds
+itself; see its README.
 
 ## Documentation
 

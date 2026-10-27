@@ -4,7 +4,7 @@ A program asks the kernel for things with `sys N`. Arguments go in r0–r6
 and the result comes back in r0; every other register keeps its value.
 Failures return `-1` (`0xffffffff`). Calls 0–6 also work on the development
 monitor, so the same tools run on both. Programs reach them through the
-library's modules, which `/lib/rt.asm` connects to these numbers: `io.read`,
+library's modules, which `/lib/runtime.asm` connects to these numbers: `io.read`,
 `os.spawn`, `gfx.window_open`, `sound.play`, `net.connect` and so on.
 
 | N  | Call       | Arguments                                         | Result                     |

@@ -1,3 +1,2 @@
 sh /src/scripts/build-tc
-sh /src/scripts/build-asm
 exit

@@ -1,6 +1,7 @@
 // tc0, the Terrarium compiler in C, for building Terrarium from nothing but
-// a C compiler. It is a port of system/tc/*.tr, file for file, and writes
-// the same assembly byte for byte; `make test` checks that they agree.
+// a C compiler. It is a port of system/tc/*.tr and system/lib/asm.tr, file
+// for file, and makes the same programs byte for byte; `make test` checks
+// that they agree.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,8 +29,13 @@ bool str_equal(Str a, Str b);
 Str str_slice(Str s, uint32_t from, uint32_t to);
 void *alloc(size_t size);
 
+// Output goes to a file, or with no file, into bytes for as long as it fits.
 typedef struct {
     FILE *file;
+    uint8_t *bytes;
+    uint32_t used;
+    uint32_t size;
+    bool failed;        // some of the output didn't fit
 } Writer;
 
 void put(Writer *w, Str text);
@@ -37,6 +43,7 @@ void put_c(Writer *w, const char *text);
 void put_byte(Writer *w, uint8_t c);
 void put_u32(Writer *w, uint32_t value);
 void put_i32(Writer *w, int32_t value);
+void put_hex(Writer *w, uint32_t value);
 
 // main.c ---------------------------------------------------------------------
 
@@ -308,3 +315,14 @@ bool is_comparison(Tok op);
 extern Writer out;
 
 void generate(void);
+
+// asm.c ----------------------------------------------------------------------
+
+// A piece of assembly: its name, for messages, and its text.
+typedef struct {
+    Str name;
+    Str text;
+} AsmSource;
+
+Str assemble(AsmSource *sources, uint32_t count);
+void put_symbols(Writer *w);

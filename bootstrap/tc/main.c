@@ -1,13 +1,20 @@
-// tc0 [-L library] -o program.asm file.tr...
+// tc0 [-S] [-L library] [-r runtime.asm] [-s program.sym] -o program file...
 //
-// Reads every file, and the modules they import from the library (/lib
-// unless -L names another), checks the whole program, and writes assembly
-// for the Terrarium assembler. The port of system/tc/main.tr.
+// Compiles the .tr files, with the modules they import from the library
+// (/lib unless -L names another), and assembles the result into a program,
+// along with the library's runtime.asm (or the one -r names) and any .asm
+// files. With only .asm files, it just assembles those. -S writes the
+// compiled assembly instead of a program, and -s writes the program's
+// labels, for the debugger. The port of system/tc/main.tr.
 
 #include "tc.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+enum {
+    MAX_ASSEMBLY = 2 << 20,     // the compiled assembly of one program
+};
 
 SourceFile files[MAX_FILES];
 uint32_t file_count;
@@ -16,6 +23,10 @@ uint32_t module_count;
 Writer errors;
 
 static Str library;
+
+// What to assemble: the runtime, the .asm files, then the compiled code.
+static AsmSource pieces[MAX_FILES];
+static uint32_t piece_count;
 
 // Helpers standing in for the io, mem and text modules -------------------------
 
@@ -45,25 +56,34 @@ alloc(size_t size)
 void
 put(Writer *w, Str text)
 {
-    fwrite(text.p, 1, text.n, w->file);
+    if (w->file != NULL) {
+        fwrite(text.p, 1, text.n, w->file);
+    } else if (text.n > w->size - w->used) {
+        w->failed = true;
+    } else {
+        memcpy(w->bytes + w->used, text.p, text.n);
+        w->used += text.n;
+    }
 }
 
 void
 put_c(Writer *w, const char *text)
 {
-    fputs(text, w->file);
+    put(w, (Str){ (const uint8_t *)text, (uint32_t)strlen(text) });
 }
 
 void
 put_byte(Writer *w, uint8_t c)
 {
-    fputc(c, w->file);
+    put(w, (Str){ &c, 1 });
 }
 
 void
 put_u32(Writer *w, uint32_t value)
 {
-    fprintf(w->file, "%u", value);
+    char digits[16];
+    sprintf(digits, "%u", value);
+    put_c(w, digits);
 }
 
 void
@@ -75,6 +95,14 @@ put_i32(Writer *w, int32_t value)
         return;
     }
     put_u32(w, (uint32_t)value);
+}
+
+void
+put_hex(Writer *w, uint32_t value)
+{
+    char digits[16];
+    sprintf(digits, "%08x", value);
+    put_c(w, digits);
 }
 
 // A NUL-terminated copy, for the C library.
@@ -121,22 +149,30 @@ add_file(Str path, uint32_t module)
     file_count++;
 }
 
+// A file in the library: library/name.
+static Str
+library_path(Str name)
+{
+    uint8_t *path = alloc(library.n + 1 + name.n);
+    memcpy(path, library.p, library.n);
+    path[library.n] = '/';
+    memcpy(path + library.n + 1, name.p, name.n);
+    return (Str){ path, library.n + 1 + name.n };
+}
+
 // The path of a module's file in the library, or nothing if it isn't there.
 static Str
 module_path(Str name)
 {
-    uint32_t n = library.n + name.n + 4;
-    uint8_t *path = alloc(n);
-    memcpy(path, library.p, library.n);
-    path[library.n] = '/';
-    memcpy(path + library.n + 1, name.p, name.n);
-    memcpy(path + library.n + 1 + name.n, ".tr", 3);
-    Str s = { path, n };
-    FILE *f = fopen(c_string(s), "rb");
+    uint8_t *file_name = alloc(name.n + 3);
+    memcpy(file_name, name.p, name.n);
+    memcpy(file_name + name.n, ".tr", 3);
+    Str path = library_path((Str){ file_name, name.n + 3 });
+    FILE *f = fopen(c_string(path), "rb");
     if (f == NULL)
-        return (Str){ path, 0 };
+        return (Str){ path.p, 0 };
     fclose(f);
-    return s;
+    return path;
 }
 
 // The module with this name. The first time, its file is found in the
@@ -247,7 +283,25 @@ fail_path(const char *message, Str path)
 static NORETURN void
 usage(void)
 {
-    fail_plain("usage: tc [-L library] -o program.asm file.tr...");
+    fail_plain("usage: tc [-S] [-L library] [-r runtime.asm] [-s program.sym] -o program file...");
+}
+
+static void
+write_file(Str path, Str bytes)
+{
+    FILE *f = fopen(c_string(path), "wb");
+    if (f == NULL || fwrite(bytes.p, 1, bytes.n, f) != bytes.n || fclose(f) != 0)
+        fail_path("can't write", path);
+}
+
+static void
+add_piece(Str name, Str bytes)
+{
+    if (piece_count == MAX_FILES)
+        fail_plain("too many files");
+    pieces[piece_count].name = name;
+    pieces[piece_count].text = bytes;
+    piece_count++;
 }
 
 // The arguments are copied as tc copies them, at most 256 bytes each.
@@ -266,37 +320,78 @@ main(int argc, char **argv)
     errors.file = stderr;
     int count = argc - 1;
     Str output = { NULL, 0 };
+    Str runtime = { NULL, 0 };
+    Str symbols = { NULL, 0 };
+    bool assembly_only = false;
     library = S("/lib");
     module_count = 1;
+    piece_count = 1;            // the runtime's place
     int i = 0;
     while (i < count) {
         Str word = argument(argv, i);
         i++;
-        if (str_equal(word, S("-o")) || str_equal(word, S("-L"))) {
+        if (str_equal(word, S("-S"))) {
+            assembly_only = true;
+        } else if (word.n == 2 && word.p[0] == '-') {
             if (i == count)
                 usage();
-            if (str_equal(word, S("-o")))
-                output = argument(argv, i);
-            else
-                library = argument(argv, i);
+            Str value = argument(argv, i);
             i++;
+            switch (word.p[1]) {
+            case 'o': output = value; break;
+            case 'L': library = value; break;
+            case 'r': runtime = value; break;
+            case 's': symbols = value; break;
+            default: usage();
+            }
+        } else if (word.n > 4 && str_equal(str_slice(word, word.n - 4, word.n), S(".asm"))) {
+            add_piece(word, read_source(word));
         } else {
             add_file(word, 0);
         }
     }
-    if (output.n == 0 || file_count == 0)
+    if (output.n == 0 || file_count + piece_count == 1)
+        usage();
+    if (assembly_only && (file_count == 0 || piece_count > 1))
         usage();
 
-    // Parsing a file can load the modules it imports, which adds files.
-    for (uint32_t f = 0; f < file_count; f++)
-        parse_file(f);
-    check_program();
+    // With only .asm files there's nothing to compile, and no runtime.
+    uint32_t first = 1;
+    if (file_count > 0) {
+        // Parsing a file can load the modules it imports, which adds files.
+        for (uint32_t f = 0; f < file_count; f++)
+            parse_file(f);
+        check_program();
 
-    out.file = fopen(c_string(output), "wb");
-    if (out.file == NULL)
-        fail_path("can't write", output);
-    generate();
-    if (fclose(out.file) != 0)
-        fail_path("can't write", output);
+        // Without a file, the Writer keeps the assembly, and fails if it
+        // doesn't fit.
+        out.bytes = alloc(MAX_ASSEMBLY);
+        out.size = MAX_ASSEMBLY;
+        generate();
+        if (out.failed)
+            fail_plain("the program is too large");
+        Str compiled = { out.bytes, out.used };
+        if (assembly_only) {
+            write_file(output, compiled);
+            return 0;
+        }
+        if (runtime.n == 0)
+            runtime = library_path(S("runtime.asm"));
+        pieces[0].name = runtime;
+        pieces[0].text = read_source(runtime);
+        add_piece(S("compiled code"), compiled);
+        first = 0;
+    }
+
+    write_file(output, assemble(pieces + first, piece_count - first));
+    if (symbols.n > 0) {
+        Writer w = { NULL, NULL, 0, 0, false };
+        w.file = fopen(c_string(symbols), "wb");
+        if (w.file == NULL)
+            fail_path("can't write", symbols);
+        put_symbols(&w);
+        if (fclose(w.file) != 0)
+            fail_path("can't write", symbols);
+    }
     return 0;
 }

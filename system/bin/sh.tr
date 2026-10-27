@@ -7,7 +7,7 @@
 // feeds one command's output to the next, "<" reads input from a file, and
 // ">" writes output to one (">>" adds to its end). A line ending in "&"
 // runs in the background. A word with "*" in it, outside quotes, becomes the
-// names it matches, as in "tc -o all.asm *.tr". A line starting
+// names it matches, as in "tc -o all *.tr". A line starting
 // with "#" is a comment. Programs without a "/" in their name come from /bin.
 
 import io
@@ -553,7 +553,7 @@ fn explain_failure(name []u8, path []u8) {
         os.memory_info(&free)
         if n != header.len || !text.equal(header[0:4], "TRX2") {
             io.put(&w, name)
-            io.put(&w, " isn't a program; asm makes programs from tc's output")
+            io.put(&w, " isn't a program; tc makes programs from .tr and .asm files")
         } else if mem.read_word(header[:], 24) > free {
             io.put(&w, name)
             io.put(&w, " asks for ")

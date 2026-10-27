@@ -23,13 +23,19 @@ pc to its `sys` instruction and blocks it. When something changes, blocked
 processes run again and repeat the call. The kernel never keeps half-finished
 calls.
 
-**Tools in Terrarium's own languages.** The assembler is written in
-Terrarium assembly and the compiler in the Terrarium language. To build
-them from nothing, `bootstrap/` has both again in C99, ported step for step
-so they give the same output byte for byte, which `make test` checks. The C
-tools build the Terrarium ones, which then rebuild themselves. Inside
-Terrarium, `sh /src/scripts/build-tc` rebuilds the compiler and checks that
-it matches the host's build byte for byte.
+**One tool, in Terrarium's own language.** `tc` compiles and assembles. Its
+assembler is the library module `asm`, which it runs on its own output in
+memory, with the runtime `/lib/runtime.asm` first. Between the two halves
+the program is still assembly text, which `tc -S` writes out, so you can
+always read what the compiler made. The assembler was first written in
+assembly, back when it had to exist before anything else; once the C
+bootstrap removed that reason, it moved to the language at half the size,
+and a third slower. To build from nothing, `bootstrap/` has the compiler
+and assembler again in C99, ported step for step so they make the same
+programs byte for byte, which `make test` checks. The C compiler builds the
+Terrarium one, which then rebuilds itself. Inside Terrarium,
+`sh /src/scripts/build-tc` rebuilds the compiler and checks that it matches
+the host's build byte for byte.
 
 **Memory.** A program declares its memory once. The kernel reserves exactly
 that or refuses to start it, and `main` gets the whole heap as a slice to
@@ -57,14 +63,16 @@ what it asks for, limited to what its parent has. 2 MiB of memory is kept
 back for programs with `recovery`, so `ps`, `kill` and `monitor` start even
 when memory is full. `trace` shows every system call a program makes.
 
-**Modules.** The library is ten modules (`io`, `mem`, `text`, `os`, `net`,
-`gfx`, `ui`, `math`, `image`, `sound`), each one file in `/lib`. A file
+**Modules.** The library is eleven modules (`io`, `mem`, `text`, `os`, `net`,
+`gfx`, `ui`, `math`, `image`, `sound`, `asm`), each one file in `/lib`. A file
 imports what it uses and writes `io.print`, so names never clash between
 modules and you can see where each one comes from. Only what `main` reaches
 is compiled, so importing a module costs nothing in itself. The kernel
 imports modules too (`io`, `mem`, `text`, and `os` for `panic`), with its
-own runtime, `krt.asm`, beneath them: there `io.write` goes straight to the
-console instead of making a system call.
+own runtime, `kruntime.asm` (`tc -r` picks it), beneath them: there
+`io.write` goes straight to the console instead of making a system call.
+`io.write` is one function with two implementations, and which runtime a
+program is built with decides which it gets.
 
 **Formats.** All are Terrarium's own: `TRX2` programs, the `TFS1` disk (a
 FAT-like table with 4 KiB blocks), `TFN1` bitmap fonts, `TSN1` sounds (IMA

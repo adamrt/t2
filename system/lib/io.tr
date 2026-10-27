@@ -27,12 +27,14 @@ struct Writer {
     file u32
     buffer []u8
     used u32
+    failed bool         // a write failed, so some of the output is lost
 }
 
 fn writer_init(w *Writer, file u32, buffer []u8) {
     w.file = file
     w.buffer = buffer
     w.used = 0
+    w.failed = false
 }
 
 // Writes all the bytes, unless the file fails.
@@ -50,7 +52,9 @@ fn write_all(file u32, bytes []u8) bool {
 
 fn flush(w *Writer) {
     if w.used > 0 {
-        write_all(w.file, w.buffer[0:w.used])
+        if !write_all(w.file, w.buffer[0:w.used]) {
+            w.failed = true
+        }
         w.used = 0
     }
 }
@@ -59,7 +63,9 @@ fn put(w *Writer, text []u8) {
     if text.len > w.buffer.len - w.used {
         flush(w)
         if text.len > w.buffer.len {
-            write_all(w.file, text)
+            if !write_all(w.file, text) {
+                w.failed = true
+            }
             return
         }
     }

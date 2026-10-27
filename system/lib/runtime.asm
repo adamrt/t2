@@ -1,6 +1,8 @@
 ; Runtime for compiled programs: startup, system calls, and the few
-; operations the language needs from assembly. Functions follow the calling
-; convention in spec/language.md: arguments start at [sp + 4].
+; operations the language needs from assembly. tc assembles it first in
+; every program. The kernel has its own, kruntime.asm, defining some of the
+; same functions differently. Functions follow the calling convention in
+; spec/language.md: arguments start at [sp + 4].
 
 start:
     r1 -= r0                    ; main(memory: []u8) gets the whole heap
