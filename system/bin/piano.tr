@@ -239,13 +239,11 @@ fn note_at(x i32, y i32) u32 {
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, KEY_H, gfx.rgb(0, 0, 0))
-    gfx.draw_fill(&canvas, 0, KEY_H, WIDTH, HEIGHT - KEY_H, gfx.rgb(221, 221, 221))
-    gfx.draw_fill(&canvas, 0, KEY_H + 1, WIDTH, 1, gfx.rgb(255, 255, 255))
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
     for i in 0..WHITE_KEYS {
-        var face = gfx.rgb(255, 255, 255)
+        var face = gfx.rgb(242, 239, 230)
         if lit[white_note(i)] > 0 {
-            face = gfx.rgb(170, 170, 170)
+            face = gfx.rgb(232, 195, 90)
         }
         gfx.draw_fill(&canvas, (i * KEY_W) as i32 + 1, 0, KEY_W - 2, KEY_H, face)
     }
@@ -254,17 +252,17 @@ fn draw() {
         if note == 99 {
             continue
         }
-        var face = gfx.rgb(0, 0, 0)
+        var face = gfx.rgb(30, 30, 36)
         if lit[note] > 0 {
-            face = gfx.rgb(110, 110, 110)
+            face = gfx.rgb(232, 195, 90)
         }
         gfx.draw_fill(&canvas, ((i + 1) * KEY_W) as i32 - KEY_W / 3, 0, KEY_W * 2 / 3, KEY_H * 6 / 10, face)
     }
     if recording {
-        gfx.draw_fill(&canvas, 8, KEY_H + 11, 8, 8, gfx.rgb(0, 0, 0))
-        gfx.draw_text(&canvas, 22, KEY_H + 7, gfx.rgb(0, 0, 0), "recording: R stops")
+        gfx.draw_fill(&canvas, 8, KEY_H + 11, 8, 8, gfx.rgb(220, 70, 60))
+        gfx.draw_text(&canvas, 22, KEY_H + 7, gfx.rgb(216, 212, 200), "recording: R stops")
     } else {
-        gfx.draw_text(&canvas, 8, KEY_H + 7, gfx.rgb(0, 0, 0), "keys: asdfghjkl; wetyuop  R: record")
+        gfx.draw_text(&canvas, 8, KEY_H + 7, gfx.rgb(216, 212, 200), "keys: asdfghjkl; wetyuop  R: record")
     }
     gfx.present(&canvas)
 }

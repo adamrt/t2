@@ -3,8 +3,8 @@
 //     edit [file]
 //
 // Arrows, Home, End, Page Up and Page Down move, and select with Shift; the
-// mouse places the cursor, dragging selects, and the wheel scrolls; the grow
-// box in the window's corner resizes it. Tab inserts four spaces. With Ctrl
+// mouse places the cursor, dragging selects, and the wheel scrolls; dragging
+// the strip under the window resizes it. Tab inserts four spaces. With Ctrl
 // (or Cmd): S saves (asking for a name if there isn't one), O opens another
 // file, A selects everything, C copies the selection (or the line), X cuts
 // it, V pastes, Z undoes, Y (or Shift-Z) redoes, and F finds text (Enter
@@ -32,17 +32,16 @@ const MAX_ROWS = 64
 const GUTTER = 5                // columns for line numbers
 const MARGIN = 4
 
-const BACKGROUND u32 = 0xffffffff
-const FOREGROUND u32 = 0xff000000
-const NUMBERS u32 = 0xffaaaaaa
-const COMMENT u32 = 0xff808080
-const STRING u32 = 0xff555555
-const CURSOR u32 = 0xff000000
-const SELECTION u32 = 0xffbbbbbb
+const BACKGROUND u32 = 0xfff2efe6
+const FOREGROUND u32 = 0xff1e1e24
+const NUMBERS u32 = 0xff9a968c
+const COMMENT u32 = 0xff5a8a70
+const STRING u32 = 0xffb05a3c
+const CURSOR u32 = 0xff2d5a50
+const SELECTION u32 = 0xffcfe0d4
 const NONE u32 = 0xffffffff
-const STATUS u32 = 0xffdddddd
-const STATUS_TEXT u32 = 0xff000000
-const STATUS_EDGE u32 = 0xff000000
+const STATUS u32 = 0xff1e1e24
+const STATUS_TEXT u32 = 0xfff2efe6
 
 var content [CAPACITY]u8
 var gap_start u32
@@ -979,8 +978,6 @@ fn draw_number(n u32, y i32) {
 fn draw_status(width i32) {
     var y = window_height - font_height - MARGIN
     gfx.draw_fill(&canvas, 0, y, width, font_height + MARGIN, STATUS)
-    gfx.draw_fill(&canvas, 0, y, width, 1, STATUS_EDGE)
-    gfx.draw_fill(&canvas, 0, y + 1, width, 1, 0xffffffff)
     var w io.Writer
     io.writer_init(&w, io.STDOUT, status_text[:])
     if path_len > 0 {

@@ -109,12 +109,7 @@ fn schedule() {
             io.flush(&log)
             power_off()
         }
-        // Sleep until a process wakes, or the menu bar's clock changes.
         var sleep = next_wake()
-        var tick = wm_tick()
-        if tick != 0 && (sleep == 0 || tick < sleep) {
-            sleep = tick
-        }
         var now = clock_ms()
         if sleep != 0 && sleep <= now {
             io_write(PORT_TIMER, 1)
@@ -135,7 +130,6 @@ fn handle_interrupts() {
     io_write(PORT_PENDING, pending)
     if pending & IRQ_TIMER != 0 {
         slice_over = true
-        wm_tick()
     }
     if pending & IRQ_CONSOLE != 0 {
         receive_console()

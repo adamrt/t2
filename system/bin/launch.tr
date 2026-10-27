@@ -74,7 +74,7 @@ fn main(memory []u8) u32 {
             continue
         }
         ui.event(&panel, &e)
-        gfx.draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, ui.FACE)
+        gfx.draw_fill(&canvas, 0, 0, WIDTH, COUNT * BUTTON + 8, ui.BACKGROUND)
         for i in 0..COUNT {
             var y = 4 + (i * BUTTON) as i32
             if ui.button(&panel, i + 1, 6, y + 2, WIDTH - 12, BUTTON - 4, label(i)) {

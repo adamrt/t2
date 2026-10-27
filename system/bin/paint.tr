@@ -259,16 +259,16 @@ fn save() {
 fn draw() {
     gfx.draw_image(&canvas, &view_image, 0, 0, W * ZOOM, H * ZOOM, 0, 0, false)
     var x0 i32 = W * ZOOM
-    gfx.draw_fill(&canvas, x0, 0, SIDE, HEIGHT, ui.FACE)
+    gfx.draw_fill(&canvas, x0, 0, SIDE, HEIGHT, ui.BACKGROUND)
     for i in 0..16 {
         var x = x0 + 6 + (i % 2) as i32 * (SWATCH + 4)
         var y = 6 + (i / 2) as i32 * (SWATCH + 4)
         if panel.pressed && ui.inside(&panel, x, y, SWATCH, SWATCH) {
             color = i
         }
-        var edge = ui.BLACK
+        var edge = ui.EDGE
         if color == i {
-            gfx.draw_fill(&canvas, x - 3, y - 3, SWATCH + 6, SWATCH + 6, ui.DARK)
+            gfx.draw_fill(&canvas, x - 3, y - 3, SWATCH + 6, SWATCH + 6, ui.PRESSED)
         }
         gfx.draw_fill(&canvas, x - 1, y - 1, SWATCH + 2, SWATCH + 2, edge)
         gfx.draw_fill(&canvas, x, y, SWATCH, SWATCH, palette[i])
@@ -284,7 +284,7 @@ fn draw() {
         save()
     }
     if message.len > 0 {
-        gfx.draw_text(&canvas, x0 + 4, HEIGHT - 24, ui.BLACK, message[0:min(message.len, 7)])
+        gfx.draw_text(&canvas, x0 + 4, HEIGHT - 24, ui.TEXT, message[0:min(message.len, 7)])
     }
     gfx.present(&canvas)
 }

@@ -1,6 +1,6 @@
 // view shows a TIM1 image. Drag, scroll or use the arrows to look around a
-// picture bigger than the window, and drag the grow box in the window's
-// corner to resize it. Only the tiles in view are read from the file and decoded, so
+// picture bigger than the window, and drag the strip under the window to
+// resize it. Only the tiles in view are read from the file and decoded, so
 // the picture can be much bigger than view's memory.
 
 import gfx
@@ -176,7 +176,7 @@ fn tile_image(tx u32, ty u32) *gfx.Image {
 fn draw() {
     // A window bigger than the picture shows a border around it.
     if width > header.width as i32 || height > header.height as i32 {
-        gfx.draw_fill(&canvas, 0, 0, width, height, 0xffdddddd)
+        gfx.draw_fill(&canvas, 0, 0, width, height, 0xff1b1d23)
     }
     var first_x = scroll_x as u32 / image.TILE
     var first_y = scroll_y as u32 / image.TILE

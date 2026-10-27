@@ -56,6 +56,8 @@ fn main(memory []u8) u32 {
         ui.event(&panel, &e)
         if panel.typed != 0 && panel.typed < 128 {
             press(panel.typed as u8)
+        } else if panel.key == gfx.KEY_ENTER {
+            press('=')
         } else if panel.key == gfx.KEY_BACKSPACE || panel.key == gfx.KEY_ESCAPE {
             press('C')
         }
@@ -177,28 +179,20 @@ fn format_fixed(value fixed) []u8 {
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, ui.FACE)
-    ui.sunken(&canvas, GAP, GAP, WIDTH - 2 * GAP, DISPLAY - GAP)
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, ui.BACKGROUND)
+    gfx.draw_fill(&canvas, GAP, GAP, WIDTH - 2 * GAP, DISPLAY - GAP, gfx.rgb(30, 30, 36))
     var text = "error"
     if !error {
         text = format_fixed(shown)
     }
     var x = WIDTH - GAP - 8 - (text.len * 16) as i32
-    gfx.draw_text_scaled(&canvas, x, GAP + 2, ui.BLACK, text, 2)
+    gfx.draw_text_scaled(&canvas, x, GAP + 2, gfx.rgb(232, 195, 90), text, 2)
     for row in 0..4 {
         for column in 0..4 {
             var label = key_label(row, column)
             var kx = GAP + (column * (KEY_SIZE + GAP)) as i32
             var ky = DISPLAY + GAP + (row * (KEY_SIZE + GAP)) as i32
-            var id = row * 4 + column + 1
-            // = is the default button, which Enter presses.
-            var hit = false
-            if label[0] == '=' {
-                hit = ui.default_button(&panel, id, kx + 2, ky + 2, KEY_SIZE - 4, KEY_SIZE - 4, label)
-            } else {
-                hit = ui.button(&panel, id, kx, ky, KEY_SIZE, KEY_SIZE, label)
-            }
-            if hit {
+            if ui.button(&panel, row * 4 + column + 1, kx, ky, KEY_SIZE, KEY_SIZE, label) {
                 press(label[0])
             }
         }

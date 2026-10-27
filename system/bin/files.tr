@@ -1,14 +1,12 @@
 // files, a file browser. Click a directory to open it, or ".." to go up.
 // Clicking a file opens it: pictures (.tim) in view, sounds (.tsn) in play,
-// anything else in edit. The scroll bar or the wheel moves through a long
-// directory, and the grow box in the window's corner resizes it.
+// anything else in edit. Dragging the strip under the window resizes it.
 
 import gfx
 import io
 import mem
 import os
 import text
-import ui
 
 manifest {
     memory = 256 * KiB
@@ -19,12 +17,9 @@ manifest {
 const WIDTH = 360
 const ROWS = 22
 const ROW = 18
-const HEADER = 24                   // the bar with the directory's path
-const GROW = 15                     // the window's grow box, in its corner
 const MAX = 256
 
 var canvas gfx.Canvas
-var panel ui.Panel
 var words [2048]u32
 var strings [4096]u8
 var listing [MAX * 64]u8
@@ -40,16 +35,15 @@ var rows u32
 
 fn main(memory []u8) u32 {
     width = WIDTH
-    height = HEADER + ROWS * ROW + 4
+    height = ROWS * ROW + 28
     rows = ROWS
     var window = gfx.window_open("Files", width as u32, height as u32)
     if window == io.FAILED {
         os.complain("files", "can't open a window", "")
         return 1
     }
-    gfx.window_resizable(window, 200, HEADER + 4 * ROW + 4)
+    gfx.window_resizable(window, 200, 4 * ROW + 28)
     gfx.canvas_init(&canvas, window, words[:], strings[:])
-    ui.init(&panel, &canvas)
     dir_len = min(os.get_dir(dir[:]), dir.len)
     load()
     while true {
@@ -58,32 +52,25 @@ fn main(memory []u8) u32 {
         if e.kind == gfx.EVENT_CLOSE {
             return 0
         }
-        if e.kind == gfx.EVENT_MOUSE_MOVE && panel.active == 0 {
-            continue
-        }
         if e.kind == gfx.EVENT_RESIZE {
             width = e.x
             height = e.y
-            rows = ((height - HEADER - 4) / ROW) as u32
+            rows = ((height - 28) / ROW) as u32
+        } else if e.kind == gfx.EVENT_MOUSE_DOWN {
+            var row = (e.y - 24) / ROW
+            if row >= 0 && (row as u32) < rows {
+                click(top + row as u32)
+            }
         } else if e.kind == gfx.EVENT_WHEEL {
             if e.y > 0 && top + rows < count + 1 {
                 top += 1
             } else if e.y < 0 && top > 0 {
                 top -= 1
             }
-        }
-        ui.event(&panel, &e)
-        // A press in the list opens what's under it.
-        var list_w = width - ui.SCROLL_WIDTH + 1
-        if panel.pressed && panel.mouse_x < list_w && panel.mouse_y >= HEADER {
-            var row = (panel.mouse_y - HEADER - 2) / ROW
-            if row >= 0 && (row as u32) < rows {
-                click(top + row as u32)
-            }
+        } else if e.kind != gfx.EVENT_DRAW {
+            continue
         }
         draw()
-        ui.end(&panel)
-        gfx.present(&canvas)
     }
     return 0
 }
@@ -177,18 +164,14 @@ fn click(row u32) {
 }
 
 fn draw() {
-    var list_w = width - ui.SCROLL_WIDTH + 1
-    gfx.draw_fill(&canvas, 0, 0, width, HEADER, ui.FACE)
-    gfx.draw_fill(&canvas, 0, 0, width, 1, ui.WHITE)
-    gfx.draw_fill(&canvas, 0, HEADER - 1, width, 1, ui.BLACK)
-    ui.bold_label(&panel, 8, 4, dir[0:dir_len])
-    gfx.draw_fill(&canvas, 0, HEADER, list_w, height - HEADER, ui.WHITE)
+    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230))
+    gfx.draw_fill(&canvas, 0, 0, width, 22, gfx.rgb(224, 219, 206))
+    gfx.draw_text(&canvas, 8, 3, gfx.rgb(30, 30, 36), dir[0:dir_len])
     for row in 0..rows {
         var n = top + row
-        var y = HEADER + 2 + (row * ROW) as i32
+        var y = 24 + (row * ROW) as i32
         if n == 0 {
-            folder(8, y + 2)
-            ui.bold_label(&panel, 28, y, "..")
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), "..")
             continue
         }
         if n > count {
@@ -196,39 +179,16 @@ fn draw() {
         }
         var e = &entries[n - 1]
         if e.kind == os.KIND_DIR {
-            folder(8, y + 2)
-            ui.bold_label(&panel, 28, y, os.entry_name(e))
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(45, 90, 80), os.entry_name(e))
+            gfx.draw_text(&canvas, 8 + text.char_count(os.entry_name(e)) as i32 * 8, y, gfx.rgb(45, 90, 80), "/")
         } else {
-            page(8, y + 1)
-            ui.label(&panel, 28, y, os.entry_name(e))
+            gfx.draw_text(&canvas, 8, y, gfx.rgb(30, 30, 36), os.entry_name(e))
             var digits [12]u8
             var w io.Writer
             io.writer_init(&w, io.STDOUT, digits[:])
             io.put_u32(&w, e.size)
-            ui.dim_label(&panel, list_w - 10 - (w.used * 8) as i32, y, digits[0:w.used])
+            gfx.draw_text(&canvas, width - 12 - (w.used * 8) as i32, y, gfx.rgb(120, 116, 106), digits[0:w.used])
         }
     }
-    // The scroll bar runs from under the path to the grow box.
-    var bar_h = height - HEADER + 1 - (GROW - 1)
-    ui.scrollbar(&panel, 1, list_w - 1, HEADER - 1, bar_h, &top, count + 1, rows)
-}
-
-// A folder, 14 by 11 pixels: a tab on top of a box.
-fn folder(x i32, y i32) {
-    ui.outline(&canvas, x, y, 6, 3, ui.BLACK)
-    ui.outline(&canvas, x, y + 2, 14, 9, ui.BLACK)
-    gfx.draw_fill(&canvas, x + 1, y + 1, 4, 2, ui.FACE)
-    gfx.draw_fill(&canvas, x + 1, y + 3, 12, 7, ui.FACE)
-    gfx.draw_fill(&canvas, x + 1, y + 3, 12, 1, ui.WHITE)
-}
-
-// A page, 10 by 13 pixels, with its top right corner turned down.
-fn page(x i32, y i32) {
-    gfx.draw_fill(&canvas, x, y, 7, 1, ui.BLACK)
-    gfx.draw_fill(&canvas, x, y + 1, 1, 12, ui.BLACK)
-    gfx.draw_fill(&canvas, x, y + 12, 10, 1, ui.BLACK)
-    gfx.draw_fill(&canvas, x + 9, y + 3, 1, 9, ui.BLACK)
-    gfx.draw_line(&canvas, x + 6, y, x + 9, y + 3, ui.BLACK)
-    gfx.draw_fill(&canvas, x + 6, y + 1, 1, 3, ui.BLACK)
-    gfx.draw_fill(&canvas, x + 6, y + 3, 3, 1, ui.BLACK)
+    gfx.present(&canvas)
 }
