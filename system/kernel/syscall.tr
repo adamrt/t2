@@ -929,6 +929,7 @@ fn open_window(p *Process, title []u8, width u32, height u32) u32 {
 // for one of the process's windows; -1 waits as long as it takes. Returns 1
 // with an event, or 0 if the time ran out.
 fn event_wait(p *Process) u32 {
+    finished_drawing(p)
     var r = p.regs[:]
     var buffer = user_bytes(p, r[0], size_of(Event))
     if buffer.ptr == null {

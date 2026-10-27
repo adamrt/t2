@@ -1,9 +1,13 @@
-// Windows on the shared screen.
+// Windows on the shared screen, in the style of Mac OS 8's Platinum, in
+// greys: a menu bar across the top, and windows with a close box, a title
+// bar to drag, a collapse box, and for resizable windows a zoom box and a
+// grow box.
 //
 // Every window draws straight into the one back buffer, through the GPU,
 // which moves its drawing to the window's place and clips it to the parts no
 // other window covers. Windows keep no pixels of their own: when part of one
-// comes into view, its program gets a draw event and paints it again.
+// comes into view, its program gets a draw event and paints it again. The
+// screen isn't shown until those programs have painted, so nothing flickers.
 
 import mem
 import os
@@ -53,21 +57,37 @@ enum EventKind {
 }
 
 const GPU_FILL u32 = 1
+const GPU_LINE u32 = 2
 const GPU_TEXT u32 = 4
+const GPU_TEXTURED u32 = 6
 
-const TITLE i32 = 20
-const BORDER i32 = 1
-const GRIP i32 = 7                  // the strip under a resizable window
+const MENU i32 = 20                 // the menu bar's height
+const TITLE i32 = 22                // a window's frame above its content
+const BORDER i32 = 4                // and on its other sides
+const BOX i32 = 13                  // the close, zoom and collapse boxes
+const GROW i32 = 15                 // the grow box in a resizable window's corner
+const ITEM i32 = 20                 // a menu item's height
+const WINDOWS_MENU_X i32 = 104      // where the Windows menu's title starts
+const DOUBLE_CLICK u32 = 400        // milliseconds between a double click's clicks
+const HOLD u32 = 100                // longest the screen waits for programs to paint
 const MAX_WINDOWS = 16
 const MAX_CLIPS = 32
 const QUEUE = 64
 
-const DESKTOP u32 = 0xff2d5a50
-const FRAME u32 = 0xff1e1e24
-const TITLE_ACTIVE u32 = 0xffe8c35a
-const TITLE_INACTIVE u32 = 0xff8a8a90
-const TITLE_TEXT u32 = 0xff1e1e24
-const CONTENT u32 = 0xfff2efe6
+// The boxes in a title bar.
+const CLOSE_BOX u32 = 1
+const ZOOM_BOX u32 = 2
+const COLLAPSE_BOX u32 = 3
+
+// Platinum's greys.
+const BLACK u32 = 0xff000000
+const WHITE u32 = 0xffffffff
+const FACE u32 = 0xffdddddd
+const SHADOW u32 = 0xff999999
+const DIM u32 = 0xff808080
+const DARK u32 = 0xff666666
+const DESKTOP_LIGHT u32 = 0xffa6a6a6
+const DESKTOP_DARK u32 = 0xff989898
 
 struct Rect {
     x i32
@@ -99,6 +119,11 @@ struct Window {
     resizable bool
     min_w i32
     min_h i32
+    collapsed bool                  // only the title bar shows
+    zoomed bool
+    unzoomed Rect                   // the content before zooming
+    draw_pending bool               // asked to paint, and hasn't finished
+    draw_taken bool                 // its program has taken the draw event
     events [QUEUE]Event
     event_start u32
     event_count u32
@@ -113,18 +138,32 @@ var order [MAX_WINDOWS]u32          // window numbers, bottom first
 var order_count u32
 var focus u32                       // the window typing goes to, plus one, or 0
 var capture u32                     // the window a mouse press began in, plus one
-var drag u32                        // the window being moved, plus one
+var drag u32                        // the window being moved or resized, plus one
 var drag_x i32
 var drag_y i32
 var resizing bool                   // the drag changes the size, not the place
+var held_box u32                    // a title bar box being pressed, or 0
+var held_window u32                 // its window, plus one
+var held_inside bool                // the mouse is still over it
+var last_click u32                  // when a title bar was last clicked
+var last_click_window u32           // and which window's, plus one
+var menu_open bool
+var menu_tracking bool              // the button went down in the menu and is held
+var menu_item i32                   // the item under the mouse, or -1
+var menu_rect Rect
+var clock_minute u32                // the minute the menu bar shows
 var mouse_x i32
 var mouse_y i32
 var screen_dirty bool
+var redraw_time u32                 // when programs were last asked to paint
 var cascade i32
 var commands [4096]u32
 var command_count u32
+var damage Rect                     // what the kernel's own drawing is clipped to
 var clip_list [MAX_CLIPS * 4]i32
 var input_words [4]u32
+var pattern [64]u32                 // the desktop's 8 by 8 tile
+var clock_text [8]u8
 
 fn wm_init() {
     screen_width = io_read(PORT_VIDEO_WIDTH) as i32
@@ -141,6 +180,13 @@ fn wm_init() {
     font_width = get_word(font, 4)
     font_height = get_word(font, 8)
     io_write(PORT_GPU_FONT, physical(font))
+    for i in 0..64 {
+        pattern[i] = DESKTOP_LIGHT
+        if (i / 8 + i % 8) % 2 == 1 {
+            pattern[i] = DESKTOP_DARK
+        }
+    }
+    menu_item = -1
     redraw_all()
 }
 
@@ -157,39 +203,21 @@ fn set_rect(r *Rect, x i32, y i32, w i32, h i32) {
     r.h = h
 }
 
-fn frame_of(w *Window, r *Rect) {
-    var below = BORDER
-    if w.resizable {
-        below = GRIP
-    }
-    set_rect(r, w.content.x - BORDER, w.content.y - TITLE - BORDER, w.content.w + 2 * BORDER, w.content.h + TITLE + BORDER + below)
-}
-
-// Keeps as much of a title as fits, without cutting a character in two.
-fn set_title(w *Window, title []u8) {
-    var n = min(title.len, w.title.len)
-    while n < title.len && n > 0 && text.is_continuation(title[n]) {
-        n -= 1
-    }
-    w.title_len = n
-    mem.copy(w.title[:], title[0:n])
-}
-
-fn window_title(w *Window, title []u8) {
-    set_title(w, title)
-    redraw_all()
-}
-
-// Lets a window be resized by dragging the strip under it, down to a size.
-fn window_resizable(w *Window, min_w u32, min_h u32) {
-    w.resizable = true
-    w.min_w = max_i(min(min_w, screen_width as u32) as i32, 40)
-    w.min_h = max_i(min(min_h, screen_height as u32) as i32, 20)
-    redraw_all()
-}
-
 fn inside(r *Rect, x i32, y i32) bool {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
+fn overlaps(a *Rect, b *Rect) bool {
+    return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+// Grows r to cover other as well.
+fn add_rect(r *Rect, other *Rect) {
+    var x0 = min_i(r.x, other.x)
+    var y0 = min_i(r.y, other.y)
+    var x1 = max_i(r.x + r.w, other.x + other.w)
+    var y1 = max_i(r.y + r.h, other.y + other.h)
+    set_rect(r, x0, y0, x1 - x0, y1 - y0)
 }
 
 fn max_i(a i32, b i32) i32 {
@@ -204,6 +232,57 @@ fn min_i(a i32, b i32) i32 {
         return a
     }
     return b
+}
+
+// The whole window: its frame and content, or only the title bar when it's
+// collapsed.
+fn frame_of(w *Window, r *Rect) {
+    var h = TITLE + w.content.h + BORDER
+    if w.collapsed {
+        h = TITLE
+    }
+    set_rect(r, w.content.x - BORDER, w.content.y - TITLE, w.content.w + 2 * BORDER, h)
+}
+
+// A box in the title bar. A window that can't be resized has no zoom box.
+fn box_rect(w *Window, which u32, r *Rect) {
+    var y = w.content.y - TITLE + 5
+    var right = w.content.x + w.content.w + BORDER - 9 - BOX
+    if which == CLOSE_BOX {
+        set_rect(r, w.content.x - BORDER + 9, y, BOX, BOX)
+    } else if which == COLLAPSE_BOX {
+        set_rect(r, right, y, BOX, BOX)
+    } else {
+        set_rect(r, right - BOX - 6, y, BOX, BOX)
+    }
+}
+
+// The title bar box under the point, or 0.
+fn box_at(w *Window, x i32, y i32) u32 {
+    var r Rect
+    for which in CLOSE_BOX..COLLAPSE_BOX + 1 {
+        if which == ZOOM_BOX && !w.resizable {
+            continue
+        }
+        box_rect(w, which, &r)
+        if inside(&r, x, y) {
+            return which
+        }
+    }
+    return 0
+}
+
+fn grow_rect(w *Window, r *Rect) {
+    set_rect(r, w.content.x + w.content.w - GROW, w.content.y + w.content.h - GROW, GROW, GROW)
+}
+
+fn in_grow_box(w *Window, x i32, y i32) bool {
+    if !w.resizable || w.collapsed {
+        return false
+    }
+    var r Rect
+    grow_rect(w, &r)
+    return inside(&r, x, y)
 }
 
 var pieces [MAX_CLIPS]Rect
@@ -240,16 +319,32 @@ fn add_piece(n u32, x i32, y i32, w i32, h i32) u32 {
     return n + 1
 }
 
-// Works out which parts of each window can be seen.
+// Works out which parts of each window's content can be seen: not under a
+// window above it, the menu bar or an open menu, or its own grow box.
 fn compute_visible() {
+    var bar Rect
+    set_rect(&bar, 0, 0, screen_width, MENU)
     for k in 0..order_count {
         var w = &windows[order[k]]
+        w.visible_count = 0
+        if w.collapsed {
+            continue
+        }
         set_rect(&w.visible[0], w.content.x, w.content.y, w.content.w, w.content.h)
         w.visible_count = 1
+        if w.resizable {
+            var grow Rect
+            grow_rect(w, &grow)
+            w.visible_count = subtract(w.visible[:], w.visible_count, &grow)
+        }
         for above in k + 1..order_count {
             var frame Rect
             frame_of(&windows[order[above]], &frame)
             w.visible_count = subtract(w.visible[:], w.visible_count, &frame)
+        }
+        w.visible_count = subtract(w.visible[:], w.visible_count, &bar)
+        if menu_open {
+            w.visible_count = subtract(w.visible[:], w.visible_count, &menu_rect)
         }
     }
 }
@@ -272,6 +367,15 @@ fn draw_fill(x i32, y i32, w i32, h i32, color u32) {
     command(color)
 }
 
+fn draw_line(x0 i32, y0 i32, x1 i32, y1 i32, color u32) {
+    command(GPU_LINE)
+    command(x0 as u32)
+    command(y0 as u32)
+    command(x1 as u32)
+    command(y1 as u32)
+    command(color)
+}
+
 fn draw_text(x i32, y i32, color u32, text []u8) {
     command(GPU_TEXT)
     command(x as u32)
@@ -282,15 +386,81 @@ fn draw_text(x i32, y i32, color u32, text []u8) {
     command(1)
 }
 
-// Runs the kernel's own commands over the whole screen.
+// Bold, the way the old Macs made it: the text twice, a pixel apart.
+fn draw_bold(x i32, y i32, color u32, text []u8) {
+    draw_text(x, y, color, text)
+    draw_text(x + 1, y, color, text)
+}
+
+// Light lines along the top and left, dark ones along the bottom and right.
+fn draw_bevel(x i32, y i32, w i32, h i32, light u32, dark u32) {
+    draw_fill(x, y, w - 1, 1, light)
+    draw_fill(x, y + 1, 1, h - 2, light)
+    draw_fill(x + 1, y + h - 1, w - 1, 1, dark)
+    draw_fill(x + w - 1, y, 1, h - 1, dark)
+}
+
+// A one-pixel outline.
+fn draw_outline(x i32, y i32, w i32, h i32, color u32) {
+    draw_fill(x, y, w, 1, color)
+    draw_fill(x, y + h - 1, w, 1, color)
+    draw_fill(x, y + 1, 1, h - 2, color)
+    draw_fill(x + w - 1, y + 1, 1, h - 2, color)
+}
+
+// The checkered desktop, as two triangles with the tile repeating across them.
+fn draw_desktop() {
+    var w = screen_width as u32
+    var h = screen_height as u32
+    command(GPU_TEXTURED)
+    command(&pattern[0] as u32)
+    command(8)
+    command(8)
+    for corner in 0..3 {
+        var x u32 = 0
+        var y u32 = 0
+        if corner == 1 {
+            x = w
+        } else if corner == 2 {
+            x = w
+            y = h
+        }
+        command(x)
+        command(y)
+        command(x)
+        command(y)
+    }
+    command(WHITE)
+    command(GPU_TEXTURED)
+    command(&pattern[0] as u32)
+    command(8)
+    command(8)
+    for corner in 0..3 {
+        var x u32 = 0
+        var y u32 = 0
+        if corner == 1 {
+            x = w
+            y = h
+        } else if corner == 2 {
+            y = h
+        }
+        command(x)
+        command(y)
+        command(x)
+        command(y)
+    }
+    command(WHITE)
+}
+
+// Runs the kernel's own commands, clipped to the damaged part of the screen.
 fn flush_commands() {
     if command_count == 0 {
         return
     }
-    clip_list[0] = 0
-    clip_list[1] = 0
-    clip_list[2] = screen_width
-    clip_list[3] = screen_height
+    clip_list[0] = damage.x
+    clip_list[1] = damage.y
+    clip_list[2] = damage.w
+    clip_list[3] = damage.h
     io_write(PORT_GPU_SOURCE_BASE, 0)
     io_write(PORT_GPU_SOURCE_SIZE, ram_size)
     io_write(PORT_GPU_ORIGIN_X, 0)
@@ -309,55 +479,237 @@ fn mark_dirty() {
     io_write(PORT_VIDEO_VBLANK, 1)
 }
 
-// Shows the back buffer once something has changed.
+// Shows the back buffer once something has changed, unless programs are
+// still painting what they were asked to, for at most HOLD milliseconds.
 fn present() {
-    if screen_dirty {
-        io_write(PORT_VIDEO_PRESENT, 1)
-        screen_dirty = false
+    apply_drag()
+    if !screen_dirty {
+        io_write(PORT_VIDEO_VBLANK, 0)
+        return
     }
+    if painting() && clock_ms() - redraw_time < HOLD {
+        return
+    }
+    io_write(PORT_VIDEO_PRESENT, 1)
+    screen_dirty = false
     io_write(PORT_VIDEO_VBLANK, 0)
 }
 
-fn draw_frame(n u32) {
-    var w = &windows[n]
-    var frame Rect
-    frame_of(w, &frame)
-    draw_fill(frame.x, frame.y, frame.w, frame.h, FRAME)
-    var bar = TITLE_INACTIVE
-    if focus == n + 1 {
-        bar = TITLE_ACTIVE
+fn painting() bool {
+    for i in 0..MAX_WINDOWS {
+        if windows[i].used && windows[i].draw_pending {
+            return true
+        }
     }
-    draw_fill(w.content.x, frame.y + BORDER, w.content.w, TITLE - 1, bar)
-    var text_y = frame.y + BORDER + (TITLE - 1 - font_height as i32) / 2
-    draw_text(w.content.x + 8, text_y, TITLE_TEXT, w.title[0:w.title_len])
-    // The close box at the right end of the title bar.
-    var box = w.content.x + w.content.w - 16
-    draw_fill(box, frame.y + 5, 10, 10, FRAME)
-    draw_fill(box + 2, frame.y + 7, 6, 6, bar)
-    draw_fill(w.content.x, w.content.y, w.content.w, w.content.h, CONTENT)
-    if w.resizable {
-        // Grip marks at the right end of the strip.
-        var grip_y = w.content.y + w.content.h + 2
-        for i in 0..3 {
-            draw_fill(w.content.x + w.content.w - 6 - i as i32 * 5, grip_y, 3, 3, bar)
+    return false
+}
+
+// A program asking for its next event has finished painting its windows.
+fn finished_drawing(p *Process) {
+    for i in 0..MAX_WINDOWS {
+        var w = &windows[i]
+        if w.used && w.owner == p && w.draw_taken {
+            w.draw_taken = false
+            w.draw_pending = false
         }
     }
 }
 
-// Repaints the desktop and every frame, and asks every window to paint itself.
-fn redraw_all() {
+// A title bar box: raised, or sunken while it's pressed.
+fn draw_box(r *Rect, which u32, pressed bool) {
+    draw_outline(r.x, r.y, r.w, r.h, BLACK)
+    if pressed {
+        draw_fill(r.x + 1, r.y + 1, r.w - 2, r.h - 2, DARK)
+        draw_bevel(r.x + 1, r.y + 1, r.w - 2, r.h - 2, BLACK, SHADOW)
+    } else {
+        draw_fill(r.x + 1, r.y + 1, r.w - 2, r.h - 2, FACE)
+        draw_bevel(r.x + 1, r.y + 1, r.w - 2, r.h - 2, WHITE, SHADOW)
+    }
+    if which == ZOOM_BOX {
+        // A small window inside the box.
+        draw_outline(r.x + 3, r.y + 3, 6, 6, BLACK)
+    } else if which == COLLAPSE_BOX {
+        // A window shade.
+        draw_fill(r.x + 3, r.y + 5, r.w - 6, 1, BLACK)
+        draw_fill(r.x + 3, r.y + 7, r.w - 6, 1, BLACK)
+    }
+}
+
+// The title bar: in the front window, raised, with ridges either side of the
+// title and the boxes; behind, flat, with the title in grey.
+fn draw_title_bar(n u32) {
+    var w = &windows[n]
+    var x = w.content.x - BORDER + 1
+    var y = w.content.y - TITLE + 1
+    var width = w.content.w + 2 * BORDER - 2
+    var height = TITLE - 2
+    var active = focus == n + 1
+    draw_fill(x, y, width, height, FACE)
+    var title = w.title[0:w.title_len]
+    var room = width - 2 * (9 + BOX + 6) - 2 * BOX
+    var chars = text.char_count(title)
+    while chars > 0 && (chars * font_width) as i32 > room {
+        title = title[0:text.char_start(title, title.len)]
+        chars -= 1
+    }
+    var title_w = (chars * font_width) as i32
+    var title_x = x + (width - title_w) / 2
+    var text_y = y + (height - font_height as i32) / 2
+    if !active {
+        draw_text(title_x, text_y, DIM, title)
+        return
+    }
+    draw_bevel(x, y, width, height, WHITE, SHADOW)
+    var close Rect
+    box_rect(w, CLOSE_BOX, &close)
+    var right Rect
+    box_rect(w, COLLAPSE_BOX, &right)
+    if w.resizable {
+        box_rect(w, ZOOM_BOX, &right)
+    }
+    var left = close.x + close.w + 4
+    var end = right.x - 4
+    for i in 0..6 {
+        var ridge_y = y + 4 + i as i32 * 2
+        draw_fill(left, ridge_y, end - left, 1, SHADOW)
+        draw_fill(left + 1, ridge_y + 1, end - left, 1, WHITE)
+    }
+    if chars > 0 {
+        draw_fill(title_x - 8, y + 2, title_w + 16, height - 4, FACE)
+    }
+    draw_text(title_x, text_y, BLACK, title)
+    for which in CLOSE_BOX..COLLAPSE_BOX + 1 {
+        if which == ZOOM_BOX && !w.resizable {
+            continue
+        }
+        var r Rect
+        box_rect(w, which, &r)
+        draw_box(&r, which, held_box == which && held_window == n + 1 && held_inside)
+    }
+}
+
+// Two overlapping windows: the grow box, in the content's corner.
+fn draw_grow_box(w *Window, active bool) {
+    var r Rect
+    grow_rect(w, &r)
+    draw_fill(r.x, r.y, r.w, r.h, FACE)
+    draw_fill(r.x, r.y, r.w, 1, BLACK)
+    draw_fill(r.x, r.y + 1, 1, r.h - 1, BLACK)
+    if active {
+        draw_bevel(r.x + 1, r.y + 1, r.w - 1, r.h - 1, WHITE, SHADOW)
+        draw_outline(r.x + 3, r.y + 3, 6, 6, BLACK)
+        draw_outline(r.x + 5, r.y + 5, 7, 7, BLACK)
+        draw_fill(r.x + 6, r.y + 6, 5, 5, FACE)
+    }
+}
+
+// A window's frame, with its content cleared to white for its program.
+fn draw_window(n u32) {
+    var w = &windows[n]
+    var frame Rect
+    frame_of(w, &frame)
+    var active = focus == n + 1
+    draw_outline(frame.x, frame.y, frame.w, frame.h, BLACK)
+    draw_fill(frame.x + 1, frame.y + 1, frame.w - 2, frame.h - 2, FACE)
+    if active {
+        draw_bevel(frame.x + 1, frame.y + 1, frame.w - 2, frame.h - 2, WHITE, SHADOW)
+    }
+    draw_title_bar(n)
+    if w.collapsed {
+        return
+    }
+    draw_outline(w.content.x - 1, w.content.y - 1, w.content.w + 2, w.content.h + 2, BLACK)
+    draw_fill(w.content.x, w.content.y, w.content.w, w.content.h, WHITE)
+    if w.resizable {
+        draw_grow_box(w, active)
+    }
+}
+
+fn draw_menu_bar() {
+    draw_fill(0, 0, screen_width, MENU - 1, FACE)
+    draw_fill(0, 0, screen_width, 1, WHITE)
+    draw_fill(0, MENU - 1, screen_width, 1, BLACK)
+    var text_y = (MENU - 1 - font_height as i32) / 2
+    draw_bold(12, text_y, BLACK, "Terrarium")
+    var title_color = BLACK
+    if menu_open {
+        draw_fill(WINDOWS_MENU_X - 8, 1, 7 * font_width as i32 + 16, MENU - 2, BLACK)
+        title_color = WHITE
+    }
+    draw_text(WINDOWS_MENU_X, text_y, title_color, "Windows")
+    var seconds = date_now() % 86400
+    var used = put_two(0, seconds / 3600)
+    clock_text[used] = ':'
+    used = put_two(used + 1, seconds / 60 % 60)
+    draw_text(screen_width - 12 - (used * font_width) as i32, text_y, BLACK, clock_text[0:used])
+}
+
+fn put_two(at u32, n u32) u32 {
+    clock_text[at] = (n / 10 + '0') as u8
+    clock_text[at + 1] = (n % 10 + '0') as u8
+    return at + 2
+}
+
+// Keeps the menu bar's clock on the minute. Returns when it next changes,
+// in milliseconds since the machine started, or 0 without a screen.
+fn wm_tick() u32 {
+    if !has_screen() {
+        return 0
+    }
+    var now = date_now()
+    if now / 60 != clock_minute {
+        clock_minute = now / 60
+        set_rect(&damage, 0, 0, screen_width, MENU)
+        draw_menu_bar()
+        flush_commands()
+    }
+    return clock_ms() + (60 - now % 60) * 1000
+}
+
+// Repaints part of the screen, and asks the windows there to paint
+// themselves.
+fn redraw(area *Rect) {
     compute_visible()
-    draw_fill(0, 0, screen_width, screen_height, DESKTOP)
-    draw_text(12, screen_height - 24, 0xff8fb8ad, "Terrarium")
+    damage = *area
+    draw_desktop()
     flush_commands()
     // A list for each window keeps every list well inside the GPU's budget.
     for k in 0..order_count {
-        draw_frame(order[k])
+        var frame Rect
+        frame_of(&windows[order[k]], &frame)
+        if overlaps(&frame, area) {
+            draw_window(order[k])
+            flush_commands()
+        }
+    }
+    draw_menu_bar()
+    flush_commands()
+    if menu_open {
+        draw_menu()
         flush_commands()
     }
     for k in 0..order_count {
-        post(&windows[order[k]], EventKind.Draw, 0, 0, 0, 0, 0)
+        var w = &windows[order[k]]
+        var frame Rect
+        frame_of(w, &frame)
+        if !w.collapsed && overlaps(&frame, area) {
+            post(w, EventKind.Draw, 0, 0, 0, 0, 0)
+        }
     }
+    redraw_time = clock_ms()
+}
+
+fn redraw_all() {
+    var all Rect
+    set_rect(&all, 0, 0, screen_width, screen_height)
+    redraw(&all)
+}
+
+// Redraws only a title bar, which is safe when nothing covers its window.
+fn redraw_title_bar(n u32) {
+    set_rect(&damage, 0, 0, screen_width, screen_height)
+    draw_title_bar(n)
+    flush_commands()
 }
 
 // Runs a program's commands in one of its windows.
@@ -382,7 +734,204 @@ fn window_draw(p *Process, w *Window, list []u8) u32 {
     return io_read(PORT_GPU_STATUS)
 }
 
+// The Windows menu -----------------------------------------------------------
+
+// Its items are the windows, a separator, then Collapse All and Expand All.
+fn menu_count() u32 {
+    var n u32 = 3
+    for i in 0..MAX_WINDOWS {
+        if windows[i].used {
+            n += 1
+        }
+    }
+    return n
+}
+
+// The window an item names, or MAX_WINDOWS for the items after them.
+fn menu_window(item u32) u32 {
+    var k u32 = 0
+    for i in 0..MAX_WINDOWS {
+        if windows[i].used {
+            if k == item {
+                return i
+            }
+            k += 1
+        }
+    }
+    return MAX_WINDOWS
+}
+
+fn place_menu() {
+    var widest u32 = 12
+    for i in 0..MAX_WINDOWS {
+        if windows[i].used {
+            var chars = text.char_count(windows[i].title[0:windows[i].title_len])
+            if chars > widest {
+                widest = chars
+            }
+        }
+    }
+    set_rect(&menu_rect, WINDOWS_MENU_X - 8, MENU - 1, (widest * font_width) as i32 + 40, menu_count() as i32 * ITEM + 4)
+}
+
+// The item at the point, or -1 for none or the separator.
+fn menu_item_at(x i32, y i32) i32 {
+    if !inside(&menu_rect, x, y) || y < menu_rect.y + 2 {
+        return -1
+    }
+    var item = (y - menu_rect.y - 2) / ITEM
+    var count = menu_count() as i32
+    if item >= count || item == count - 3 {
+        return -1
+    }
+    return item
+}
+
+fn draw_menu() {
+    var r = &menu_rect
+    // A shadow below and to the right.
+    draw_fill(r.x + 2, r.y + r.h, r.w, 2, DARK)
+    draw_fill(r.x + r.w, r.y + 2, 2, r.h, DARK)
+    draw_outline(r.x, r.y, r.w, r.h, BLACK)
+    draw_fill(r.x + 1, r.y + 1, r.w - 2, r.h - 2, FACE)
+    var count = menu_count()
+    for item in 0..count {
+        var y = r.y + 2 + item as i32 * ITEM
+        var text_y = y + (ITEM - font_height as i32) / 2
+        if item == count - 3 {
+            draw_fill(r.x + 1, y + ITEM / 2 - 1, r.w - 2, 1, SHADOW)
+            draw_fill(r.x + 1, y + ITEM / 2, r.w - 2, 1, WHITE)
+            continue
+        }
+        var color = BLACK
+        if item as i32 == menu_item {
+            draw_fill(r.x + 1, y, r.w - 2, ITEM, BLACK)
+            color = WHITE
+        }
+        var n = menu_window(item)
+        if n < MAX_WINDOWS {
+            if focus == n + 1 {
+                // A check mark beside the front window.
+                for t in 0..2 {
+                    draw_line(r.x + 8, text_y + 8 + t as i32, r.x + 11, text_y + 11 + t as i32, color)
+                    draw_line(r.x + 11, text_y + 11 + t as i32, r.x + 17, text_y + 4 + t as i32, color)
+                }
+            }
+            draw_text(r.x + 24, text_y, color, windows[n].title[0:windows[n].title_len])
+        } else if item == count - 2 {
+            draw_text(r.x + 24, text_y, color, "Collapse All")
+        } else {
+            draw_text(r.x + 24, text_y, color, "Expand All")
+        }
+    }
+}
+
+fn redraw_menu() {
+    set_rect(&damage, 0, 0, screen_width, screen_height)
+    draw_menu()
+    flush_commands()
+}
+
+fn open_menu() {
+    place_menu()
+    menu_open = true
+    menu_item = -1
+    redraw_all()
+}
+
+fn close_menu() {
+    if !menu_open {
+        return
+    }
+    menu_open = false
+    menu_tracking = false
+    var area = menu_rect
+    area.w += 2
+    area.h += 2
+    set_rect(&damage, 0, 0, 0, 0)
+    var bar Rect
+    set_rect(&bar, 0, 0, screen_width, MENU)
+    add_rect(&area, &bar)
+    redraw(&area)
+}
+
+fn choose(item u32) {
+    var count = menu_count()
+    var n = menu_window(item)
+    close_menu()
+    if n < MAX_WINDOWS {
+        windows[n].collapsed = false
+        raise(n)
+        redraw_all()
+    } else if item == count - 2 || item == count - 1 {
+        for i in 0..MAX_WINDOWS {
+            windows[i].collapsed = item == count - 2
+        }
+        redraw_all()
+    }
+}
+
+// The menu takes every press while it's open. Returns true if it took this one.
+fn menu_press() bool {
+    var on_title = mouse_y < MENU && mouse_x >= WINDOWS_MENU_X - 8 && mouse_x < WINDOWS_MENU_X + 64
+    if !menu_open {
+        if on_title {
+            open_menu()
+            menu_tracking = true
+            return true
+        }
+        return mouse_y < MENU
+    }
+    if on_title || !inside(&menu_rect, mouse_x, mouse_y) {
+        close_menu()
+        return true
+    }
+    menu_tracking = true
+    return true
+}
+
+fn menu_release() {
+    var item = menu_item_at(mouse_x, mouse_y)
+    if item >= 0 {
+        choose(item as u32)
+    } else if mouse_y >= MENU && menu_tracking {
+        close_menu()
+    }
+    menu_tracking = false
+}
+
+fn menu_move() {
+    var item = menu_item_at(mouse_x, mouse_y)
+    if item != menu_item {
+        menu_item = item
+        redraw_menu()
+    }
+}
+
 // Windows ----------------------------------------------------------------------
+
+// Keeps as much of a title as fits, without cutting a character in two.
+fn set_title(w *Window, title []u8) {
+    var n = min(title.len, w.title.len)
+    while n < title.len && n > 0 && text.is_continuation(title[n]) {
+        n -= 1
+    }
+    w.title_len = n
+    mem.copy(w.title[:], title[0:n])
+}
+
+fn window_title(w *Window, title []u8) {
+    set_title(w, title)
+    redraw_all()
+}
+
+// Lets a window be resized with its grow box, down to a size, and zoomed.
+fn window_resizable(w *Window, min_w u32, min_h u32) {
+    w.resizable = true
+    w.min_w = max_i(min(min_w, screen_width as u32) as i32, 80)
+    w.min_h = max_i(min(min_h, screen_height as u32) as i32, 2 * GROW)
+    redraw_all()
+}
 
 fn window_open(p *Process, title []u8, width u32, height u32) *Window {
     if !has_screen() || width == 0 || height == 0 || width > screen_width as u32 || height > screen_height as u32 {
@@ -410,14 +959,16 @@ fn window_open(p *Process, title []u8, width u32, height u32) *Window {
     order[order_count] = n
     order_count += 1
     focus = n + 1
+    close_menu()
     redraw_all()
     return w
 }
 
-// Puts a new window in the first spot that doesn't cover another window,
-// scanning from the top left, or else a little below the last one placed.
+// Puts a new window in the first spot under the menu bar that doesn't cover
+// another window, scanning from the top left, or else a little below the
+// last one placed.
 fn place(w *Window) {
-    var y = TITLE + BORDER + 8
+    var y = MENU + TITLE + 8
     while y + w.content.h + BORDER <= screen_height {
         var x = BORDER + 8
         while x + w.content.w + BORDER <= screen_width {
@@ -431,24 +982,28 @@ fn place(w *Window) {
         y += 16
     }
     w.content.x = 40 + cascade
-    w.content.y = 40 + TITLE + cascade
-    if w.content.x + w.content.w > screen_width {
+    w.content.y = MENU + TITLE + 32 + cascade
+    if w.content.x + w.content.w + BORDER > screen_width {
         w.content.x = max_i(BORDER, screen_width - w.content.w - BORDER)
     }
-    if w.content.y + w.content.h > screen_height {
-        w.content.y = max_i(TITLE + BORDER, screen_height - w.content.h - BORDER)
+    if w.content.y + w.content.h + BORDER > screen_height {
+        w.content.y = max_i(MENU + TITLE, screen_height - w.content.h - BORDER)
     }
     cascade = (cascade + 30) % 180
 }
 
-// Whether the window's frame, with a small gap, overlaps a window on screen.
+// Whether the window, with a small gap around it, overlaps one on screen.
 fn covers_any(w *Window) bool {
     var mine Rect
     frame_of(w, &mine)
+    mine.x -= 6
+    mine.y -= 6
+    mine.w += 12
+    mine.h += 12
     for k in 0..order_count {
         var other Rect
         frame_of(&windows[order[k]], &other)
-        if mine.x < other.x + other.w + 6 && other.x < mine.x + mine.w + 6 && mine.y < other.y + other.h + 6 && other.y < mine.y + mine.h + 6 {
+        if overlaps(&mine, &other) {
             return true
         }
     }
@@ -465,6 +1020,8 @@ fn window_close(w *Window) {
         order[i] = order[i + 1]
     }
     order_count -= 1
+    var frame Rect
+    frame_of(w, &frame)
     w.used = false
     if focus == n + 1 {
         focus = 0
@@ -478,7 +1035,19 @@ fn window_close(w *Window) {
     if drag == n + 1 {
         drag = 0
     }
-    redraw_all()
+    if held_window == n + 1 {
+        held_box = 0
+        held_window = 0
+    }
+    if menu_open {
+        close_menu()
+        redraw_all()
+    } else if focus != 0 {
+        // The new front window's title bar changes too.
+        redraw_all()
+    } else {
+        redraw(&frame)
+    }
 }
 
 fn window_number(w *Window) u32 {
@@ -515,9 +1084,81 @@ fn window_at(x i32, y i32) u32 {
     return 0
 }
 
+fn collapse(n u32) {
+    var w = &windows[n]
+    var frame Rect
+    frame_of(w, &frame)
+    w.collapsed = !w.collapsed
+    if w.collapsed {
+        redraw(&frame)
+    } else {
+        frame_of(w, &frame)
+        redraw(&frame)
+    }
+}
+
+// Switches between the largest size that fits under the menu bar and the
+// size before.
+fn zoom(n u32) {
+    var w = &windows[n]
+    if w.zoomed {
+        w.content = w.unzoomed
+        w.zoomed = false
+    } else {
+        w.unzoomed = w.content
+        set_rect(&w.content, BORDER, MENU + TITLE, screen_width - 2 * BORDER, screen_height - MENU - TITLE - BORDER)
+        w.zoomed = true
+    }
+    w.collapsed = false
+    post(w, EventKind.Resize, w.content.w, w.content.h, 0, 0, 0)
+    redraw_all()
+}
+
+// Moves or resizes the window being dragged to follow the mouse, once the
+// programs have painted the last move, so a drag never shows half a frame.
+fn apply_drag() {
+    if drag == 0 || (painting() && clock_ms() - redraw_time < HOLD) {
+        return
+    }
+    var w = &windows[drag - 1]
+    var before Rect
+    frame_of(w, &before)
+    if resizing {
+        var width = min_i(max_i(mouse_x - w.content.x + drag_x, w.min_w), screen_width - w.content.x - BORDER)
+        var height = min_i(max_i(mouse_y - w.content.y + drag_y, w.min_h), screen_height - w.content.y - BORDER)
+        if width == w.content.w || width < w.min_w {
+            width = max_i(width, w.min_w)
+        }
+        if width == w.content.w && height == w.content.h {
+            return
+        }
+        w.content.w = width
+        w.content.h = height
+        w.zoomed = false
+        post(w, EventKind.Resize, width, height, 0, 0, 0)
+    } else {
+        // The title bar always stays where it can be grabbed.
+        var x = min_i(max_i(mouse_x - drag_x, 48 - w.content.w), screen_width - 48)
+        var y = min_i(max_i(mouse_y - drag_y, MENU + TITLE), screen_height)
+        if x == w.content.x && y == w.content.y {
+            return
+        }
+        w.content.x = x
+        w.content.y = y
+    }
+    var after Rect
+    frame_of(w, &after)
+    add_rect(&before, &after)
+    redraw(&before)
+}
+
 // Events -----------------------------------------------------------------------
 
 fn post(w *Window, kind EventKind, x i32, y i32, key u32, modifiers u32, buttons u32) {
+    if kind == EventKind.Draw {
+        w.draw_pending = true
+        w.draw_taken = false
+    }
     // A window only needs one draw at a time, and only its latest size.
     if kind == EventKind.Draw || kind == EventKind.Resize {
         for i in 0..w.event_count {
@@ -552,6 +1193,9 @@ fn take_event(p *Process, out *Event) bool {
             *out = w.events[w.event_start]
             w.event_start = (w.event_start + 1) % QUEUE
             w.event_count -= 1
+            if out.kind == EventKind.Draw as u32 {
+                w.draw_taken = true
+            }
             return true
         }
     }
@@ -561,6 +1205,12 @@ fn take_event(p *Process, out *Event) bool {
 fn post_mouse(n u32, kind EventKind, buttons u32) {
     var w = &windows[n - 1]
     post(w, kind, mouse_x - w.content.x, mouse_y - w.content.y, 0, 0, buttons)
+}
+
+// Whether the point is in the part of a window its program handles.
+fn in_content(n u32, x i32, y i32) bool {
+    var w = &windows[n - 1]
+    return !w.collapsed && inside(&w.content, x, y) && !in_grow_box(w, x, y)
 }
 
 fn receive_input() {
@@ -583,29 +1233,7 @@ fn receive_input() {
         } else if kind == INPUT_MOUSE_MOVE {
             mouse_x = a as i32
             mouse_y = b as i32
-            if drag != 0 && resizing {
-                var w = &windows[drag - 1]
-                var width = min_i(max_i(mouse_x - w.content.x + drag_x, w.min_w), screen_width)
-                var height = min_i(max_i(mouse_y - w.content.y + drag_y, w.min_h), screen_height)
-                if width != w.content.w || height != w.content.h {
-                    w.content.w = width
-                    w.content.h = height
-                    post(w, EventKind.Resize, width, height, 0, 0, 0)
-                    redraw_all()
-                }
-            } else if drag != 0 {
-                var w = &windows[drag - 1]
-                w.content.x = mouse_x - drag_x
-                w.content.y = max_i(mouse_y - drag_y, TITLE + BORDER)
-                redraw_all()
-            } else if capture != 0 {
-                post_mouse(capture, EventKind.MouseMove, c)
-            } else {
-                var n = window_at(mouse_x, mouse_y)
-                if n != 0 && inside(&windows[n - 1].content, mouse_x, mouse_y) {
-                    post_mouse(n, EventKind.MouseMove, c)
-                }
-            }
+            mouse_moved(c)
         } else if kind == INPUT_MOUSE_DOWN {
             mouse_x = a as i32
             mouse_y = b as i32
@@ -613,46 +1241,117 @@ fn receive_input() {
         } else if kind == INPUT_MOUSE_UP {
             mouse_x = a as i32
             mouse_y = b as i32
-            drag = 0
-            if capture != 0 {
-                post_mouse(capture, EventKind.MouseUp, c)
-                capture = 0
-            }
+            release(c)
         } else if kind == INPUT_WHEEL {
             var n = window_at(mouse_x, mouse_y)
-            if n != 0 {
+            if n != 0 && !windows[n - 1].collapsed && !menu_open {
                 post(&windows[n - 1], EventKind.Wheel, a as i32, b as i32, 0, 0, 0)
             }
         }
     }
 }
 
+fn mouse_moved(buttons u32) {
+    if menu_open {
+        menu_move()
+    } else if held_box != 0 {
+        var w = &windows[held_window - 1]
+        var now_inside = box_at(w, mouse_x, mouse_y) == held_box
+        if now_inside != held_inside {
+            held_inside = now_inside
+            redraw_title_bar(held_window - 1)
+        }
+    } else if drag != 0 {
+        apply_drag()
+    } else if capture != 0 {
+        post_mouse(capture, EventKind.MouseMove, buttons)
+    } else {
+        var n = window_at(mouse_x, mouse_y)
+        if n != 0 && in_content(n, mouse_x, mouse_y) {
+            post_mouse(n, EventKind.MouseMove, buttons)
+        }
+    }
+}
+
 fn press(button u32) {
+    if menu_press() {
+        return
+    }
     var n = window_at(mouse_x, mouse_y)
     if n == 0 {
         return
     }
     raise(n - 1)
     var w = &windows[n - 1]
-    if inside(&w.content, mouse_x, mouse_y) {
-        capture = n
-        post_mouse(n, EventKind.MouseDown, button)
-        return
-    }
-    if mouse_y < w.content.y && mouse_x >= w.content.x + w.content.w - 18 {
-        post(w, EventKind.Close, 0, 0, 0, 0, 0)
-        return
-    }
-    if mouse_y < w.content.y {
-        drag = n
-        resizing = false
-        drag_x = mouse_x - w.content.x
-        drag_y = mouse_y - w.content.y
-    } else if w.resizable && mouse_y >= w.content.y + w.content.h {
-        // The grip: remember how far from the corner the drag began.
+    if in_grow_box(w, mouse_x, mouse_y) {
+        // Remember how far from the corner the drag began.
         drag = n
         resizing = true
         drag_x = w.content.w - (mouse_x - w.content.x)
         drag_y = w.content.h - (mouse_y - w.content.y)
+        return
+    }
+    if in_content(n, mouse_x, mouse_y) {
+        capture = n
+        post_mouse(n, EventKind.MouseDown, button)
+        return
+    }
+    if focus == n {
+        var which = box_at(w, mouse_x, mouse_y)
+        if which != 0 {
+            held_box = which
+            held_window = n
+            held_inside = true
+            redraw_title_bar(n - 1)
+            return
+        }
+    }
+    if mouse_y < w.content.y {
+        // A double click on the title bar collapses or expands the window.
+        var now = clock_ms()
+        if last_click_window == n && now - last_click < DOUBLE_CLICK {
+            last_click_window = 0
+            collapse(n - 1)
+            return
+        }
+        last_click = now
+        last_click_window = n
+        drag = n
+        resizing = false
+        drag_x = mouse_x - w.content.x
+        drag_y = mouse_y - w.content.y
+    }
+}
+
+fn release(button u32) {
+    if menu_open {
+        menu_release()
+        return
+    }
+    if held_box != 0 {
+        var n = held_window - 1
+        var which = held_box
+        var chosen = held_inside
+        held_box = 0
+        held_window = 0
+        redraw_title_bar(n)
+        if chosen {
+            if which == CLOSE_BOX {
+                post(&windows[n], EventKind.Close, 0, 0, 0, 0, 0)
+            } else if which == ZOOM_BOX {
+                zoom(n)
+            } else {
+                collapse(n)
+            }
+        }
+        return
+    }
+    if drag != 0 {
+        drag = 0
+        return
+    }
+    if capture != 0 {
+        post_mouse(capture, EventKind.MouseUp, button)
+        capture = 0
     }
 }

@@ -1,6 +1,6 @@
 // view shows a TIM1 image. Drag, scroll or use the arrows to look around a
-// picture bigger than the window, and drag the strip under the window to
-// resize it. Only the tiles in view are read from the file and decoded, so
+// picture bigger than the window, and drag the grow box in the window's
+// corner to resize it. Only the tiles in view are read from the file and decoded, so
 // the picture can be much bigger than view's memory.
 
 import gfx
@@ -8,6 +8,7 @@ import image
 import io
 import mem
 import os
+import text
 
 manifest {
     memory = 4 * MiB
@@ -53,9 +54,20 @@ fn main(memory []u8) u32 {
         return 1
     }
     var first [16]u8
-    io.read(file, first[:])
-    var tiles = ((mem.read_word(first[:], 4) + image.TILE - 1) / image.TILE) * ((mem.read_word(first[:], 8) + image.TILE - 1) / image.TILE)
-    table = mem.alloc_bytes(&arena, 16 + (tiles + 1) * 4)
+    if io.read(file, first[:]) != first.len || !text.equal(first[0:4], "TIM1") || mem.read_word(first[:], 12) != image.TILE {
+        os.complain("view", "not a TIM1 image:", path)
+        return 1
+    }
+    // The table of where each tile starts has to fit in memory, with room
+    // left for the tiles themselves.
+    var tiles_x = (mem.read_word(first[:], 4) + image.TILE - 1) / image.TILE
+    var tiles_y = (mem.read_word(first[:], 8) + image.TILE - 1) / image.TILE
+    var room = (arena.memory.len - arena.used) / 8
+    if tiles_x == 0 || tiles_y == 0 || tiles_x > room || tiles_y > room / tiles_x {
+        os.complain("view", "too big to view:", path)
+        return 1
+    }
+    table = mem.alloc_bytes(&arena, 16 + (tiles_x * tiles_y + 1) * 4)
     io.seek(file, 0)
     if io.read(file, table) != table.len || !image.read_header(table, &header) {
         os.complain("view", "not a TIM1 image:", path)
@@ -164,7 +176,7 @@ fn tile_image(tx u32, ty u32) *gfx.Image {
 fn draw() {
     // A window bigger than the picture shows a border around it.
     if width > header.width as i32 || height > header.height as i32 {
-        gfx.draw_fill(&canvas, 0, 0, width, height, 0xff1b1d23)
+        gfx.draw_fill(&canvas, 0, 0, width, height, 0xffdddddd)
     }
     var first_x = scroll_x as u32 / image.TILE
     var first_y = scroll_y as u32 / image.TILE

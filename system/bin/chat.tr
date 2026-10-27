@@ -22,10 +22,10 @@ const WIDTH = 480
 const HEIGHT = 320
 const LINES = 64
 const LINE_SIZE = 160
-const BACKGROUND u32 = 0xff1b1d23
-const THEM u32 = 0xffd8d4c8
-const YOU u32 = 0xffe8c35a
-const NOTE u32 = 0xff8fb8ad
+const BACKGROUND u32 = 0xffffffff
+const THEM u32 = 0xff000000
+const YOU u32 = 0xff555555
+const NOTE u32 = 0xff808080
 
 enum State {
     Waiting,

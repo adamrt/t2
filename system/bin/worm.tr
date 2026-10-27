@@ -211,20 +211,21 @@ fn cell(x i32, y i32, color u32) {
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, BAR, gfx.rgb(45, 90, 80))
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(255, 255, 255))
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, BAR, gfx.rgb(221, 221, 221))
+    gfx.draw_fill(&canvas, 0, BAR - 1, WIDTH, 1, gfx.rgb(0, 0, 0))
     var w io.Writer
     io.writer_init(&w, io.STDOUT, line_text[:])
     io.put(&w, "score ")
     io.put_u32(&w, score)
     io.put(&w, "   best ")
     io.put_u32(&w, best)
-    gfx.draw_text(&canvas, 8, 3, gfx.rgb(242, 239, 230), line_text[0:w.used])
-    cell(berry_x, berry_y, gfx.rgb(220, 70, 70))
+    gfx.draw_text(&canvas, 8, 3, gfx.rgb(0, 0, 0), line_text[0:w.used])
+    cell(berry_x, berry_y, gfx.rgb(140, 140, 140))
     for i in 0..length {
-        var color = gfx.rgb(232, 195, 90)
+        var color = gfx.rgb(80, 80, 80)
         if i == 0 {
-            color = gfx.rgb(250, 230, 160)
+            color = gfx.rgb(0, 0, 0)
         }
         cell(body_x[i], body_y[i], color)
     }
@@ -239,5 +240,5 @@ fn draw() {
 
 fn centered(text []u8, y i32, scale u32) {
     var x = WIDTH / 2 - (text.len * 8 * scale / 2) as i32
-    gfx.draw_text_scaled(&canvas, x, y, gfx.rgb(242, 239, 230), text, scale)
+    gfx.draw_text_scaled(&canvas, x, y, gfx.rgb(0, 0, 0), text, scale)
 }

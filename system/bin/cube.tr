@@ -82,13 +82,13 @@ fn main(memory []u8) u32 {
 fn make_texture() {
     for y in 0..SIZE {
         for x in 0..SIZE {
-            var shade = 60 + (x + y) * 60 / (2 * SIZE)
-            var color = gfx.rgb(30, shade, shade * 3 / 4)
+            var shade = 160 + (x + y) * 80 / (2 * SIZE)
+            var color = gfx.rgb(shade, shade, shade)
             var edge = x < 3 || y < 3 || x >= SIZE - 3 || y >= SIZE - 3
             var bar = y >= 14 && y < 22 && x >= 14 && x < 50
             var stem = x >= 28 && x < 36 && y >= 14 && y < 52
             if edge || bar || stem {
-                color = gfx.rgb(232, 195, 90)
+                color = gfx.rgb(30, 30, 30)
             }
             texture_pixels[y * SIZE + x] = color
         }
@@ -181,7 +181,7 @@ fn draw() {
         }
     }
 
-    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(30, 30, 36))
+    gfx.draw_fill(&canvas, 0, 0, WIDTH, HEIGHT, gfx.rgb(255, 255, 255))
     for i in 0..6 {
         var face = &faces[order[i]]
         if !face.visible {
@@ -192,6 +192,6 @@ fn draw() {
         gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[1]], screen_y[p[1]], s, 0, screen_x[p[2]], screen_y[p[2]], s, s, face.color)
         gfx.draw_textured(&canvas, &texture, screen_x[p[0]], screen_y[p[0]], 0, 0, screen_x[p[2]], screen_y[p[2]], s, s, screen_x[p[3]], screen_y[p[3]], 0, s, face.color)
     }
-    gfx.draw_text(&canvas, 10, HEIGHT - 24, gfx.rgb(216, 212, 200), "fixed-point 3D, drag to turn")
+    gfx.draw_text(&canvas, 10, HEIGHT - 24, gfx.rgb(128, 128, 128), "fixed-point 3D, drag to turn")
     gfx.present(&canvas)
 }

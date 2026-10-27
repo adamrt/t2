@@ -59,7 +59,7 @@ fn hand(turn u32, length fixed, width i32, color u32) {
 }
 
 fn draw(now u32) {
-    gfx.draw_fill(&canvas, 0, 0, SIZE, SIZE + 20, gfx.rgb(242, 239, 230))
+    gfx.draw_fill(&canvas, 0, 0, SIZE, SIZE + 20, gfx.rgb(255, 255, 255))
     // The face: a mark for each hour.
     for h in 0..12 {
         var angle = h * math.TURN / 12
@@ -70,18 +70,18 @@ fn draw(now u32) {
         }
         var c = math.cos(angle)
         var s = math.sin(angle)
-        gfx.draw_line(&canvas, CENTER + (c * inner) as i32, CENTER + (s * inner) as i32, CENTER + (c * outer) as i32, CENTER + (s * outer) as i32, gfx.rgb(30, 30, 36))
+        gfx.draw_line(&canvas, CENTER + (c * inner) as i32, CENTER + (s * inner) as i32, CENTER + (c * outer) as i32, CENTER + (s * outer) as i32, gfx.rgb(0, 0, 0))
     }
     var seconds = now % 86400
     var hours = seconds / 3600 % 12
     var minutes = seconds / 60 % 60
-    hand((hours * 60 + minutes) * math.TURN / 720, 48, 3, gfx.rgb(30, 30, 36))
-    hand(seconds % 3600 * math.TURN / 3600, 70, 2, gfx.rgb(30, 30, 36))
-    hand(seconds % 60 * math.TURN / 60, 80, 1, gfx.rgb(200, 70, 60))
-    gfx.draw_fill(&canvas, CENTER - 3, CENTER - 3, 6, 6, gfx.rgb(45, 90, 80))
+    hand((hours * 60 + minutes) * math.TURN / 720, 48, 3, gfx.rgb(0, 0, 0))
+    hand(seconds % 3600 * math.TURN / 3600, 70, 2, gfx.rgb(0, 0, 0))
+    hand(seconds % 60 * math.TURN / 60, 80, 1, gfx.rgb(128, 128, 128))
+    gfx.draw_fill(&canvas, CENTER - 3, CENTER - 3, 6, 6, gfx.rgb(0, 0, 0))
     var w io.Writer
     io.writer_init(&w, io.STDOUT, text[:])
     os.put_date(&w, now)
-    gfx.draw_text(&canvas, (SIZE - (w.used * 8) as i32) / 2, SIZE, gfx.rgb(30, 30, 36), text[0:w.used])
+    gfx.draw_text(&canvas, (SIZE - (w.used * 8) as i32) / 2, SIZE, gfx.rgb(0, 0, 0), text[0:w.used])
     gfx.present(&canvas)
 }

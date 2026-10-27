@@ -1,7 +1,7 @@
 // monitor shows what the machine is doing: the memory each process reserved,
 // how many instructions each runs per second, and how busy the CPU has been.
-// Stop ends a process, for when one misbehaves. Dragging the strip under the
-// window resizes it.
+// Stop ends a process, for when one misbehaves. The grow box in the window's
+// corner resizes it.
 
 import gfx
 import io
@@ -106,7 +106,7 @@ fn sample() {
 }
 
 fn draw() {
-    gfx.draw_fill(&canvas, 0, 0, width, height, gfx.rgb(242, 239, 230))
+    gfx.draw_fill(&canvas, 0, 0, width, height, ui.FACE)
     var free u32
     var total = os.memory_info(&free)
     var used = total - free
@@ -118,15 +118,14 @@ fn draw() {
     io.put(&w, " of ")
     io.put_u32(&w, total / KiB)
     io.put(&w, " KiB reserved")
-    gfx.draw_text(&canvas, 10, 8, gfx.rgb(30, 30, 36), line_text[0:w.used])
-    gfx.draw_fill(&canvas, 10, 28, width - 20, 14, gfx.rgb(210, 205, 192))
-    var bar = ((width - 20) as u32 * (used / KiB) / (total / KiB)) as i32
-    gfx.draw_fill(&canvas, 10, 28, bar, 14, gfx.rgb(45, 90, 80))
+    ui.label(&panel, 10, 8, line_text[0:w.used])
+    ui.progress(&panel, 10, 29, width - 20, used / KiB, total / KiB)
 
-    gfx.draw_text(&canvas, 10, 52, gfx.rgb(120, 116, 106), "  id  name            memory   stack instructions/s")
-    // Instructions per second over the last minute or so, at the bottom.
+    ui.dim_label(&panel, 10, 52, "  id  name            memory   stack instructions/s")
+    // Instructions per second over the last minute or so, at the bottom,
+    // clear of the grow box.
     var graph_h i32 = 96
-    var graph_y = height - graph_h - 14
+    var graph_y = height - graph_h - 20
     for i in 0..count {
         var p = &records[i]
         var y = 72 + (i as i32) * 16
@@ -145,31 +144,31 @@ fn draw() {
         io.put(&w, "K")
         pad(&w, p.stack, 8)
         pad(&w, rates[i], 15)
-        gfx.draw_text(&canvas, 10, y, gfx.rgb(30, 30, 36), line_text[0:w.used])
-        if p.id > 1 && ui.button(&panel, p.id, width - 52, y - 1, 44, 17, "Stop") {
+        ui.label(&panel, 10, y, line_text[0:w.used])
+        if p.id > 1 && ui.button(&panel, p.id, width - 56, y - 1, 46, 18, "Stop") {
             os.kill(p.id)
             sample()
         }
     }
 
-    gfx.draw_fill(&canvas, 10, graph_y, width - 20, graph_h, gfx.rgb(30, 30, 36))
+    ui.sunken(&canvas, 10, graph_y, width - 20, graph_h)
     var peak u32 = 1
     for i in 0..HISTORY {
         if history[i] > peak {
             peak = history[i]
         }
     }
-    var bar_w i32 = (width - 20) / HISTORY
+    var bar_w i32 = (width - 24) / HISTORY
     for i in 0..HISTORY {
         var v = history[(history_at + i) % HISTORY]
-        var h = ((v / 1000) * (graph_h as u32 - 4) / (peak / 1000 + 1)) as i32
-        gfx.draw_fill(&canvas, 10 + (i as i32) * bar_w, graph_y + graph_h - 2 - h, bar_w - 1, h, gfx.rgb(232, 195, 90))
+        var h = ((v / 1000) * (graph_h as u32 - 6) / (peak / 1000 + 1)) as i32
+        gfx.draw_fill(&canvas, 12 + (i as i32) * bar_w, graph_y + graph_h - 2 - h, bar_w - 1, h, ui.DARK)
     }
     io.writer_init(&w, io.STDOUT, line_text[:])
     io.put(&w, "peak ")
     io.put_u32(&w, peak / 1000)
     io.put(&w, "K instructions/s")
-    gfx.draw_text(&canvas, 14, graph_y + 4, gfx.rgb(216, 212, 200), line_text[0:w.used])
+    ui.dim_label(&panel, 16, graph_y + 4, line_text[0:w.used])
     gfx.present(&canvas)
 }
 

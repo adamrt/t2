@@ -1,8 +1,8 @@
 // term, a terminal: a window with a shell in it. What you type is edited
 // here a line at a time, drawn after whatever the shell has printed, and
 // sent to the shell when you press Enter. Up and Down bring back earlier
-// lines, Ctrl-C stops whatever the shell is running, and dragging the strip
-// under the window resizes it. Printing a form feed ('\x0c') clears it.
+// lines, Ctrl-C stops whatever the shell is running, and the grow box in the
+// window's corner resizes it. Printing a form feed ('\x0c') clears it.
 
 import gfx
 import io
@@ -19,9 +19,9 @@ manifest {
 const MAX_COLUMNS = 160
 const MAX_ROWS = 64
 const MARGIN = 4
-const BACKGROUND u32 = 0xff1b1d23
-const FOREGROUND u32 = 0xffd8d4c8
-const CURSOR u32 = 0xffe8c35a
+const BACKGROUND u32 = 0xffffffff
+const FOREGROUND u32 = 0xff000000
+const CURSOR u32 = 0xff000000
 
 // Each row of text takes MAX_COLUMNS cells, however wide the window is. A
 // cell holds a character up to 255, which is what the font draws, or "?".

@@ -20,10 +20,10 @@ const STATUS = 20               // the height of the line under the grid
 const WIDTH = COLUMNS * CELL
 const HEIGHT = ROWS * CELL + STATUS
 const DELAY u32 = 80
-const LIVE u32 = 0xff9fd86a
-const DEAD u32 = 0xff15181d
-const GRID u32 = 0xff1e2229
-const TEXT u32 = 0xffb8b4a8
+const LIVE u32 = 0xff000000
+const DEAD u32 = 0xffffffff
+const GRID u32 = 0xffeeeeee
+const TEXT u32 = 0xff000000
 
 var cells [ROWS * COLUMNS]u8
 var next [ROWS * COLUMNS]u8
