@@ -12,8 +12,8 @@ typedef struct Audio Audio;
 // Opens the host's sound output. A silent device plays nothing, but empties
 // its queue at the same pace, so programs behave the same.
 Audio *audio_open(bool silent);
-void audio_close(Audio *a);
+void audio_close(Audio *audio);
 // Queues samples, unless that would put more than two seconds in the queue.
-bool audio_queue(Audio *a, const uint8_t *samples, uint32_t bytes);
+bool audio_queue(Audio *audio, const uint8_t *samples, uint32_t bytes);
 // Bytes queued and not played yet.
-uint32_t audio_queued(Audio *a);
+uint32_t audio_queued(Audio *audio);

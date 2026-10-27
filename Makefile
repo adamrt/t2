@@ -3,7 +3,10 @@ BUILD = build
 
 VM = $(BUILD)/terrarium
 TC = $(VM) $(BUILD)/tc.bin
-MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c src/gpu.c src/gui.c src/audio.c src/net.c
+MACHINE = src/machine.c src/disasm.c src/host.c src/monitor.c src/boot.c \
+	src/devices.c src/input.c src/screenshot.c src/gpu.c src/gui.c src/audio.c src/net.c
+MACHINE_HEADERS = $(wildcard src/*.h)
+HOST_TEST_SOURCES = tests/host.c src/machine.c src/disasm.c src/host.c src/gpu.c src/input.c
 # SDL3 gives the machine a window and sound. Without it, or with
 # make HEADLESS=1, everything still builds, and the machine runs with
 # --headless or --screen.
@@ -43,7 +46,7 @@ DISK_FILES = $(foreach p,$(PROGRAMS),$(BUILD)/bin/$(p).bin:/bin/$(p)) \
 SOURCES = $(wildcard system/tc/*.tr system/kernel/*.tr system/kernel/*.asm system/bin/*.tr system/tools/*.tr \
 	system/fonts/*.txt) system/scripts/build-tc
 
-.PHONY: all test run clean FORCE
+.PHONY: all test host-test run clean FORCE
 
 all: $(VM) $(BUILD)/tc.bin $(BUILD)/disk.img $(BUILD)/mkimage.bin $(BUILD)/mksound.bin
 
@@ -52,7 +55,7 @@ $(BUILD)/vm.flags: FORCE
 	@mkdir -p $(BUILD)
 	@echo '$(SDL_CFLAGS) $(SDL_LIBS)' | cmp -s - $@ || echo '$(SDL_CFLAGS) $(SDL_LIBS)' > $@
 
-$(VM): $(MACHINE) src/machine.h src/host.h src/gpu.h src/gui.h src/audio.h src/net.h $(BUILD)/vm.flags
+$(VM): $(MACHINE) $(MACHINE_HEADERS) $(BUILD)/vm.flags
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -o $@ $(MACHINE) $(SDL_LIBS)
 
@@ -93,7 +96,14 @@ $(BUILD)/run.img: $(BUILD)/disk.img
 run: all $(BUILD)/run.img
 	$(VM) boot $(if $(HEADLESS),--headless,$(if $(WINDOW),,--fullscreen)) $(BUILD)/run.img $(BUILD)/kernel.sym
 
-test: all $(TC0)
+$(BUILD)/host-tests: $(HOST_TEST_SOURCES) $(MACHINE_HEADERS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc -o $@ $(HOST_TEST_SOURCES)
+
+host-test: $(BUILD)/host-tests
+	$(BUILD)/host-tests
+
+test: all $(TC0) host-test
 	tests/run.sh
 
 clean:

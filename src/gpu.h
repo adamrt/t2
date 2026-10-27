@@ -44,24 +44,22 @@ typedef struct {
     uint8_t *vram;
     uint32_t *back;
     uint32_t *front;
-    bool presented;      // the front buffer changed
+    bool presented; // the front buffer changed
 
-    uint32_t commands;   // physical address
-    uint32_t length;     // in words
+    uint32_t commands; // physical address
+    uint32_t length;   // in words
     uint32_t source_base;
     uint32_t source_size;
     int32_t origin_x;
     int32_t origin_y;
-    uint32_t clips;      // physical address of x, y, w, h rectangles
+    uint32_t clips; // physical address of x, y, w, h rectangles
     uint32_t clip_count;
-    uint32_t font;       // physical address
+    uint32_t font; // physical address
     uint32_t status;
-    uint32_t pixels;     // pixels drawn, for curiosity
+    uint32_t pixels; // pixels drawn, for curiosity
 } Gpu;
 
-bool gpu_init(Gpu *g, uint32_t width, uint32_t height);
-bool gpu_read(Gpu *g, uint32_t port, uint32_t *value);
-bool gpu_write(Gpu *g, Machine *m, uint32_t port, uint32_t value);
-// Decodes the UTF-8 character at *s, moving *s past it. A byte that doesn't
-// start a whole character before end comes back as 0xfffd on its own.
-uint32_t utf8_next(const uint8_t **s, const uint8_t *end);
+bool gpu_init(Gpu *gpu, uint32_t width, uint32_t height);
+void gpu_free(Gpu *gpu);
+bool gpu_read(Gpu *gpu, uint32_t port, uint32_t *value);
+bool gpu_write(Gpu *gpu, Machine *machine, uint32_t port, uint32_t value);

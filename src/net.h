@@ -29,20 +29,31 @@ enum {
 #define NET_CONNECTIONS 16
 
 typedef struct {
-    int fds[NET_CONNECTIONS];   // -1 when unused
-    bool ready[NET_CONNECTIONS];        // reported, and not used since
-    bool connecting[NET_CONNECTIONS];
-    bool broken[NET_CONNECTIONS];       // its connect failed
-    bool want_write[NET_CONNECTIONS];   // a send found the buffer full
-    bool listening[NET_CONNECTIONS];
-    uint32_t host, host_length, port, id, address, length, result;
+    int fd;     // -1 when unused.
+    bool ready; // Already reported; rearmed by the next command.
+    bool connecting;
+    bool broken;
+    bool want_write;
+    bool listening;
+} NetConnection;
+
+typedef struct {
+    NetConnection connections[NET_CONNECTIONS];
+    uint32_t host_address;
+    uint32_t host_length;
+    uint32_t port;
+    uint32_t id;
+    uint32_t address;
+    uint32_t length;
+    uint32_t result;
 } Net;
 
-void net_init(Net *n);
-bool net_read(Net *n, uint32_t port, uint32_t *value);
-bool net_write(Net *n, Machine *m, uint32_t port, uint32_t value);
+void net_init(Net *net);
+void net_close(Net *net);
+bool net_read(Net *net, uint32_t port, uint32_t *value);
+bool net_write(Net *net, Machine *machine, uint32_t port, uint32_t value);
 // Returns true when a connection has become readable or writable since the
 // last call.
-bool net_poll(Net *n);
+bool net_poll(Net *net);
 // Whether any connection is open, so the machine should keep checking.
-bool net_active(Net *n);
+bool net_active(const Net *net);

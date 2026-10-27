@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 static const char *reg_names[16] = {
-    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "sp",
-    "r9?", "r10?", "r11?", "r12?", "r13?", "r14?", "r15?",
+    "r0", "r1",  "r2",   "r3",   "r4",   "r5",   "r6",   "r7",
+    "sp", "r9?", "r10?", "r11?", "r12?", "r13?", "r14?", "r15?",
 };
 
 static const char *alu_ops[] = {
@@ -29,47 +29,47 @@ format_address(char *out, size_t size, const char *base, int32_t offset)
 }
 
 void
-disasm(uint32_t ins, uint32_t pc, char *out, size_t size)
+disasm(uint32_t instruction, uint32_t pc, char *out, size_t size)
 {
-    uint32_t op = ins >> 24;
-    const char *a = reg_names[ins >> 20 & 15];
-    const char *b = reg_names[ins >> 16 & 15];
-    const char *c = reg_names[ins >> 12 & 15];
-    int32_t imm = (int16_t)(ins & 0xffff);
-    uint32_t target = pc + 4 + (uint32_t)imm * 4;
+    uint32_t opcode = instruction >> 24;
+    const char *a = reg_names[instruction >> 20 & 15];
+    const char *b = reg_names[instruction >> 16 & 15];
+    const char *c = reg_names[instruction >> 12 & 15];
+    int32_t immediate = (int16_t)(instruction & 0xffff);
+    uint32_t target = pc + 4 + (uint32_t)immediate * 4;
     char addr[64];
 
-    switch (op_format(op) == FMT_ILLEGAL ? 0 : op) {
+    switch (instruction_format(opcode) == FMT_ILLEGAL ? 0 : opcode) {
     case 0:
-        snprintf(out, size, ".word 0x%08x", ins);
+        snprintf(out, size, ".word 0x%08x", instruction);
         return;
     case OP_LI:
-        snprintf(out, size, "%s = %d", a, imm);
+        snprintf(out, size, "%s = %d", a, immediate);
         return;
     case OP_LIH:
-        snprintf(out, size, "%s = (%s & 0xffff) | 0x%04x0000", a, a, ins & 0xffff);
+        snprintf(out, size, "%s = (%s & 0xffff) | 0x%04x0000", a, a, instruction & 0xffff);
         return;
     case OP_LD:
     case OP_LD16:
     case OP_LD8:
-        format_address(addr, sizeof(addr), b, imm);
-        snprintf(out, size, "%s = %s%s", a, sizes[op - OP_LD], addr);
+        format_address(addr, sizeof(addr), b, immediate);
+        snprintf(out, size, "%s = %s%s", a, sizes[opcode - OP_LD], addr);
         return;
     case OP_ST:
     case OP_ST16:
     case OP_ST8:
-        format_address(addr, sizeof(addr), b, imm);
-        snprintf(out, size, "%s%s = %s", sizes[op - OP_ST], addr, a);
+        format_address(addr, sizeof(addr), b, immediate);
+        snprintf(out, size, "%s%s = %s", sizes[opcode - OP_ST], addr, a);
         return;
     case OP_BZ:
     case OP_BNZ:
-        snprintf(out, size, "if %s %s 0 goto 0x%x", a, op == OP_BZ ? "==" : "!=", target);
+        snprintf(out, size, "if %s %s 0 goto 0x%x", a, opcode == OP_BZ ? "==" : "!=", target);
         return;
     case OP_JMP:
-        snprintf(out, size, "goto 0x%x", (ins & 0xffffff) * 4);
+        snprintf(out, size, "goto 0x%x", (instruction & 0xffffff) * 4);
         return;
     case OP_CALL:
-        snprintf(out, size, "call 0x%x", (ins & 0xffffff) * 4);
+        snprintf(out, size, "call 0x%x", (instruction & 0xffffff) * 4);
         return;
     case OP_CALLR:
         snprintf(out, size, "call %s", a);
@@ -90,7 +90,7 @@ disasm(uint32_t ins, uint32_t pc, char *out, size_t size)
         snprintf(out, size, "fill %s, %s, %s", a, b, c);
         return;
     case OP_SYS:
-        snprintf(out, size, "sys %u", ins & 0xffff);
+        snprintf(out, size, "sys %u", instruction & 0xffff);
         return;
     case OP_HALT:
         snprintf(out, size, "halt");
@@ -109,13 +109,13 @@ disasm(uint32_t ins, uint32_t pc, char *out, size_t size)
         return;
     }
 
-    if (op >= OP_BEQ && op <= OP_BGES) {
-        snprintf(out, size, "if %s %s %s goto 0x%x", a, branch_ops[op - OP_BEQ], b, target);
-    } else if (op >= OP_ADD && op <= OP_FDIV) {
-        snprintf(out, size, "%s = %s %s %s", a, b, alu_ops[op - OP_ADD], c);
-    } else if (op == OP_ADD + OP_IMM && imm == 0) {
+    if (opcode >= OP_BEQ && opcode <= OP_BGES) {
+        snprintf(out, size, "if %s %s %s goto 0x%x", a, branch_ops[opcode - OP_BEQ], b, target);
+    } else if (opcode >= OP_ADD && opcode <= OP_FDIV) {
+        snprintf(out, size, "%s = %s %s %s", a, b, alu_ops[opcode - OP_ADD], c);
+    } else if (opcode == OP_ADD + OP_IMM && immediate == 0) {
         snprintf(out, size, "%s = %s", a, b);
     } else {
-        snprintf(out, size, "%s = %s %s %d", a, b, alu_ops[op - OP_ADD - OP_IMM], imm);
+        snprintf(out, size, "%s = %s %s %d", a, b, alu_ops[opcode - OP_ADD - OP_IMM], immediate);
     }
 }

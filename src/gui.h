@@ -1,29 +1,7 @@
 #pragma once
 
 #include "gpu.h"
-
-// Input events, as the input device hands them to the kernel.
-enum {
-    INPUT_KEY_DOWN = 1,     // a: key, b: modifiers
-    INPUT_KEY_UP = 2,
-    INPUT_TEXT = 3,         // a: character
-    INPUT_MOUSE_MOVE = 4,   // a: x, b: y, c: buttons held
-    INPUT_MOUSE_DOWN = 5,   // a: x, b: y, c: button
-    INPUT_MOUSE_UP = 6,
-    INPUT_WHEEL = 7,        // a: x, b: y, as signed steps
-};
-
-typedef struct {
-    uint32_t type, a, b, c;
-} InputEvent;
-
-#define INPUT_QUEUE 256
-
-typedef struct {
-    InputEvent events[INPUT_QUEUE];
-    uint32_t start;
-    uint32_t count;
-} InputQueue;
+#include "input.h"
 
 typedef struct Gui Gui;
 

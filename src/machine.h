@@ -6,8 +6,8 @@
 
 #define MiB (1024u * 1024u)
 
-#define RAM_SIZE   (52u * MiB)
-#define VRAM_SIZE  (12u * MiB)
+#define RAM_SIZE (52u * MiB)
+#define VRAM_SIZE (12u * MiB)
 #define NULL_GUARD 0x10000u
 
 enum {
@@ -145,8 +145,8 @@ enum {
 typedef struct Machine Machine;
 
 // Device ports. Each returns false for a port it doesn't have.
-typedef bool (*PortRead)(Machine *m, uint32_t port, uint32_t *value);
-typedef bool (*PortWrite)(Machine *m, uint32_t port, uint32_t value);
+typedef bool (*PortRead)(Machine *machine, uint32_t port, uint32_t *value);
+typedef bool (*PortWrite)(Machine *machine, uint32_t port, uint32_t value);
 
 struct Machine {
     uint32_t r[REG_COUNT];
@@ -165,7 +165,7 @@ struct Machine {
     uint32_t cause;
     uint32_t value;
     uint32_t address;
-    uint32_t pending;    // interrupt bits waiting for the kernel
+    uint32_t pending; // interrupt bits waiting for the kernel
 
     uint64_t cycles;
     uint8_t *ram;
@@ -174,19 +174,19 @@ struct Machine {
     PortWrite port_write;
     void *host;
 
-    uint32_t sys;        // number of the last sys instruction
+    uint32_t sys; // number of the last sys instruction
     Fault fault;
     uint32_t fault_pc;
     uint32_t fault_addr;
 };
 
-bool machine_init(Machine *m);
-void machine_free(Machine *m);
-Stop machine_run(Machine *m, uint64_t steps);
+bool machine_init(Machine *machine);
+void machine_free(Machine *machine);
+Stop machine_run(Machine *machine, uint64_t steps);
 
-uint8_t *machine_data(Machine *m, uint32_t addr, uint32_t len);
-bool machine_fetch(Machine *m, uint32_t pc, uint32_t *ins);
+uint8_t *machine_data(Machine *machine, uint32_t addr, uint32_t len);
+bool machine_fetch(Machine *machine, uint32_t pc, uint32_t *instruction);
 
-Format op_format(uint32_t op);
+Format instruction_format(uint32_t opcode);
 const char *fault_name(Fault fault);
-void disasm(uint32_t ins, uint32_t pc, char *out, size_t size);
+void disasm(uint32_t instruction, uint32_t pc, char *out, size_t size);

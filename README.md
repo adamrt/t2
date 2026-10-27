@@ -28,7 +28,7 @@ window instead.
 
 | Part                          | Written in | Lines |
 | ----------------------------- | ---------- | ----- |
-| The machine (`src/`)          | C99        | 3,300 |
+| The machine (`src/`)          | C99        | 3,800 |
 | The compiler in C (`bootstrap/`) | C99     | 5,300 |
 | The compiler (`system/tc/`)   | the language | 3,900 |
 | Its assembler (`system/lib/asm.tr`) | the language | 1,100 |

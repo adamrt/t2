@@ -4,48 +4,41 @@
 
 #include <stdio.h>
 
-#define FAILED      0xffffffffu
+#define HOST_FAILED 0xffffffffu
 
 // A TRX2 executable's header is 32 bytes; see docs/executable.md.
-#define EXECUTABLE_HEADER 32
+#define EXECUTABLE_HEADER_SIZE 32
 
 typedef struct {
-    uint32_t entry;
-    uint32_t code;
-    uint32_t data;
-    uint32_t bss;
-    uint32_t stack;
-    uint32_t memory;
+    uint32_t entry_pc;
+    uint32_t code_size;
+    uint32_t data_size;
+    uint32_t bss_size;
+    uint32_t stack_size;
+    uint32_t memory_size;
     uint32_t permissions;
     const uint8_t *code_bytes;
     const uint8_t *data_bytes;
 } Executable;
 
-uint32_t read32(const uint8_t *p);
 uint32_t align4(uint32_t n);
 uint8_t *read_file(const char *path, size_t *size);
 
 // Returns NULL, or what's wrong with the file.
 const char *parse_executable(const uint8_t *file, size_t size, Executable *exe);
 
-void load_symbols(const char *program);
-void print_location(uint32_t addr);
-void report_fault(Machine *m);
-
+typedef struct Symbol Symbol;
 typedef struct {
-    const char *disk;
-    const char *symbols;
-    bool window;
-    bool fullscreen;
-    uint32_t width;         // a screen without a window, for testing
-    uint32_t height;
-    uint32_t run_for;       // milliseconds before stopping, or 0
-    const char *screenshot; // where to save the screen when stopping
-    const char *type;       // keys to press once the system has started
-    bool mute;              // a silent sound device, even with a window
-    int32_t drag[4];        // a mouse drag after the typing: x0, y0, x1, y1
-    bool has_drag;
-    uint32_t date;          // a fixed time of day, for repeatable tests, or 0
-} BootOptions;
+    Symbol *items;
+    size_t count;
+} SymbolTable;
 
-int boot(const BootOptions *options);
+void symbols_load(SymbolTable *table, const char *program);
+void symbols_free(SymbolTable *table);
+void print_location(const SymbolTable *table, uint32_t address);
+void report_fault(Machine *machine, const SymbolTable *symbols);
+
+uint64_t host_monotonic_us(void);
+// A zero deadline means no deadline; -1 means an unlimited timeout.
+int host_deadline_ms(uint64_t deadline_us, uint64_t now_us);
+int host_min_timeout(int first_ms, int second_ms);
