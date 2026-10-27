@@ -193,7 +193,9 @@ read_all(uint32_t which)
     }
 }
 
-// Errors ---------------------------------------------------------------------
+//
+// Errors
+//
 
 // Stops with "source:line: message 'name'", or with "asm: message" once the
 // passes are over.
@@ -228,7 +230,9 @@ asm_fail(const char *message)
     asm_fail_name(message, (Str){ NULL, 0 });
 }
 
-// Tokens ---------------------------------------------------------------------
+//
+// Tokens
+//
 
 static uint8_t
 char_at(uint32_t offset)
@@ -579,7 +583,9 @@ swaps(Kind kind)
         kind == A_LESS_EQUAL_SIGNED;
 }
 
-// Reading tokens -------------------------------------------------------------
+//
+// Reading tokens
+//
 
 static AsmToken *
 peek(void)
@@ -638,7 +644,9 @@ size_prefix(void)
     return 0;
 }
 
-// Symbols --------------------------------------------------------------------
+//
+// Symbols
+//
 
 // The symbol with this name, or the free slot where it belongs.
 static Symbol *
@@ -683,7 +691,9 @@ label_address(const Symbol *s)
     return BASE + s->value;
 }
 
-// Values ---------------------------------------------------------------------
+//
+// Values
+//
 
 // A number, or the name of a constant or a label, with an optional '-'
 // before it. Sets *label when it's a label, whose address is 0 in the first
@@ -765,7 +775,9 @@ code_label(void)
     return label_address(s);
 }
 
-// Output ---------------------------------------------------------------------
+//
+// Output
+//
 
 static void
 emit(uint32_t word)
@@ -810,7 +822,9 @@ zeros(uint32_t n)
     offsets[section] += n;
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 // NAME = value
 static void

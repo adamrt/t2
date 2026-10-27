@@ -255,7 +255,9 @@ fn fail_types(n *Node, want *Type, found *Type) {
     error_end()
 }
 
-// Symbols --------------------------------------------------------------------
+//
+// Symbols
+//
 
 fn hash(name []u8) u32 {
     var h u32 = 0x811c9dc5
@@ -318,7 +320,9 @@ fn add_sym(kind SymKind, n *Node) *Sym {
     return s
 }
 
-// Declarations ---------------------------------------------------------------
+//
+// Declarations
+//
 
 fn check_program() {
     init_types()

@@ -194,7 +194,9 @@ fn has_screen() bool {
     return screen_width > 0
 }
 
-// Rectangles -------------------------------------------------------------------
+//
+// Rectangles
+//
 
 fn set_rect(r *Rect, x i32, y i32, w i32, h i32) {
     r.x = x
@@ -349,7 +351,9 @@ fn compute_visible() {
     }
 }
 
-// Drawing ----------------------------------------------------------------------
+//
+// Drawing
+//
 
 fn command(word u32) {
     if command_count < commands.len {
@@ -734,7 +738,9 @@ fn window_draw(p *Process, w *Window, list []u8) u32 {
     return io_read(PORT_GPU_STATUS)
 }
 
-// The Windows menu -----------------------------------------------------------
+//
+// The Windows menu
+//
 
 // Its items are the windows, a separator, then Collapse All and Expand All.
 fn menu_count() u32 {
@@ -908,7 +914,9 @@ fn menu_move() {
     }
 }
 
-// Windows ----------------------------------------------------------------------
+//
+// Windows
+//
 
 // Keeps as much of a title as fits, without cutting a character in two.
 fn set_title(w *Window, title []u8) {
@@ -1152,7 +1160,9 @@ fn apply_drag() {
     redraw(&before)
 }
 
-// Events -----------------------------------------------------------------------
+//
+// Events
+//
 
 fn post(w *Window, kind EventKind, x i32, y i32, key u32, modifiers u32, buttons u32) {
     if kind == EventKind.Draw {

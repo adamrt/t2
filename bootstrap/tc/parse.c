@@ -87,7 +87,9 @@ starts_type(Tok kind)
     return kind == T_NAME || kind == T_STAR || kind == T_LBRACKET || kind == K_FN;
 }
 
-// Declarations ---------------------------------------------------------------
+//
+// Declarations
+//
 
 static Node *
 parse_declaration(void)
@@ -262,7 +264,9 @@ parse_type(void)
     return n;
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 static Node *
 parse_block(void)
@@ -395,7 +399,9 @@ parse_statement(void)
     return n;
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 // Binary operators bind tighter as the level rises.
 static uint32_t

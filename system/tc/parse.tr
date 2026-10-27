@@ -168,7 +168,9 @@ fn parse_file(file u32) {
     }
 }
 
-// Declarations ---------------------------------------------------------------
+//
+// Declarations
+//
 
 fn parse_declaration() *Node {
     var n *Node
@@ -330,7 +332,9 @@ fn parse_type() *Node {
     return n
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 fn parse_block() *Node {
     var n = node(N.Block)
@@ -466,7 +470,9 @@ fn is_assignment(kind Tok) bool {
     return false
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 // Binary operators bind tighter as the level rises.
 fn binary_level(kind Tok) u32 {

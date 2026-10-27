@@ -199,7 +199,9 @@ fn align4(n u32) u32 {
     return (n + 3) & ~3
 }
 
-// Errors ---------------------------------------------------------------------
+//
+// Errors
+//
 
 fn fail(message []u8) {
     fail_name(message, "")
@@ -233,7 +235,9 @@ fn fail_name(message []u8, name []u8) {
     os.exit(1)
 }
 
-// Tokens ---------------------------------------------------------------------
+//
+// Tokens
+//
 
 fn char_at(offset u32) u8 {
     if pos + offset >= input.len {
@@ -572,7 +576,9 @@ fn swaps(kind Kind) bool {
     return false
 }
 
-// Reading tokens -------------------------------------------------------------
+//
+// Reading tokens
+//
 
 fn peek() *Token {
     return &tokens[cursor]
@@ -622,7 +628,9 @@ fn size_prefix() u32 {
     return 0
 }
 
-// Symbols --------------------------------------------------------------------
+//
+// Symbols
+//
 
 // The symbol with this name, or the free slot where it belongs.
 fn find_symbol(name []u8) *Symbol {
@@ -668,7 +676,9 @@ fn label_address(s *Symbol) u32 {
     return BASE + s.value
 }
 
-// Values ---------------------------------------------------------------------
+//
+// Values
+//
 
 // A number, or the name of a constant or a label, with an optional '-'
 // before it. Sets *label when it's a label, whose address is 0 in the first
@@ -751,7 +761,9 @@ fn code_label() u32 {
     return label_address(s)
 }
 
-// Output ---------------------------------------------------------------------
+//
+// Output
+//
 
 fn emit(word u32) {
     if section != CODE {
@@ -792,7 +804,9 @@ fn zeros(n u32) {
     offsets[section] += n
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 fn statement() {
     var t = peek()

@@ -57,7 +57,9 @@ check_function(Sym *s)
     s->node->value = frame;
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 static void
 check_block(Node *b)
@@ -264,7 +266,9 @@ coerce(Node *e, Type *t, Type *want)
     fail_types(e, want, t);
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 static void
 set_const(Node *e, uint32_t value)

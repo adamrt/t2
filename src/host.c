@@ -49,25 +49,18 @@ read_file(const char *path, size_t *size)
 const char *
 parse_executable(const uint8_t *file, size_t size, Executable *exe)
 {
-    // TRX1 is TRX2 without the permissions word; the seeds still use it.
-    if (size >= 28 && memcmp(file, "TRX1", 4) == 0) {
-        exe->header_size = 28;
-        exe->permissions = 0xffffffffu;
-    } else if (size >= 32 && memcmp(file, "TRX2", 4) == 0) {
-        exe->header_size = 32;
-        exe->permissions = read32(file + 28);
-    } else {
+    if (size < EXECUTABLE_HEADER || memcmp(file, "TRX2", 4) != 0)
         return "not an executable";
-    }
+    exe->permissions = read32(file + 28);
     exe->entry = read32(file + 4);
     exe->code = read32(file + 8);
     exe->data = read32(file + 12);
     exe->bss = read32(file + 16);
     exe->stack = read32(file + 20);
     exe->memory = read32(file + 24);
-    exe->code_bytes = file + exe->header_size;
-    exe->data_bytes = file + exe->header_size + exe->code;
-    if (exe->code % 4 != 0 || exe->memory % 4 != 0 || (uint64_t)exe->header_size + exe->code + exe->data > size)
+    exe->code_bytes = file + EXECUTABLE_HEADER;
+    exe->data_bytes = file + EXECUTABLE_HEADER + exe->code;
+    if (exe->code % 4 != 0 || exe->memory % 4 != 0 || (uint64_t)EXECUTABLE_HEADER + exe->code + exe->data > size)
         return "malformed header";
     if (exe->memory > RAM_SIZE || (uint64_t)exe->code + align4(exe->data) + align4(exe->bss) + exe->stack > exe->memory)
         return "doesn't fit in its declared memory";

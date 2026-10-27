@@ -214,7 +214,9 @@ fail_types(Node *n, Type *want, Type *found)
     error_end();
 }
 
-// Symbols --------------------------------------------------------------------
+//
+// Symbols
+//
 
 static uint32_t
 hash(Str name)
@@ -279,7 +281,9 @@ add_sym(SymKind kind, Node *n)
     return s;
 }
 
-// Declarations ---------------------------------------------------------------
+//
+// Declarations
+//
 
 // Turns a list of permission names, like "read write", into their bits.
 static uint32_t

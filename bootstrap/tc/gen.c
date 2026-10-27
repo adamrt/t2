@@ -44,7 +44,9 @@ static void gen_expr(Node *e);
 static void gen_address(Node *e);
 static void gen_cond(Node *e, uint32_t label, bool when);
 
-// Writing lines ----------------------------------------------------------------
+//
+// Writing lines
+//
 
 static uint32_t
 new_label(void)
@@ -226,7 +228,9 @@ scale(const char *reg, uint32_t size)
     end_line();
 }
 
-// Loading and storing ----------------------------------------------------------
+//
+// Loading and storing
+//
 
 static void
 load_local(Local *local, const char *reg)
@@ -354,7 +358,9 @@ store(const char *reg, Type *t)
     }
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 static bool
 is_constant(Node *e)
@@ -778,7 +784,9 @@ gen_expr(Node *e)
         emit_value("r1 = ", e->ty->length);
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 static void
 gen_block(Node *b)

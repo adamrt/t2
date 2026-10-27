@@ -233,7 +233,9 @@ fn add_child(dir *Entry, name []u8, kind u32) *Entry {
     return e
 }
 
-// Layout ---------------------------------------------------------------------
+//
+// Layout
+//
 
 fn set_word(bytes []u8, offset u32, value u32) {
     bytes[offset] = (value & 255) as u8

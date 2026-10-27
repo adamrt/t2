@@ -791,7 +791,9 @@ fn nth_arg(p *Process, index u32) []u8 {
     return empty
 }
 
-// Reading and writing ---------------------------------------------------------
+//
+// Reading and writing
+//
 
 fn read_object(p *Process, o *Object, bytes []u8) u32 {
     match o.kind {
@@ -987,7 +989,9 @@ fn available(o *Object) u32 {
     return io.FAILED
 }
 
-// Files ------------------------------------------------------------------------
+//
+// Files
+//
 
 // Mode 0 reads, 1 creates or empties the file to write it, 2 appends.
 fn open_file(p *Process, path []u8, mode u32) u32 {
@@ -1083,7 +1087,9 @@ fn list_directory(dir *FileRef, buffer []u8) u32 {
     return n
 }
 
-// Processes and pipes -------------------------------------------------------------
+//
+// Processes and pipes
+//
 
 // spawn(path, length, args, args length, input, output, errors)
 fn spawn(p *Process) u32 {

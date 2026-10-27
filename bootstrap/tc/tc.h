@@ -45,7 +45,9 @@ void put_u32(Writer *w, uint32_t value);
 void put_i32(Writer *w, int32_t value);
 void put_hex(Writer *w, uint32_t value);
 
-// main.c ---------------------------------------------------------------------
+//
+// main.c
+//
 
 enum {
     MAX_FILES = 64,
@@ -83,7 +85,9 @@ NORETURN void fail_name(Node *n, const char *message, Str name);
 NORETURN void fail_plain(const char *message);
 NORETURN void fail_path(const char *message, Str path);
 
-// lex.c ----------------------------------------------------------------------
+//
+// lex.c
+//
 
 typedef enum {
     T_END,
@@ -120,7 +124,9 @@ extern Token tok;
 void lex_start(uint32_t file);
 void next_token(void);
 
-// parse.c --------------------------------------------------------------------
+//
+// parse.c
+//
 
 typedef enum {
     // Declarations
@@ -209,7 +215,9 @@ extern List declarations;
 NORETURN void parse_fail(const char *message);
 void parse_file(uint32_t file);
 
-// types.c --------------------------------------------------------------------
+//
+// types.c
+//
 
 typedef enum {
     TY_INT,
@@ -295,7 +303,9 @@ Type *resolve(Node *tn);
 void complete(Type *t);
 uint32_t const_value(Node *e, Type *want);
 
-// check.c --------------------------------------------------------------------
+//
+// check.c
+//
 
 struct Local {
     Str name;           // empty for hidden locals
@@ -310,13 +320,17 @@ Type *check(Node *e, Type *want);
 NORETURN void unknown_name(Node *e, const char *message);
 bool is_comparison(Tok op);
 
-// gen.c ----------------------------------------------------------------------
+//
+// gen.c
+//
 
 extern Writer out;
 
 void generate(void);
 
-// asm.c ----------------------------------------------------------------------
+//
+// asm.c
+//
 
 // A piece of assembly: its name, for messages, and its text.
 typedef struct {

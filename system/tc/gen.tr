@@ -127,7 +127,9 @@ fn gen_function(s *Sym) {
     }
 }
 
-// Writing lines ----------------------------------------------------------------
+//
+// Writing lines
+//
 
 fn new_label() u32 {
     labels += 1
@@ -216,7 +218,9 @@ fn emit_frame_address(reg []u8, offset i32) {
     end_line()
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 fn gen_block(b *Node) {
     var st = b.list
@@ -405,7 +409,9 @@ fn gen_assign(st *Node) {
     store("r2", t)
 }
 
-// Loading and storing ----------------------------------------------------------
+//
+// Loading and storing
+//
 
 fn load_local(local *Local, reg []u8) {
     var t = local.ty
@@ -524,7 +530,9 @@ fn store(reg []u8, t *Type) {
     }
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 fn is_constant(e *Node) bool {
     var k = e.ty.kind

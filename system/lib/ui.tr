@@ -96,7 +96,9 @@ fn clicked(panel *Panel, id u32, over bool) bool {
     return panel.released && over && panel.active == id
 }
 
-// Drawing ----------------------------------------------------------------------
+//
+// Drawing
+//
 
 fn label(panel *Panel, x i32, y i32, words []u8) {
     gfx.draw_text(panel.canvas, x, y, BLACK, words)
@@ -173,7 +175,9 @@ fn group(panel *Panel, x i32, y i32, w i32, h i32, title []u8) {
     }
 }
 
-// Controls ---------------------------------------------------------------------
+//
+// Controls
+//
 
 fn draw_button(c *gfx.Canvas, x i32, y i32, w i32, h i32, words []u8, down bool) {
     rounded(c, x, y, w, h, BLACK)

@@ -20,7 +20,9 @@ fn seek(handle u32, position u32) u32
 // more will come.
 fn available(handle u32) u32
 
-// Output ---------------------------------------------------------------------
+//
+// Output
+//
 
 // Collects output in a buffer and writes it in large pieces.
 struct Writer {
@@ -118,7 +120,9 @@ fn print(text []u8) {
     write_all(STDOUT, text)
 }
 
-// Input ------------------------------------------------------------------------
+//
+// Input
+//
 
 // Reads a file a buffer at a time and hands out lines.
 struct Reader {

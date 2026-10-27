@@ -62,7 +62,9 @@ fn new_local(n *Node, name []u8, ty *Type) *Local {
     return add_local(n, name, ty, 0 - frame as i32)
 }
 
-// Statements -----------------------------------------------------------------
+//
+// Statements
+//
 
 fn check_block(b *Node) {
     var saved_scope = scope
@@ -280,7 +282,9 @@ fn coerce(e *Node, t *Type, want *Type) {
     fail_types(e, want, t)
 }
 
-// Expressions ----------------------------------------------------------------
+//
+// Expressions
+//
 
 fn set_const(e *Node, value u32) {
     e.flags |= IS_CONST

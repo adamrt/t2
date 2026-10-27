@@ -165,7 +165,9 @@ fn min(a u32, b u32) u32 {
     return b
 }
 
-// The gap buffer ---------------------------------------------------------------
+//
+// The gap buffer
+//
 
 fn length() u32 {
     return CAPACITY - (gap_end - gap_start)
@@ -234,7 +236,9 @@ fn delete_after() {
     }
 }
 
-// Undo -------------------------------------------------------------------------
+//
+// Undo
+//
 
 // Forgets what could be redone, since a new change replaces it.
 fn drop_redo() {
@@ -352,7 +356,9 @@ fn redo() {
     modified = change_count != saved_at
 }
 
-// Characters -------------------------------------------------------------------
+//
+// Characters
+//
 
 // Positions are bytes, and a character can take up to four of them, so
 // these look at up to four bytes on either side.
@@ -386,7 +392,9 @@ fn column_of(start u32, position u32) u32 {
     return column
 }
 
-// Lines ------------------------------------------------------------------------
+//
+// Lines
+//
 
 fn line_start(position u32) u32 {
     var p = position
@@ -446,7 +454,9 @@ fn lines() u32 {
     return line_of(length()) + 1
 }
 
-// Files ------------------------------------------------------------------------
+//
+// Files
+//
 
 fn load() {
     var file = io.open(path[0:path_len], io.MODE_READ)
@@ -492,7 +502,9 @@ fn save() {
     }
 }
 
-// Input ------------------------------------------------------------------------
+//
+// Input
+//
 
 fn handle(e *gfx.Event) {
     message = ""
@@ -658,7 +670,9 @@ fn key(code u32, modifiers u32) {
     }
 }
 
-// The selection ---------------------------------------------------------------
+//
+// The selection
+//
 
 fn has_selection() bool {
     return anchor != NONE && anchor != cursor
@@ -829,7 +843,9 @@ fn keep_cursor_visible() {
     }
 }
 
-// Drawing ----------------------------------------------------------------------
+//
+// Drawing
+//
 
 fn draw() {
     var width = window_width

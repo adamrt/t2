@@ -28,7 +28,9 @@ static Str library;
 static AsmSource pieces[MAX_FILES];
 static uint32_t piece_count;
 
-// Helpers standing in for the io, mem and text modules -------------------------
+//
+// Helpers standing in for the io, mem and text modules
+//
 
 bool
 str_equal(Str a, Str b)
@@ -114,7 +116,9 @@ c_string(Str s)
     return c;
 }
 
-// Files ----------------------------------------------------------------------
+//
+// Files
+//
 
 static Str
 read_source(Str path)
@@ -224,7 +228,9 @@ imported(uint32_t file, Str name)
     return 0;
 }
 
-// Errors ---------------------------------------------------------------------
+//
+// Errors
+//
 
 // Starts an error message at a place in the source. Finish it with error_end().
 void

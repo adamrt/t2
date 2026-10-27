@@ -102,7 +102,9 @@ fn set_word(bytes []u8, offset u32, value u32) {
     bytes[offset + 3] = (value >> 24) as u8
 }
 
-// The table ------------------------------------------------------------------
+//
+// The table
+//
 
 fn next_block(b u32) u32 {
     return get_word(table, b * 4)
@@ -136,7 +138,9 @@ fn free_chain(first u32) {
     }
 }
 
-// Files ----------------------------------------------------------------------
+//
+// Files
+//
 
 // Returns the block holding block number index of a file, or 0. With extend,
 // adds blocks to the file until it has one.
@@ -241,7 +245,9 @@ fn truncate(f *FileRef) {
     update_entry(f)
 }
 
-// Directories ----------------------------------------------------------------
+//
+// Directories
+//
 
 fn load_entry(dir *FileRef, index u32, e *Entry) bool {
     var b = file_block(dir, index * ENTRY_SIZE / BLOCK, false)
@@ -347,7 +353,9 @@ fn remove_entry(f *FileRef) {
     update_entry(f)
 }
 
-// Paths ----------------------------------------------------------------------
+//
+// Paths
+//
 
 // Finds the file at an absolute path like "/bin/sh".
 fn lookup(path []u8, f *FileRef) bool {

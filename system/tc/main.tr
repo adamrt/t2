@@ -277,7 +277,9 @@ fn read_source(path []u8) []u8 {
     return free[0:n]
 }
 
-// Errors ---------------------------------------------------------------------
+//
+// Errors
+//
 
 // Starts an error message at a place in the source. Finish it with error_end().
 fn error_start(file u32, line u32) {

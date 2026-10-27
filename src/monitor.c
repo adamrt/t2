@@ -35,7 +35,7 @@ load_program(Machine *m, const char *path)
     }
     Executable exe;
     const char *error = parse_executable(file, size, &exe);
-    if (error == NULL && (uint64_t)exe.header_size + exe.code + exe.data != size)
+    if (error == NULL && (uint64_t)EXECUTABLE_HEADER + exe.code + exe.data != size)
         error = "malformed header";
     if (error != NULL) {
         fprintf(stderr, "terrarium: %s: %s\n", path, error);
