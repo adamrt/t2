@@ -485,18 +485,17 @@ fn mark_dirty() {
 
 // Shows the back buffer once something has changed, unless programs are
 // still painting what they were asked to, for at most HOLD milliseconds.
+// Then a window being dragged moves on to where the mouse is now, so a drag
+// shows one finished frame per vertical blank.
 fn present() {
+    if screen_dirty && (!painting() || clock_ms() - redraw_time >= HOLD) {
+        io_write(PORT_VIDEO_PRESENT, 1)
+        screen_dirty = false
+    }
     apply_drag()
     if !screen_dirty {
         io_write(PORT_VIDEO_VBLANK, 0)
-        return
     }
-    if painting() && clock_ms() - redraw_time < HOLD {
-        return
-    }
-    io_write(PORT_VIDEO_PRESENT, 1)
-    screen_dirty = false
-    io_write(PORT_VIDEO_VBLANK, 0)
 }
 
 fn painting() bool {
